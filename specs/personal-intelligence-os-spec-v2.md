@@ -1317,17 +1317,11 @@ Route:
 /ask
 ```
 
-Layout:
+Primary presentation: an on-demand chat drawer, approved by the owner to preserve screen space. Open it as a right-side overlay on desktop and a full-screen dialog on mobile; keep it closed by default and reserve no layout column when closed.
 
-```text
-conversation sidebar
+The drawer contains conversation, composer, context/date badge and controls for history, expand, and close. Sources, agent activity and approvals are tabs or subviews inside the same drawer rather than permanent additional columns. `/ask` remains an expanded view using the same conversation and chat component.
 
-main conversation
-
-agent activity panel
-
-sources panel
-```
+Closing or pressing Escape closes presentation only; an explicit Stop action cancels generation. Preserve the current draft during the browser session, restore focus to the trigger, and resume the existing response on reconnect without submitting a duplicate message. Use an accessible dialog primitive with focus management.
 
 Support:
 
@@ -1429,6 +1423,10 @@ Sections:
 - Important events
 - Knowledge changes
 - Recent activity
+
+Provide previous/next/today navigation and a date picker using the owner's IANA timezone (default `Asia/Ho_Chi_Minh`). Chat opens in the shared drawer with the selected date and timezone visible. A day conversation retains its original context; selecting another day selects that day's conversation without retargeting an existing response.
+
+Preserve saved Daily Brief revisions for historical days. Other widgets show currently retained data filtered to the selected day, with an update timestamp; do not imply that current task state is a historical snapshot. Re-generating a brief creates a new revision. Closing the drawer returns the full display area to the dashboard.
 
 Daily Brief should summarize:
 
@@ -4575,3 +4573,13 @@ Primary references consulted during design:
 - browser-use model configuration: https://github.com/browser-use/browser-use/blob/main/skills/open-source/references/models.md
 
 Verify current compatibility and pin versions during implementation; these links are design references, not a tested lockfile.
+
+# 164. APPROVED PLAN DELIVERY AND CHAT DRAWER — 2026-09-25
+
+The owner approved the Phase 1–12 breakdown and requested that every phase plan be saved locally, with task-level checklists and continuous progression through ready tasks during execution. The master index is `docs/superpowers/plans/2026-09-25-bbd-os-master-plan.md`; `docs/superpowers/plans/EXECUTION.md` records current/next tasks, evidence and external acceptance gates. Plan availability does not imply implementation completion.
+
+The owner selected a contextual chat next to Today, saved historical briefs plus currently updated lists, and then clarified that chat must be a drawer to leave more display space. Sections 42 and 46 above are authoritative for that behavior. The drawer is shared across supported contexts, closed by default, and expands to the same conversation on `/ask`; this does not introduce multi-workspace accounts.
+
+The approved delivery order includes n8n collection workflows in Phase 2, model/privacy capabilities in Phase 3, the reusable chat drawer in Phase 6, day context in Phase 8, and full accessibility/recovery acceptance in Phase 12. Phase 10 adds automation authoring rather than delaying collection schedules until that phase. Models and tables are introduced by their owning capability phase, with canonical Source/Document/DocumentVersion infrastructure in Phase 1.
+
+Execute ready tasks without asking the owner to approve the same scope again. Record missing credentials, live-provider evidence, backend compatibility or target hardware as explicit gates; continue independent work where possible. Never silently change the approved architecture, mark blocked acceptance complete, or automatically commit/push/deploy based on a plan checklist.

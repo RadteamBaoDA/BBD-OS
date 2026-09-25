@@ -1,6 +1,6 @@
 # BBD-OS architecture decisions
 
-Design revision: 2026-09-25. Architecture approved by the owner on 2026-09-25, including OmniRoute. Phase 0 implementation and acceptance checks are complete; validation on the target mini PC and later-phase integrations remain open. The execution plan is in `docs/superpowers/plans/2026-09-25-bbd-os-phase-0.md`.
+Design revision: 2026-09-25. Architecture approved by the owner on 2026-09-25, including OmniRoute. Phase 0 implementation and acceptance checks are complete; validation on the target mini PC and later-phase integrations remain open. The full delivery index is [the master plan](superpowers/plans/2026-09-25-bbd-os-master-plan.md); task progress is recorded in [the execution ledger](superpowers/plans/EXECUTION.md).
 
 | Decision | Reason | Alternatives | Consequences |
 | --- | --- | --- | --- |
@@ -10,6 +10,9 @@ Design revision: 2026-09-25. Architecture approved by the owner on 2026-09-25, i
 | Crawlee first, browser-use only when needed | Minimize browser/AI work on a small host | Crawl4AI; Browserless; all-browser crawling | One bounded browser task; browser isolation and source provenance remain mandatory |
 | Retain Graphiti; choose backend after validation | Preserve temporal knowledge scope without making unsupported compatibility or RAM claims | PostgreSQL-only graph; remote graph backend | Backend selection is a pre-implementation gate for graph work, not permission to omit the feature |
 | Target 2 cores and 8 GB with remote inference | Match the owner's hardware | Larger host; remote graph/browser services | Bound jobs, prebuild images, measure the complete enabled stack; no unmeasured capacity guarantee |
+| Use an on-demand chat drawer, with expanded Ask sharing the same conversation | Owner explicitly requested more display space | Permanent chat column; separate-only Ask | Drawer closed by default; desktop right overlay/mobile full-screen; history, citations and approvals stay inside; closing does not cancel generation |
+| Save brief revisions; show current records for a selected historical day | Owner selected saved brief plus updated lists | Full dashboard state snapshot per day | Date/timezone remain visible; current task state is not represented as historical truth; chat context is bound to the selected day's conversation |
+| Save all Phase 1–12 plans and continue ready tasks in native execution | Owner requested local checklists and continuous progression through approved scope | Repeated per-phase planning/approval | Maintain task evidence and next task in EXECUTION.md; external gates remain explicit; no automatic commits or deployments |
 | Use Next.js 16.3.6 in Phase 0 | The initially selected Next.js 15 dependency tree resolved a vulnerable PostCSS version; the pinned Next 16 release supports the installed Node 24 runtime and `npm audit` reports no vulnerabilities | Override nested dependencies; defer framework setup | Revisit with scheduled dependency updates and rerun security/build checks |
 
-The canonical updated design is `specs/personal-intelligence-os-spec-v2.md`, especially sections 156–163. The proposed PostgreSQL-only queue, custom Go agent runtime, and PostgreSQL replacement for Graphiti were not selected.
+The canonical updated design is `specs/personal-intelligence-os-spec-v2.md`, especially sections 156–164. The proposed PostgreSQL-only queue, custom Go agent runtime, and PostgreSQL replacement for Graphiti were not selected.

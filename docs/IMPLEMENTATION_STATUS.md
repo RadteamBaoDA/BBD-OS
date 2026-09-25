@@ -8,6 +8,9 @@ Markers: `[ ]` not started; `[~]` in progress; `[x]` complete; `[!]` blocked.
 - [x] Design review: owner approved the architecture, including OmniRoute, on 2026-09-25.
 - [x] Written Phase 0 implementation plan: `docs/superpowers/plans/2026-09-25-bbd-os-phase-0.md`.
 - [x] Phase 0: repository foundation, login, Compose, migrations, worker health, UI, CI, and operator docs.
+- [x] Saved master plan and all 12 Phase 1–12 implementation plans, with 49 task checklists: [master index](superpowers/plans/2026-09-25-bbd-os-master-plan.md).
+- [x] Recorded the approved chat drawer and day-context/history UX in the canonical spec and Phase 6/8/12 plans.
+- [x] Created [execution ledger](superpowers/plans/EXECUTION.md) for evidence, external gates and continuous task progression. Next implementation task: P01-T1.
 - [ ] Phase 1: core data platform.
 - [ ] Phase 2: ingestion and packaged collection workflows.
 - [ ] Phase 3: search and embeddings.
