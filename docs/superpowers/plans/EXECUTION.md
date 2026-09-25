@@ -4,10 +4,10 @@
 
 - Approved scope: master specification plus the approved Phase 1–12 breakdown and chat drawer clarification.
 - Execution method: Native by default; continue ready tasks/next phases without repeated scope approval.
-- Current action: all phase plans written and checked; application implementation has not started in this delivery.
+- Current action: P01-T1 complete; P01-T2 is ready to begin.
 - Current implementation phase: 1.
 - Active implementation task: none.
-- Next task: **P01-T1 — Public auth boundary and runnable domain packaging**.
+- Next task: **P01-T2 — Source/document schema and authenticated CRUD**.
 - Read [master plan](2026-09-25-bbd-os-master-plan.md) before implementation.
 - Preserve Phase 0 and user changes; do not commit/push/deploy without separate direction.
 
@@ -16,7 +16,7 @@
 | Phase | Plan | Implementation | Next task | Evidence |
 | --- | --- | --- | --- | --- |
 | 0 | Existing | Complete | None | See ../../IMPLEMENTATION_STATUS.md |
-| 1 | [Ready](2026-09-25-bbd-os-phase-1-core-data-platform.md) | Not started | P01-T1 | Not executed |
+| 1 | [Ready](2026-09-25-bbd-os-phase-1-core-data-platform.md) | In progress | P01-T2 | P01-T1 complete; see task report |
 | 2 | [Ready](2026-09-25-bbd-os-phase-2-ingestion-connectors.md) | Not started | P02-T1 | Not executed |
 | 3 | [Ready](2026-09-25-bbd-os-phase-3-search-model-gateway.md) | Not started | P03-T1 | Not executed |
 | 4 | [Ready](2026-09-25-bbd-os-phase-4-entity-knowledge.md) | Not started | P04-T1 | Not executed |
@@ -49,3 +49,10 @@ Append one real execution entry when work starts. Include task ID, affected file
 The owner asked to save every phase plan locally and use an on-demand drawer for chat to preserve screen space. This ledger tracks implementation readiness, not a background scheduler. Closing a chat drawer does not cancel a run; the UI Stop action does. Today day-context and saved-brief/current-records semantics are defined by P06 and P08.
 
 Planning verification on 2026-09-25: all 12 phase files present; 49 unique task IDs with five step checkboxes each; 76 local links resolve; 36 Python examples parse, 49 JSON examples parse, and 13 TypeScript examples have no syntax diagnostics. Placeholder scan and git diff --check passed. These checks validate the documents and example syntax only, not application behavior or live integrations. No application code, dependency installation, commit or deployment was performed in this planning delivery.
+
+
+## P01-T1 start
+
+Started 2026-09-25 in isolated worktree codex/bbd-os-phase-1. Starting tree clean. Scope: public owner/read-write auth dependencies, test harness targets, domain module packaging, and integration/browser fixtures. Existing session cookie, expiration, Origin and CSRF semantics are authoritative.
+
+Completed 2026-09-25. See `../../../.superpowers/sdd/2026-09-25-bbd-os-phase-1/task-1-report.md` for changed files, exact validation, and the GitNexus `detect_changes` availability limitation. Full disposable proof passed: 16 unit tests (4 skipped), owner race 1, auth integration 3, E2E 2; API image import and repeat migration passed. `scripts/dev.ps1 lint` and `typecheck` passed. The auth tests now pin their test origin to avoid `.env` contamination; E2E owner state is saved after the final login so the session remains valid for dependent projects.

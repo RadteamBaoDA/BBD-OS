@@ -43,7 +43,7 @@ Module ownership: **sources, knowledge/documents**. Backend domain models/servic
 
 **Interfaces — consumes/produces:** require_owner(request, session) -> AuthSession and require_owner_write(request, session, origin, csrf_token) -> AuthSession; preserve existing cookie/signature/expiry semantics. owner_client: authenticated httpx.AsyncClient fixture with Origin and current CSRF headers; anonymous_client: same origin without auth cookies.
 
-- [ ] **P01-T1.1 — Write the failing behavioral test.** Put this case in `tests/integration/test_library_auth.py` and implement any named test fixture in the same test package's `conftest.py` (browser fixtures in `tests/e2e/fixtures.ts`) as described below. Fixtures may control test transports/services; they must never introduce production test endpoints.
+- [x] **P01-T1.1 — Write the failing behavioral test.** Put this case in `tests/integration/test_library_auth.py` and implement any named test fixture in the same test package's `conftest.py` (browser fixtures in `tests/e2e/fixtures.ts`) as described below. Fixtures may control test transports/services; they must never introduce production test endpoints.
 
 ```python
 from core.auth.dependencies import require_owner, require_owner_write
@@ -54,9 +54,9 @@ async def test_public_auth_dependency_keeps_system_private(anonymous_client):
     assert response.status_code == 401
 ```
 
-- [ ] **P01-T1.2 — Observe the expected failure.** Run `./scripts/dev.ps1 test -PytestTarget tests/integration/test_library_auth.py` after P01 establishes the targeted runner. For P01-T1 before targeted-runner support is added, use the existing disposable `./scripts/dev.ps1 test`; subsequent tasks use the targeted command above. Expect the specific missing behavior/import/route assertion; configuration or unrelated fixture failure is not the red test.
+- [x] **P01-T1.2 — Observe the expected failure.** Run `./scripts/dev.ps1 test -PytestTarget tests/integration/test_library_auth.py` after P01 establishes the targeted runner. For P01-T1 before targeted-runner support is added, use the existing disposable `./scripts/dev.ps1 test`; subsequent tasks use the targeted command above. Expect the specific missing behavior/import/route assertion; configuration or unrelated fixture failure is not the red test.
 
-- [ ] **P01-T1.3 — Implement the minimal production behavior.** Move the shared session, Origin and CSRF checks behind the public auth dependency without copying implementations into feature modules. Include modules in wheel packaging, Docker COPY, Alembic metadata imports, Ruff/mypy and CI. Run the existing owner-race integration first against the fresh test instance, then other API cases with a fixture that logs in using the test owner. Before browser bootstrap reset all application tables except alembic_version only after verifying the unique disposable Compose project and database bbd_test. Add optional -PytestTarget/-E2eTarget arguments with Make/Linux parity as specified in the master. Expose PostgreSQL only on a temporary loopback port in the disposable test profile and pass TEST_DATABASE_URL to DB fixtures after checking database/user bbd_test. db_session uses a transaction/savepoint boundary for test isolation. Browser fixtures create/login the disposable owner and provision named test resources; reuse browser storage state after the existing setup flow instead of relying on test file order.
+- [x] **P01-T1.3 — Implement the minimal production behavior.** Move the shared session, Origin and CSRF checks behind the public auth dependency without copying implementations into feature modules. Include modules in wheel packaging, Docker COPY, Alembic metadata imports, Ruff/mypy and CI. Run the existing owner-race integration first against the fresh test instance, then other API cases with a fixture that logs in using the test owner. Before browser bootstrap reset all application tables except alembic_version only after verifying the unique disposable Compose project and database bbd_test. Add optional -PytestTarget/-E2eTarget arguments with Make/Linux parity as specified in the master. Expose PostgreSQL only on a temporary loopback port in the disposable test profile and pass TEST_DATABASE_URL to DB fixtures after checking database/user bbd_test. db_session uses a transaction/savepoint boundary for test isolation. Browser fixtures create/login the disposable owner and provision named test resources; reuse browser storage state after the existing setup flow instead of relying on test file order.
 
 Concrete contract/configuration shape (illustrative IDs/timestamps are test data, not production defaults):
 
@@ -64,9 +64,9 @@ Concrete contract/configuration shape (illustrative IDs/timestamps are test data
 {"authenticated":true,"csrfToken":"test-session-token"}
 ```
 
-- [ ] **P01-T1.4 — Verify the behavior and listed failure cases.** uv run pytest tests/test_auth_session.py tests/test_auth_setup.py -q; ./scripts/dev.ps1 test. Include missing Origin, expired CSRF, wrong session token and unrelated integrity-error cases. Build the API image and import modules inside it.
+- [x] **P01-T1.4 — Verify the behavior and listed failure cases.** uv run pytest tests/test_auth_session.py tests/test_auth_setup.py -q; ./scripts/dev.ps1 test. Include missing Origin, expired CSRF, wrong session token and unrelated integrity-error cases. Build the API image and import modules inside it.
 
-- [ ] **P01-T1.5 — Record evidence and continue.** Record changed files, actual commands/results and any missing external evidence in `EXECUTION.md`; check this task only after its required behavior passes. Continue to P01-T2. Do not create a commit automatically.
+- [x] **P01-T1.5 — Record evidence and continue.** Record changed files, actual commands/results and any missing external evidence in `EXECUTION.md`; check this task only after its required behavior passes. Continue to P01-T2. Do not create a commit automatically.
 
 ## Task P01-T2: Source/document schema and authenticated CRUD
 

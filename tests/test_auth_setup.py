@@ -12,12 +12,18 @@ from core.database import get_session
 
 class MemoryOwnerStore:
     owner_exists = False
+    other_unique_conflict = False
     lock = asyncio.Lock()
 
 
 class OwnerKeyConflict(Exception):
     sqlstate = "23505"
     constraint_name = "owner_pkey"
+
+
+class OtherUniqueConflict(Exception):
+    sqlstate = "23505"
+    constraint_name = "owner_password_hash_key"
 
 
 class MemorySession:
@@ -33,8 +39,9 @@ class MemorySession:
 
     async def commit(self) -> None:
         async with self.store.lock:
-            if self.store.owner_exists:
-                raise IntegrityError("insert", {}, OwnerKeyConflict())
+            if self.store.owner_exists or self.store.other_unique_conflict:
+                conflict = OtherUniqueConflict if self.store.other_unique_conflict else OwnerKeyConflict
+                raise IntegrityError("insert", {}, conflict())
             self.store.owner_exists = True
 
     async def rollback(self) -> None:
@@ -64,7 +71,7 @@ class MemoryPipeline:
 @pytest.mark.asyncio
 async def test_only_one_simultaneous_setup_request_creates_the_owner() -> None:
     store = MemoryOwnerStore()
-    settings = Settings(setup_token="test-setup-token", csrf_signing_secret="test-csrf-key")
+    settings = Settings(public_origin="http://localhost:3000", setup_token="test-setup-token", csrf_signing_secret="test-csrf-key")
     app = create_app(settings)
 
     async def session_override():
@@ -90,3 +97,33 @@ async def test_only_one_simultaneous_setup_request_creates_the_owner() -> None:
         responses = await asyncio.gather(setup(), setup())
 
     assert sorted(response.status_code for response in responses) == [201, 409]
+
+
+@pytest.mark.asyncio
+async def test_unrelated_integrity_error_is_not_reported_as_owner_conflict() -> None:
+    store = MemoryOwnerStore()
+    store.other_unique_conflict = True
+    settings = Settings(public_origin="http://localhost:3000", setup_token="test-setup-token", csrf_signing_secret="test-csrf-key")
+    app = create_app(settings)
+
+    async def session_override():
+        yield MemorySession(store)
+
+    app.dependency_overrides[get_session] = session_override
+    app.dependency_overrides[get_auth_redis] = lambda: MemoryRedis()
+    async with AsyncClient(
+        transport=ASGITransport(app=app, raise_app_exceptions=False),
+        base_url="http://localhost:3000",
+    ) as client:
+        csrf = (await client.get("/api/v1/auth/csrf")).json()["csrfToken"]
+        response = await client.post(
+            "/api/v1/auth/setup",
+            headers={
+                "X-Setup-Token": "test-setup-token",
+                "X-CSRF-Token": csrf,
+                "Origin": "http://localhost:3000",
+            },
+            json={"password": "test-owner-password-42"},
+        )
+    assert response.status_code == 500
+    assert "owner_password_hash_key" not in response.text

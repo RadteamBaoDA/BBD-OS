@@ -11,7 +11,12 @@ export default defineConfig({
   },
   projects: [
     { name: 'bootstrap', testMatch: 'auth.spec.ts' },
-    { name: 'system', testMatch: 'system.spec.ts', dependencies: ['bootstrap'] },
+    {
+      name: 'system',
+      testMatch: '**/*.spec.ts',
+      testIgnore: 'auth.spec.ts',
+      dependencies: ['bootstrap'],
+    },
   ],
   webServer: process.env.PLAYWRIGHT_EXTERNAL_SERVER ? undefined : {
     command: 'npm run dev --workspace apps/web',

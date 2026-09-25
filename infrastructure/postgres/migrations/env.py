@@ -7,6 +7,7 @@ from sqlalchemy import pool
 from sqlalchemy.engine import Connection
 from sqlalchemy.ext.asyncio import async_engine_from_config
 
+import modules  # noqa: F401  # Domain model packages are imported here as they are added.
 from core.auth.models import AuthSession, Owner
 from core.database import Base
 

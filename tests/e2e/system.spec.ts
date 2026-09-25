@@ -1,9 +1,7 @@
-import { test, expect } from '@playwright/test';
+import { test, expect } from './fixtures';
 
 test('owner sees explicit unconfigured integrations', async ({ page }) => {
   await page.goto('/');
-  await page.getByLabel('Password', { exact: true }).fill('test-owner-password-42');
-  await page.getByRole('button', { name: 'Sign in' }).click();
   await expect(page.getByRole('heading', { name: 'System status' })).toBeVisible();
   await expect(page.locator('.status-item').filter({ hasText: 'Database' })).toContainText('healthy');
   await expect(page.locator('.status-item').filter({ hasText: 'Worker' })).toContainText('healthy');

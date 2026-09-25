@@ -15,15 +15,15 @@ migrate:
 	docker compose -f docker-compose.yml -f docker-compose.dev.yml run --rm migrate
 
 lint:
-	uv run ruff check core apps tests infrastructure/postgres/migrations
+	uv run ruff check core apps modules tests infrastructure/postgres/migrations
 	npm run lint
 
 typecheck:
-	uv run mypy core apps
+	uv run mypy core apps modules
 	npm run typecheck
 
 test:
-	bash scripts/test.sh
+	PYTEST_TARGET="$(PYTEST_TARGET)" E2E_TARGET="$(E2E_TARGET)" bash scripts/test.sh
 
 build:
 	npm run build
