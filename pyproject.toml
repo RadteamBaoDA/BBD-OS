@@ -1,0 +1,49 @@
+[project]
+name = "bbd-os"
+version = "0.1.0"
+description = "Self-hosted personal intelligence OS"
+requires-python = ">=3.12,<3.14"
+dependencies = [
+    "alembic>=1.16,<2",
+    "argon2-cffi>=25,<26",
+    "arq>=0.27,<1",
+    "asyncpg>=0.30,<1",
+    "fastapi>=0.116,<1",
+    "httpx>=0.28,<1",
+    "pydantic-settings>=2.10,<3",
+    "redis>=5,<6",
+    "sqlalchemy[asyncio]>=2.0.43,<3",
+    "structlog>=25,<26",
+    "uvicorn[standard]>=0.35,<1",
+]
+
+[dependency-groups]
+dev = [
+    "mypy>=1.17,<2",
+    "pytest>=8.4,<9",
+    "pytest-asyncio>=1.1,<2",
+    "ruff>=0.12,<1",
+]
+
+[build-system]
+requires = ["hatchling>=1.27,<2"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["core", "apps"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+markers = ["integration: requires disposable PostgreSQL and Redis services"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+mypy_path = "."
+packages = ["core", "apps"]
+plugins = ["pydantic.mypy"]

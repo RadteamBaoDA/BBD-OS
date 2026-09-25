@@ -1,0 +1,48 @@
+services:
+  postgres:
+    environment:
+      POSTGRES_DB: bbd_test
+      POSTGRES_USER: bbd_test
+      POSTGRES_PASSWORD: bbd-os-test-db-only
+    volumes:
+      - test-postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U bbd_test -d bbd_test"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  redis:
+    volumes:
+      - test-redis-data:/data
+
+  migrate:
+    environment:
+      DATABASE_URL: postgresql+asyncpg://bbd_test:bbd-os-test-db-only@postgres:5432/bbd_test
+      REDIS_URL: redis://redis:6379/0
+      SETUP_TOKEN: bbd-os-disposable-test-token
+      CSRF_SIGNING_SECRET: bbd-os-disposable-test-csrf-secret
+      POSTGRES_PASSWORD: bbd-os-test-db-only
+
+  api:
+    ports:
+      - "127.0.0.1:${API_TEST_PORT:-38000}:8000"
+    environment:
+      DATABASE_URL: postgresql+asyncpg://bbd_test:bbd-os-test-db-only@postgres:5432/bbd_test
+      REDIS_URL: redis://redis:6379/0
+      PUBLIC_ORIGIN: ${TEST_PUBLIC_ORIGIN:-http://localhost:3300}
+      SETUP_TOKEN: bbd-os-disposable-test-token
+      CSRF_SIGNING_SECRET: bbd-os-disposable-test-csrf-secret
+      POSTGRES_PASSWORD: bbd-os-test-db-only
+
+  worker:
+    environment:
+      DATABASE_URL: postgresql+asyncpg://bbd_test:bbd-os-test-db-only@postgres:5432/bbd_test
+      REDIS_URL: redis://redis:6379/0
+      SETUP_TOKEN: bbd-os-disposable-test-token
+      CSRF_SIGNING_SECRET: bbd-os-disposable-test-csrf-secret
+      POSTGRES_PASSWORD: bbd-os-test-db-only
+
+volumes:
+  test-postgres-data:
+  test-redis-data:

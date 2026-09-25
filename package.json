@@ -1,0 +1,15 @@
+{
+  "name": "bbd-os",
+  "private": true,
+  "workspaces": ["apps/web"],
+  "overrides": {
+    "postcss": "^8.5.28",
+    "next": { "postcss": "^8.5.28" }
+  },
+  "scripts": {
+    "lint": "npm run lint --workspace apps/web",
+    "typecheck": "npm run typecheck --workspace apps/web",
+    "build": "npm run build --workspace apps/web",
+    "test:e2e": "npm run test:e2e --workspace apps/web"
+  }
+}

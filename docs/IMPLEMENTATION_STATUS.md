@@ -1,0 +1,24 @@
+# BBD-OS implementation status
+
+Updated: 2026-09-25.
+
+Markers: `[ ]` not started; `[~]` in progress; `[x]` complete; `[!]` blocked.
+
+- [x] Read the master specification and update the design for the discussed hardware, Python/OSS reuse, OmniRoute, n8n, and browser collection.
+- [x] Design review: owner approved the architecture, including OmniRoute, on 2026-09-25.
+- [x] Written Phase 0 implementation plan: `docs/superpowers/plans/2026-09-25-bbd-os-phase-0.md`.
+- [x] Phase 0: repository foundation, login, Compose, migrations, worker health, UI, CI, and operator docs.
+- [ ] Phase 1: core data platform.
+- [ ] Phase 2: ingestion and packaged collection workflows.
+- [ ] Phase 3: search and embeddings.
+- [ ] Phase 4: entity knowledge.
+- [ ] Phase 5: temporal knowledge and Graphiti.
+- [ ] Phase 6: Ask/RAG and citations.
+- [ ] Phase 7: agents, tools, and approvals.
+- [ ] Phase 8: Today, tasks/goals, and daily brief.
+- [ ] Phase 9: GitHub collection.
+- [ ] Phase 10: automation.
+- [ ] Phase 11: observability.
+- [ ] Phase 12: security, resource validation, backup/restore, and E2E hardening.
+
+Phase 0 verified on 2026-09-25: Ruff, mypy, pytest (15 passed, 1 integration test skipped in the unit run), a separate real-PostgreSQL owner-setup race test (1 passed), ESLint, TypeScript, Next.js production build, production Docker image builds, repeated Alembic migration, and disposable Compose/Playwright acceptance (2 passed). The Compose test project was removed with its own volumes after the run. The test host has 14 CPUs and 31 GiB RAM, so this does not validate capacity on the target 2-core/8-GB mini PC. No AI prompts or source data were sent. OmniRoute connectivity/model mappings, target deployment OS/architecture, mini-host resource measurements, Graphiti backend compatibility, and phases 1–12 remain to be validated in their owning phases.

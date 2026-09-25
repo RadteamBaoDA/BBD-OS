@@ -1,0 +1,30 @@
+.PHONY: setup dev stop migrate lint typecheck test build
+
+setup:
+	uv sync --frozen
+	npm ci
+	python scripts/ensure_env.py
+
+dev:
+	docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d --build
+
+stop:
+	docker compose -f docker-compose.yml -f docker-compose.dev.yml stop
+
+migrate:
+	docker compose -f docker-compose.yml -f docker-compose.dev.yml run --rm migrate
+
+lint:
+	uv run ruff check core apps tests infrastructure/postgres/migrations
+	npm run lint
+
+typecheck:
+	uv run mypy core apps
+	npm run typecheck
+
+test:
+	bash scripts/test.sh
+
+build:
+	npm run build
+	docker compose -f docker-compose.yml build
