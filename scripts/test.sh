@@ -21,7 +21,9 @@ project="bbd-os-test-$(python -c 'import secrets; print(secrets.token_hex(5))')"
 free_port() { python -c 'import socket; s=socket.socket(); s.bind(("127.0.0.1", 0)); print(s.getsockname()[1]); s.close()'; }
 export WEB_PORT="$(free_port)"
 export API_TEST_PORT="$(free_port)"
+while [[ "$API_TEST_PORT" == "$WEB_PORT" ]]; do export API_TEST_PORT="$(free_port)"; done
 export TEST_POSTGRES_PORT="$(free_port)"
+while [[ "$TEST_POSTGRES_PORT" == "$WEB_PORT" || "$TEST_POSTGRES_PORT" == "$API_TEST_PORT" ]]; do export TEST_POSTGRES_PORT="$(free_port)"; done
 export TEST_PUBLIC_ORIGIN="http://localhost:${WEB_PORT}"
 export TEST_DATABASE_URL="postgresql+asyncpg://bbd_test:bbd-os-test-db-only@127.0.0.1:${TEST_POSTGRES_PORT}/bbd_test"
 compose=(docker compose -p "$project" -f docker-compose.yml -f docker-compose.test.yml)
