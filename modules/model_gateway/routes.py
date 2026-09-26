@@ -93,11 +93,12 @@ async def probe_model(
                         break
                     try:
                         chunk = json.loads(data)
-                        choices = chunk.get("choices", [])
-                        if isinstance(choices, list) and choices and isinstance(choices[0], dict):
-                            delta = choices[0].get("delta", {})
-                            if isinstance(delta, dict) and isinstance(delta.get("content"), str):
-                                streamed_content += delta["content"]
+                        if isinstance(chunk, dict):
+                            choices = chunk.get("choices", [])
+                            if isinstance(choices, list) and choices and isinstance(choices[0], dict):
+                                delta = choices[0].get("delta", {})
+                                if isinstance(delta, dict) and isinstance(delta.get("content"), str):
+                                    streamed_content += delta["content"]
                     except (TypeError, json.JSONDecodeError):
                         pass
                 if total_chars >= 16384 or line.strip() == "data: [DONE]":
