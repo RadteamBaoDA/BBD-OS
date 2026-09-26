@@ -1,6 +1,6 @@
 # BBD-OS Phase 6 — Ask, Chat Drawer and Selective Memory Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax. The owner authorized continuous progress through ready tasks; use the [master plan](2026-09-25-bbd-os-master-plan.md) and [execution ledger](EXECUTION.md), without repeated phase-scope approval.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax. The owner authorized continuous progress through ready tasks; use the [master plan](2026-09-25-bbd-os-master-plan.md) and [execution ledger](EXECUTION.md), without repeated phase-scope approval.
 
 **Goal:** Answer questions with citations and reusable chat in an on-demand drawer that preserves screen space.
 
@@ -13,6 +13,8 @@
 **Entry gate:** Phase 3 retrieval/gateway, Phase 4 entities, Phase 5 temporal public APIs.
 
 **Implementation status:** Not started. This file is an implementation plan, not evidence of working code.
+
+Test execution is deferred until all Phase 1-12 production code is complete. Acceptance examples and test file paths below are specifications; do not create, modify or run test files during this implementation stage.
 
 ## Global Constraints
 
@@ -43,7 +45,7 @@ Module ownership: **chat, memory**. Backend domain models/services stay in their
 
 **Interfaces — consumes/produces:** AnswerContext(query,source_scope,entity_ids,date_context?,policy); Citation(sourceType,sourceId,documentId,documentVersionId,chunkId,title,url,observedAt,quote). build_context returns bounded permitted evidence; validate_citations(answer,evidence) rejects references not in the retrieved set.
 
-- [ ] **P06-T1.1 — Write the failing behavioral test.** Put this case in `tests/test_citations.py` and implement any named test fixture in the same test package's `conftest.py` (browser fixtures in `tests/e2e/fixtures.ts`) as described below. Fixtures may control test transports/services; they must never introduce production test endpoints.
+- [ ] **P06-T1.1 - Review the behavior contract.** The acceptance example below is for the final test stage; do not create or modify test files during implementation.
 
 ```python
 def test_unknown_citation_is_rejected():
@@ -54,7 +56,7 @@ def test_unknown_citation_is_rejected():
                            {"allowed":{"text":"Evidence"}})
 ```
 
-- [ ] **P06-T1.2 — Observe the expected failure.** Run `./scripts/dev.ps1 test -PytestTarget tests/test_citations.py` after P01 establishes the targeted runner. For P01-T1 before targeted-runner support is added, use the existing disposable `./scripts/dev.ps1 test`; subsequent tasks use the targeted command above. Expect the specific missing behavior/import/route assertion; configuration or unrelated fixture failure is not the red test.
+- [ ] **P06-T1.2 - Implement the production behavior.** Follow task interfaces; defer all test work until Phases 1-12 code is complete.
 
 - [ ] **P06-T1.3 — Implement the minimal production behavior.** Retrieve lexical/hybrid + relevant temporal/entity context via public APIs; deduplicate and fit a context budget before model calls. Add a configured permitted reranker where available; if unavailable preserve retrieval ranking and label rerank unavailable rather than invent scores. Require exact evidence IDs/quotes from available revisions; answers without sufficient evidence explicitly say so. Treat documents/web text as untrusted data and never execute embedded instructions.
 
@@ -64,9 +66,9 @@ Concrete contract/configuration shape (illustrative IDs/timestamps are test data
 {"answer":"Supported answer","citations":[{"sourceType":"document","sourceId":"uuid","documentId":"uuid","documentVersionId":"uuid","chunkId":"uuid","title":"Note","url":null,"observedAt":"2026-09-25T03:00:00Z","quote":"Evidence"}]}
 ```
 
-- [ ] **P06-T1.4 — Verify the behavior and listed failure cases.** Grounded known answers, insufficient-evidence answer, invented/removed citation, mixed source privacy, prompt injection, quote bounds, unavailable reranker and provider failures. Record live response acceptance separately.
+- [ ] **P06-T1.4 - Build the affected deliverable.** Run `./scripts/dev.ps1 build` (or `make build`); fix build failures before proceeding. Deferred acceptance criteria: Grounded known answers, insufficient-evidence answer, invented/removed citation, mixed source privacy, prompt injection, quote bounds, unavailable reranker and provider failures. Record live response acceptance separately.
 
-- [ ] **P06-T1.5 — Record evidence and continue.** Record changed files, actual commands/results and any missing external evidence in `EXECUTION.md`; check this task only after its required behavior passes. Continue to P06-T2. Do not create a commit automatically.
+- [ ] **P06-T1.5 - Record build evidence and continue.** Record changed files, exact build command/result, review findings and unresolved gates in `EXECUTION.md`; then continue. Do not run tests during implementation.
 
 ## Task P06-T2: Persistent conversations, responses and replayable stream
 
@@ -74,7 +76,7 @@ Concrete contract/configuration shape (illustrative IDs/timestamps are test data
 
 **Interfaces — consumes/produces:** CRUD /conversations; POST /conversations/{id}/messages accepts client_request_id,content,context; returns message_id,response_id. GET /responses/{id}/events uses SSE event IDs; POST /responses/{id}/cancel. Message metadata holds model identity, usage unknown when absent, and citation references.
 
-- [ ] **P06-T2.1 — Write the failing behavioral test.** Put this case in `tests/integration/test_conversations.py` and implement any named test fixture in the same test package's `conftest.py` (browser fixtures in `tests/e2e/fixtures.ts`) as described below. Fixtures may control test transports/services; they must never introduce production test endpoints.
+- [ ] **P06-T2.1 - Review the behavior contract.** The acceptance example below is for the final test stage; do not create or modify test files during implementation.
 
 ```python
 async def test_repeated_send_does_not_create_second_response(owner_client, conversation):
@@ -85,7 +87,7 @@ async def test_repeated_send_does_not_create_second_response(owner_client, conve
     assert first.json()["response_id"] == second.json()["response_id"]
 ```
 
-- [ ] **P06-T2.2 — Observe the expected failure.** Run `./scripts/dev.ps1 test -PytestTarget tests/integration/test_conversations.py` after P01 establishes the targeted runner. For P01-T1 before targeted-runner support is added, use the existing disposable `./scripts/dev.ps1 test`; subsequent tasks use the targeted command above. Expect the specific missing behavior/import/route assertion; configuration or unrelated fixture failure is not the red test.
+- [ ] **P06-T2.2 - Implement the production behavior.** Follow task interfaces; defer all test work until Phases 1-12 code is complete.
 
 - [ ] **P06-T2.3 — Implement the minimal production behavior.** Create conversation fixture using POST /conversations; deterministic tests inject ModelGateway transport, never call a live provider implicitly. Persist user message and pending response before dispatch. Worker owns generation independently of browser connection; persist bounded stream events and final text so reconnect resumes by event ID. Refresh auth on reconnect; no response text after permission is revoked. Store partial/cancelled/failed states distinctly. With history storage off, retain only active-run state needed for delivery, then purge within 24h or earlier explicit delete; never turn it into memory automatically.
 
@@ -95,9 +97,9 @@ Concrete contract/configuration shape (illustrative IDs/timestamps are test data
 {"event":"message.delta","id":"response-id:12","data":{"text":"partial"}}
 ```
 
-- [ ] **P06-T2.4 — Verify the behavior and listed failure cases.** Disconnect/reconnect, repeated POST, worker crash, cancel, token expiry, history opt-out cleanup and deletion while streaming. No raw chain-of-thought is stored or shown.
+- [ ] **P06-T2.4 - Build the affected deliverable.** Run `./scripts/dev.ps1 build` (or `make build`); fix build failures before proceeding. Deferred acceptance criteria: Disconnect/reconnect, repeated POST, worker crash, cancel, token expiry, history opt-out cleanup and deletion while streaming. No raw chain-of-thought is stored or shown.
 
-- [ ] **P06-T2.5 — Record evidence and continue.** Record changed files, actual commands/results and any missing external evidence in `EXECUTION.md`; check this task only after its required behavior passes. Continue to P06-T3. Do not create a commit automatically.
+- [ ] **P06-T2.5 - Record build evidence and continue.** Record changed files, exact build command/result, review findings and unresolved gates in `EXECUTION.md`; then continue. Do not run tests during implementation.
 
 ## Task P06-T3: Reusable accessible chat drawer and full Ask route
 
@@ -105,7 +107,7 @@ Concrete contract/configuration shape (illustrative IDs/timestamps are test data
 
 **Interfaces — consumes/produces:** ChatDrawer.open({conversationId?,context?}); ChatContext {kind:'general'|'document'|'entity'|'day',resource_id?,date?,timezone?}. Same ChatSession component powers /ask and the drawer; one server conversation per chosen ID, no duplicate transcript store.
 
-- [ ] **P06-T3.1 — Write the failing behavioral test.** Put this case in `tests/e2e/chat-drawer.spec.ts` and implement any named test fixture in the same test package's `conftest.py` (browser fixtures in `tests/e2e/fixtures.ts`) as described below. Fixtures may control test transports/services; they must never introduce production test endpoints.
+- [ ] **P06-T3.1 - Review the behavior contract.** The acceptance example below is for the final test stage; do not create or modify test files during implementation.
 
 ```typescript
 import { test, expect } from './fixtures';
@@ -122,7 +124,7 @@ test('drawer returns focus and keeps its draft', async ({ page }) => {
 });
 ```
 
-- [ ] **P06-T3.2 — Observe the expected failure.** Run `./scripts/dev.ps1 test -E2eTarget tests/e2e/chat-drawer.spec.ts` after P01 establishes the targeted runner. For P01-T1 before targeted-runner support is added, use the existing disposable `./scripts/dev.ps1 test`; subsequent tasks use the targeted command above. Expect the specific missing behavior/import/route assertion; configuration or unrelated fixture failure is not the red test.
+- [ ] **P06-T3.2 - Implement the production behavior.** Follow task interfaces; defer all test work until Phases 1-12 code is complete.
 
 - [ ] **P06-T3.3 — Implement the minimal production behavior.** Use the existing UI ecosystem's accessible Sheet/Dialog primitive, not a custom focus trap. Right-side overlay drawer, closed by default, width min(440px,100vw), full viewport on mobile; underlying page gets full width when closed. Escape/close restores focus and closes presentation only, not the server run. Stop is a separate explicit action. Keep draft in local in-memory UI state, not persistent browser storage of private content; server transcript remains TanStack Query state. Header has title/context, history, expand to /ask and close. Sources/activity/history are tabs or subviews inside the drawer, not additional permanent columns. Show current context and preserve conversation ID when expanding.
 
@@ -132,9 +134,9 @@ Concrete contract/configuration shape (illustrative IDs/timestamps are test data
 {"conversationId":"uuid","context":{"kind":"document","resource_id":"uuid"}}
 ```
 
-- [ ] **P06-T3.4 — Verify the behavior and listed failure cases.** Keyboard open/close/focus trap, focus return, mobile viewport, no horizontal overflow, retained draft, close during stream/reopen, citation view without extra sidebar, and expand preserving transcript. Cover all async/error/empty states.
+- [ ] **P06-T3.4 - Build the affected deliverable.** Run `./scripts/dev.ps1 build` (or `make build`); fix build failures before proceeding. Deferred acceptance criteria: Keyboard open/close/focus trap, focus return, mobile viewport, no horizontal overflow, retained draft, close during stream/reopen, citation view without extra sidebar, and expand preserving transcript. Cover all async/error/empty states.
 
-- [ ] **P06-T3.5 — Record evidence and continue.** Record changed files, actual commands/results and any missing external evidence in `EXECUTION.md`; check this task only after its required behavior passes. Continue to P06-T4. Do not create a commit automatically.
+- [ ] **P06-T3.5 - Record build evidence and continue.** Record changed files, exact build command/result, review findings and unresolved gates in `EXECUTION.md`; then continue. Do not run tests during implementation.
 
 ## Task P06-T4: Selective memory and privacy management
 
@@ -142,7 +144,7 @@ Concrete contract/configuration shape (illustrative IDs/timestamps are test data
 
 **Interfaces — consumes/produces:** CRUD /memories; POST /memories/{id}/invalidate, /supersede, /forget; MemoryCandidate(content,type,provenance,confidence,reason). Lifecycle and memory policy are independent of conversation-history policy.
 
-- [ ] **P06-T4.1 — Write the failing behavioral test.** Put this case in `tests/integration/test_memory.py` and implement any named test fixture in the same test package's `conftest.py` (browser fixtures in `tests/e2e/fixtures.ts`) as described below. Fixtures may control test transports/services; they must never introduce production test endpoints.
+- [ ] **P06-T4.1 - Review the behavior contract.** The acceptance example below is for the final test stage; do not create or modify test files during implementation.
 
 ```python
 async def test_forget_removes_memory_from_retrieval(owner_client, saved_memory):
@@ -152,7 +154,7 @@ async def test_forget_removes_memory_from_retrieval(owner_client, saved_memory):
     assert saved_memory["id"] not in [x["id"] for x in results["items"]]
 ```
 
-- [ ] **P06-T4.2 — Observe the expected failure.** Run `./scripts/dev.ps1 test -PytestTarget tests/integration/test_memory.py` after P01 establishes the targeted runner. For P01-T1 before targeted-runner support is added, use the existing disposable `./scripts/dev.ps1 test`; subsequent tasks use the targeted command above. Expect the specific missing behavior/import/route assertion; configuration or unrelated fixture failure is not the red test.
+- [ ] **P06-T4.2 - Implement the production behavior.** Follow task interfaces; defer all test work until Phases 1-12 code is complete.
 
 - [ ] **P06-T4.3 — Implement the minimal production behavior.** Add saved_memory fixture using explicit owner create. Evaluate novelty/usefulness/confidence for suggestions and record why selected; default automatic permanent memory off until owner enables it. Differentiate manual facts from model-derived candidates. Forget marks content unavailable immediately and removes vector/graph/cache copies through durable deletion; purge stored candidate payloads containing removed evidence. Update KnowledgeService.get_memories and reusable context methods.
 
@@ -162,22 +164,22 @@ Concrete contract/configuration shape (illustrative IDs/timestamps are test data
 {"store_conversation_history":true,"store_agent_memory":false,"auto_accept_memory":false}
 ```
 
-- [ ] **P06-T4.4 — Verify the behavior and listed failure cases.** Memory opt-out, source-linked forget, selective candidate dedupe, superseded fact exclusion and explicit manual memory creation. Common gate includes drawer E2E; next P07-T1.
+- [ ] **P06-T4.4 - Build the affected deliverable.** Run `./scripts/dev.ps1 build` (or `make build`); fix build failures before proceeding. Deferred acceptance criteria: Memory opt-out, source-linked forget, selective candidate dedupe, superseded fact exclusion and explicit manual memory creation. Common gate includes drawer E2E; next P07-T1.
 
-- [ ] **P06-T4.5 — Record evidence and continue.** Record changed files, actual commands/results and any missing external evidence in `EXECUTION.md`; check this task only after its required behavior passes. Continue to the phase acceptance gate, then P07-T1. Do not create a commit automatically.
+- [ ] **P06-T4.5 - Record build evidence and continue.** Record changed files, exact build command/result, review findings and unresolved gates in `EXECUTION.md`; then continue. Do not run tests during implementation.
 
 ## Phase Acceptance and Handoff
 
-- [ ] Run final sequential `./scripts/dev.ps1 lint`, `typecheck`, `test`, `build` (Make equivalents on Linux). Use targeted checks during tasks and the complete gate once after final phase changes.
+- [ ] Build the phase deliverables with `./scripts/dev.ps1 build` (or `make build`); no tests, lint or typecheck run during the code stage.
 - [ ] Verify new code is included in Docker/packaging, new tables in Alembic metadata, public APIs in OpenAPI and enabled UI/routes in module descriptors.
 - [ ] Complete independent final review under the execution skill, fix actionable findings, and repeat affected checks.
-- [ ] Record actual test counts, live integration evidence and capacity limitations; fixtures do not validate live providers or mini-host performance.
+- [ ] After all Phase 1-12 production code is complete, run the deferred test stage from the master plan; record results, live integration evidence and capacity limitations.
 - [ ] Update `docs/IMPLEMENTATION_STATUS.md`, this checklist and `EXECUTION.md`. Continue automatically to the next ready approved task; stop only the work that depends on an unresolved external gate or a material unapproved change.
 
 ## Plan Self-Review Checklist
 
 - [x] Goal and spec sections mapped to named tasks and public interfaces.
 - [x] Five review-focus risks assigned concrete failure checks in the owning tasks.
-- [x] Exact file targets, behavioral test examples, expected failure, implementation rules and passing criteria included.
+- [x] Exact file targets, acceptance examples, deferred test criteria, implementation rules and build criteria included.
 - [x] Module ownership, auth/privacy, safe deletion and retry/resume boundaries preserved.
 - [x] Implementation and live/hardware verification are not claimed complete by this plan.

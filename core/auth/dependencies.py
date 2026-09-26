@@ -83,5 +83,9 @@ async def require_owner_write(
     if not _valid_csrf(request.cookies.get(CSRF_COOKIE), csrf_token, settings) or not compare_digest(
         auth_session.csrf_hash, _hash(csrf_token or "")
     ):
-        raise HTTPException(status_code=403, detail="CSRF token is invalid")
+        raise HTTPException(
+            status_code=403,
+            detail="CSRF token is invalid",
+            headers={"X-CSRF-Error": "invalid"},
+        )
     return auth_session

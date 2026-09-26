@@ -1,6 +1,6 @@
 param(
   [Parameter(Mandatory = $true, Position = 0)]
-  [ValidateSet('setup', 'dev', 'stop', 'migrate', 'lint', 'typecheck', 'test', 'build')]
+  [ValidateSet('setup', 'dev', 'stop', 'migrate', 'seed', 'lint', 'typecheck', 'test', 'build')]
   [string]$Task,
   [string]$PytestTarget,
   [string]$E2eTarget
@@ -61,6 +61,7 @@ OMNIROUTE_API_KEY=
     'dev' { Invoke-Checked 'docker' (@('compose') + (Get-ComposeArgs) + @('up', '-d', '--build')) }
     'stop' { Invoke-Checked 'docker' (@('compose') + (Get-ComposeArgs) + @('stop')) }
     'migrate' { Invoke-Checked 'docker' (@('compose') + (Get-ComposeArgs) + @('run', '--rm', 'migrate')) }
+    'seed' { Invoke-Checked 'docker' @('compose', '-f', 'docker-compose.yml', 'run', '--rm', '--build', 'api', 'python', '-m', 'modules.knowledge.documents.seed') }
     'lint' {
       Invoke-Checked 'uv' @('run', 'ruff', 'check', 'core', 'apps', 'modules', 'tests', 'infrastructure/postgres/migrations')
       Invoke-Checked 'npm' @('run', 'lint')
@@ -92,8 +93,9 @@ OMNIROUTE_API_KEY=
       $previousExternalServer = $env:PLAYWRIGHT_EXTERNAL_SERVER
       $webPort = Get-FreePort
       $apiPort = Get-FreePort
+      while ($apiPort -eq $webPort) { $apiPort = Get-FreePort }
       $postgresPort = Get-FreePort
-      while ($apiPort -eq $webPort -or $postgresPort -eq $webPort -or $postgresPort -eq $apiPort) {
+      while ($postgresPort -eq $webPort -or $postgresPort -eq $apiPort) {
         $postgresPort = Get-FreePort
       }
       try {

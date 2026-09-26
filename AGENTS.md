@@ -16,7 +16,7 @@ Keep module internals private; integrate through public contracts or events. Cre
 
 ## Build, Test, and Development Commands
 
-Use `make setup`, `make dev`, `make stop`, `make migrate`, `make lint`, `make typecheck`, `make test`, and `make build` on macOS/Linux. Windows PowerShell equivalents are `./scripts/dev.ps1 <task>`. `test` creates a uniquely named disposable Compose project and removes only its own volumes. `seed`, `reset`, `backup`, and `restore` are not implemented yet.
+Use `make setup`, `make dev`, `make stop`, `make migrate`, `make seed`, `make lint`, `make typecheck`, `make test`, and `make build` on macOS/Linux. Windows PowerShell equivalents are `./scripts/dev.ps1 <task>`. `test` creates a uniquely named disposable Compose project and removes only its own volumes. `seed` explicitly creates fictional Phase 1 demo data; `reset`, `backup`, and `restore` are not implemented yet.
 
 ## Coding Style & Naming Conventions
 
@@ -26,7 +26,7 @@ The specification requires ESLint and TypeScript checks for frontend code, and R
 
 ## Testing Guidelines
 
-Use pytest for backend tests and Playwright for end-to-end flows; the frontend unit-test framework is not selected. Name Python tests `test_*.py` and Playwright tests `*.spec.ts`. Cover module contracts, ingestion, permissions, search, and citation flows. No numeric coverage threshold is specified. Report checks run and any unavailable validation.
+Use pytest for backend tests and Playwright for end-to-end flows; the frontend unit-test framework is not selected. For Phases 1-12, do not create, modify or run tests, lint, or typecheck during implementation; run builds only. Begin the deferred test stage after all phase production code is complete. Name Python tests `test_*.py` and Playwright tests `*.spec.ts`. Cover module contracts, ingestion, permissions, search, and citation flows. No numeric coverage threshold is specified. Report checks run and any unavailable validation.
 
 ## Commit & Pull Request Guidelines
 
@@ -137,3 +137,4 @@ To check whether embeddings exist, inspect `.gitnexus/meta.json` — the `stats.
 | Index, status, clean, wiki CLI commands | `.claude/skills/gitnexus/gitnexus-cli/SKILL.md` |
 
 <!-- gitnexus:end -->
+

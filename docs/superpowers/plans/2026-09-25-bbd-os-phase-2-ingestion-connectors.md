@@ -1,6 +1,6 @@
 # BBD-OS Phase 2 — Ingestion and Packaged Connectors Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax. The owner authorized continuous progress through ready tasks; use the [master plan](2026-09-25-bbd-os-master-plan.md) and [execution ledger](EXECUTION.md), without repeated phase-scope approval.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax. The owner authorized continuous progress through ready tasks; use the [master plan](2026-09-25-bbd-os-master-plan.md) and [execution ledger](EXECUTION.md), without repeated phase-scope approval.
 
 **Goal:** Durably ingest supported files and collect RSS/Atom, URL and REST data with provenance, bounded jobs and recoverable progress.
 
@@ -13,6 +13,8 @@
 **Entry gate:** Phase 1 sources/documents public contracts.
 
 **Implementation status:** Not started. This file is an implementation plan, not evidence of working code.
+
+Test execution is deferred until all Phase 1-12 production code is complete. Acceptance examples and test file paths below are specifications; do not create, modify or run test files during this implementation stage.
 
 ## Global Constraints
 
@@ -43,7 +45,7 @@ Module ownership: **ingestion, connectors, news**. Backend domain models/service
 
 **Interfaces — consumes/produces:** POST /ingestion/batches -> 202 Receipt(batch_id,run_id,status); GET /ingestion/runs/{id}; POST /ingestion/runs/{id}/retry. Collector credentials are restricted to ingestion and allowed source IDs. ReceiveBatch contains source_id,batch_key,cursor_before,cursor_after,records; record identity is provider_id + version/hash. DomainEvent(id,type,version,occurred_at,producer,payload).
 
-- [ ] **P02-T1.1 — Write the failing behavioral test.** Put this case in `tests/integration/test_ingestion.py` and implement any named test fixture in the same test package's `conftest.py` (browser fixtures in `tests/e2e/fixtures.ts`) as described below. Fixtures may control test transports/services; they must never introduce production test endpoints.
+- [ ] **P02-T1.1 - Review the behavior contract.** The acceptance example below is for the final test stage; do not create or modify test files during implementation.
 
 ```python
 async def test_duplicate_batch_returns_same_run(collector_client, batch_payload):
@@ -53,7 +55,7 @@ async def test_duplicate_batch_returns_same_run(collector_client, batch_payload)
     assert first.json()["run_id"] == again.json()["run_id"]
 ```
 
-- [ ] **P02-T1.2 — Observe the expected failure.** Run `./scripts/dev.ps1 test -PytestTarget tests/integration/test_ingestion.py` after P01 establishes the targeted runner. For P01-T1 before targeted-runner support is added, use the existing disposable `./scripts/dev.ps1 test`; subsequent tasks use the targeted command above. Expect the specific missing behavior/import/route assertion; configuration or unrelated fixture failure is not the red test.
+- [ ] **P02-T1.2 - Implement the production behavior.** Follow task interfaces; defer all test work until Phases 1-12 code is complete.
 
 - [ ] **P02-T1.3 — Implement the minimal production behavior.** Add scoped collector_client and batch_payload fixtures to tests/integration/conftest.py, creating a source and credential only in disposable storage. Persist batch identity, observations, expected cursor and pending stage rows in one PostgreSQL transaction; acknowledge only after commit. Use PostgreSQL pending-work/outbox records and ARQ execution, not a second queue implementation. Compare-and-set cursor advancement, one source collection lease with expiry, idempotent stage keys, explicit timeouts and 4 transient retries with backoff/jitter; permanent auth/schema errors fail visibly. A dispatcher reconciles pending rows after Redis restart.
 
@@ -63,9 +65,9 @@ Concrete contract/configuration shape (illustrative IDs/timestamps are test data
 {"source_id":"uuid","batch_key":"provider-page-version","cursor_before":null,"cursor_after":"page-2","records":[{"provider_id":"item-1","content":"text","observed_at":"2026-09-25T02:00:00Z"}]}
 ```
 
-- [ ] **P02-T1.4 — Verify the behavior and listed failure cases.** ./scripts/dev.ps1 test: duplicate receipt, crash after DB commit/before enqueue, stale cursor writer, overlapping sync, cancellation and scoped token denial. Operational logs identify run/stage without full payloads.
+- [ ] **P02-T1.4 - Build the affected deliverable.** Run `./scripts/dev.ps1 build` (or `make build`); fix build failures before proceeding. Deferred acceptance criteria: automated behavior checks, crash after DB commit/before enqueue, stale cursor writer, overlapping sync, cancellation and scoped token denial. Operational logs identify run/stage without full payloads.
 
-- [ ] **P02-T1.5 — Record evidence and continue.** Record changed files, actual commands/results and any missing external evidence in `EXECUTION.md`; check this task only after its required behavior passes. Continue to P02-T2. Do not create a commit automatically.
+- [ ] **P02-T1.5 - Record build evidence and continue.** Record changed files, exact build command/result, review findings and unresolved gates in `EXECUTION.md`; then continue. Do not run tests during implementation.
 
 ## Task P02-T2: File storage, parsers and chunking
 
@@ -73,7 +75,7 @@ Concrete contract/configuration shape (illustrative IDs/timestamps are test data
 
 **Interfaces — consumes/produces:** POST /documents/upload -> Receipt; GET /documents/{id}/raw authenticated download; parse_file(path,mime) -> ParsedDocument(text,metadata,warnings); chunk_text(text,target_tokens=750,overlap_ratio=0.12) -> list[ChunkDraft]. Chunk stores document_version_id,index,content,token_count,metadata; vector indexing arrives Phase 3.
 
-- [ ] **P02-T2.1 — Write the failing behavioral test.** Put this case in `tests/test_parsers.py` and implement any named test fixture in the same test package's `conftest.py` (browser fixtures in `tests/e2e/fixtures.ts`) as described below. Fixtures may control test transports/services; they must never introduce production test endpoints.
+- [ ] **P02-T2.1 - Review the behavior contract.** The acceptance example below is for the final test stage; do not create or modify test files during implementation.
 
 ```python
 def test_csv_parser_preserves_unicode_and_headers(tmp_path):
@@ -85,7 +87,7 @@ def test_csv_parser_preserves_unicode_and_headers(tmp_path):
     assert "name" in parsed.text
 ```
 
-- [ ] **P02-T2.2 — Observe the expected failure.** Run `./scripts/dev.ps1 test -PytestTarget tests/test_parsers.py` after P01 establishes the targeted runner. For P01-T1 before targeted-runner support is added, use the existing disposable `./scripts/dev.ps1 test`; subsequent tasks use the targeted command above. Expect the specific missing behavior/import/route assertion; configuration or unrelated fixture failure is not the red test.
+- [ ] **P02-T2.2 - Implement the production behavior.** Follow task interfaces; defer all test work until Phases 1-12 code is complete.
 
 - [ ] **P02-T2.3 — Implement the minimal production behavior.** Use stdlib for TXT/JSON/CSV, maintained pypdf and python-docx for text-bearing PDF/DOCX, and a maintained tokenizer for deterministic bounded chunks. Lock dependencies before use. Default input cap 25 MiB, parser deadline 120s, expanded DOCX cap 100 MiB and PDF page cap 500; configurable deployment limits. Verify file signatures, reject traversal, generated UUID storage names, atomic file finalize + durable DB receipt and orphan cleanup after grace period. Retain original bytes and extraction provenance. Scanned PDFs return needs_ocr, not success; OCR is not promised by this text parser. Clamp boundaries so small documents terminate without looping.
 
@@ -95,9 +97,9 @@ Concrete contract/configuration shape (illustrative IDs/timestamps are test data
 {"status":"needs_ocr","warnings":["No extractable text"],"document_id":"uuid"}
 ```
 
-- [ ] **P02-T2.4 — Verify the behavior and listed failure cases.** Unit fixtures for all six formats, malformed/encrypted PDF, ZIP expansion, Unicode, oversized input and interrupted writes. Run upload E2E and verify raw-file authorization; chunk count/hash stable across retries.
+- [ ] **P02-T2.4 - Build the affected deliverable.** Run `./scripts/dev.ps1 build` (or `make build`); fix build failures before proceeding. Deferred acceptance criteria: Unit fixtures for all six formats, malformed/encrypted PDF, ZIP expansion, Unicode, oversized input and interrupted writes. Run upload E2E and verify raw-file authorization; chunk count/hash stable across retries.
 
-- [ ] **P02-T2.5 — Record evidence and continue.** Record changed files, actual commands/results and any missing external evidence in `EXECUTION.md`; check this task only after its required behavior passes. Continue to P02-T3. Do not create a commit automatically.
+- [ ] **P02-T2.5 - Record build evidence and continue.** Record changed files, exact build command/result, review findings and unresolved gates in `EXECUTION.md`; then continue. Do not run tests during implementation.
 
 ## Task P02-T3: n8n workflows and Crawlee collection
 
@@ -105,7 +107,7 @@ Concrete contract/configuration shape (illustrative IDs/timestamps are test data
 
 **Interfaces — consumes/produces:** Connector.validate(source), sync(source,cursor), normalize(record), health(source); POST /sources/{id}/validate, /sync; PATCH source pause/resume; crawl submissions return run_id. BBD-OS controls source identity/cursors; n8n owns external schedules/credentials.
 
-- [ ] **P02-T3.1 — Write the failing behavioral test.** Put this case in `tests/integration/test_collectors.py` and implement any named test fixture in the same test package's `conftest.py` (browser fixtures in `tests/e2e/fixtures.ts`) as described below. Fixtures may control test transports/services; they must never introduce production test endpoints.
+- [ ] **P02-T3.1 - Review the behavior contract.** The acceptance example below is for the final test stage; do not create or modify test files during implementation.
 
 ```python
 async def test_paused_source_rejects_collection(owner_client, paused_source):
@@ -113,7 +115,7 @@ async def test_paused_source_rejects_collection(owner_client, paused_source):
     assert response.status_code == 409
 ```
 
-- [ ] **P02-T3.2 — Observe the expected failure.** Run `./scripts/dev.ps1 test -PytestTarget tests/integration/test_collectors.py` after P01 establishes the targeted runner. For P01-T1 before targeted-runner support is added, use the existing disposable `./scripts/dev.ps1 test`; subsequent tasks use the targeted command above. Expect the specific missing behavior/import/route assertion; configuration or unrelated fixture failure is not the red test.
+- [ ] **P02-T3.2 - Implement the production behavior.** Follow task interfaces; defer all test work until Phases 1-12 code is complete.
 
 - [ ] **P02-T3.3 — Implement the minimal production behavior.** Create paused_source fixture using the Phase 1 API. Package importable n8n workflow exports using credential references and protected receipt endpoints; include RSS/Atom pagination/overlap, URL and REST mappings. Add source timezone default Asia/Ho_Chi_Minh. Validate the pinned n8n missed-schedule behavior; implement bounded overlap catch-up from last acknowledged cursor, not replay of every missed cron tick. Use Crawlee HTTP with BeautifulSoup first and PlaywrightCrawler for configured JS pages. One browser job, default 10 pages/depth2/60s and 25MiB aggregate download; network-level egress restrictions plus URL/redirect/DNS checks. No model-driven navigation until Phase 7.
 
@@ -123,9 +125,9 @@ Concrete contract/configuration shape (illustrative IDs/timestamps are test data
 {"source_id":"uuid","mode":"http","max_pages":10,"max_depth":2,"timeout_seconds":60}
 ```
 
-- [ ] **P02-T3.4 — Verify the behavior and listed failure cases.** Run actual packaged workflows against a local disposable fixture provider; SSRF tests cover redirects/DNS changes/private addresses and browser subresources. n8n outage leaves manual upload and existing knowledge usable. Verify pause stops schedules and rejects queued stale runs.
+- [ ] **P02-T3.4 - Build the affected deliverable.** Run `./scripts/dev.ps1 build` (or `make build`); fix build failures before proceeding. Deferred acceptance criteria: Run actual packaged workflows against a local disposable fixture provider; SSRF tests cover redirects/DNS changes/private addresses and browser subresources. n8n outage leaves manual upload and existing knowledge usable. Verify pause stops schedules and rejects queued stale runs.
 
-- [ ] **P02-T3.5 — Record evidence and continue.** Record changed files, actual commands/results and any missing external evidence in `EXECUTION.md`; check this task only after its required behavior passes. Continue to P02-T4. Do not create a commit automatically.
+- [ ] **P02-T3.5 - Record build evidence and continue.** Record changed files, exact build command/result, review findings and unresolved gates in `EXECUTION.md`; then continue. Do not run tests during implementation.
 
 ## Task P02-T4: Collection UI, deletion lifecycle and diagnostics
 
@@ -133,7 +135,7 @@ Concrete contract/configuration shape (illustrative IDs/timestamps are test data
 
 **Interfaces — consumes/produces:** Source health exposes collected_at,indexed_at and distinct collection/processing errors; data removal may return 202 with operation_id, completed synchronous removals remain 204. GET /system/operations/{id} tracks deletions; SourceRead includes retirement state.
 
-- [ ] **P02-T4.1 — Write the failing behavioral test.** Put this case in `tests/e2e/ingestion.spec.ts` and implement any named test fixture in the same test package's `conftest.py` (browser fixtures in `tests/e2e/fixtures.ts`) as described below. Fixtures may control test transports/services; they must never introduce production test endpoints.
+- [ ] **P02-T4.1 - Review the behavior contract.** The acceptance example below is for the final test stage; do not create or modify test files during implementation.
 
 ```typescript
 import { test, expect } from './fixtures';
@@ -146,7 +148,7 @@ test('upload reports processing progress', async ({ page }) => {
 });
 ```
 
-- [ ] **P02-T4.2 — Observe the expected failure.** Run `./scripts/dev.ps1 test -E2eTarget tests/e2e/ingestion.spec.ts` after P01 establishes the targeted runner. For P01-T1 before targeted-runner support is added, use the existing disposable `./scripts/dev.ps1 test`; subsequent tasks use the targeted command above. Expect the specific missing behavior/import/route assertion; configuration or unrelated fixture failure is not the red test.
+- [ ] **P02-T4.2 - Implement the production behavior.** Follow task interfaces; defer all test work until Phases 1-12 code is complete.
 
 - [ ] **P02-T4.3 — Implement the minimal production behavior.** The browser fixture holds the processing stage at a test-controlled worker barrier until the progress assertion, then releases it; do not rely on a fast transient status being visible. Show received/parsed/chunked separately from embedded/indexed—Phase 2 never claims semantic readiness. Guide credential setup to n8n and return validation; allow Sync now, pause/resume, retries and raw provenance inspection. Implement durable purge tombstones before deleting files/chunks/outbox work; workers check current source/document generation before writes. Prevent in-flight jobs recreating deleted content. Empty search/AI states remain explicit.
 
@@ -156,22 +158,22 @@ Concrete contract/configuration shape (illustrative IDs/timestamps are test data
 {"collection":"succeeded","processing":"chunked","embedding":"not_configured","last_error":null}
 ```
 
-- [ ] **P02-T4.4 — Verify the behavior and listed failure cases.** End-to-end upload, RSS update, duplicate delivery, pause/resume, delete-during-processing and source connector-only removal. Extend reset harness to clean Phase 2 resources only inside disposable projects. Common phase gate; next P03-T1.
+- [ ] **P02-T4.4 - Build the affected deliverable.** Run `./scripts/dev.ps1 build` (or `make build`); fix build failures before proceeding. Deferred acceptance criteria: End-to-end upload, RSS update, duplicate delivery, pause/resume, delete-during-processing and source connector-only removal. Extend reset harness to clean Phase 2 resources only inside disposable projects. Common phase gate; next P03-T1.
 
-- [ ] **P02-T4.5 — Record evidence and continue.** Record changed files, actual commands/results and any missing external evidence in `EXECUTION.md`; check this task only after its required behavior passes. Continue to the phase acceptance gate, then P03-T1. Do not create a commit automatically.
+- [ ] **P02-T4.5 - Record build evidence and continue.** Record changed files, exact build command/result, review findings and unresolved gates in `EXECUTION.md`; then continue. Do not run tests during implementation.
 
 ## Phase Acceptance and Handoff
 
-- [ ] Run final sequential `./scripts/dev.ps1 lint`, `typecheck`, `test`, `build` (Make equivalents on Linux). Use targeted checks during tasks and the complete gate once after final phase changes.
+- [ ] Build the phase deliverables with `./scripts/dev.ps1 build` (or `make build`); no tests, lint or typecheck run during the code stage.
 - [ ] Verify new code is included in Docker/packaging, new tables in Alembic metadata, public APIs in OpenAPI and enabled UI/routes in module descriptors.
 - [ ] Complete independent final review under the execution skill, fix actionable findings, and repeat affected checks.
-- [ ] Record actual test counts, live integration evidence and capacity limitations; fixtures do not validate live providers or mini-host performance.
+- [ ] After all Phase 1-12 production code is complete, run the deferred test stage from the master plan; record results, live integration evidence and capacity limitations.
 - [ ] Update `docs/IMPLEMENTATION_STATUS.md`, this checklist and `EXECUTION.md`. Continue automatically to the next ready approved task; stop only the work that depends on an unresolved external gate or a material unapproved change.
 
 ## Plan Self-Review Checklist
 
 - [x] Goal and spec sections mapped to named tasks and public interfaces.
 - [x] Five review-focus risks assigned concrete failure checks in the owning tasks.
-- [x] Exact file targets, behavioral test examples, expected failure, implementation rules and passing criteria included.
+- [x] Exact file targets, acceptance examples, deferred test criteria, implementation rules and build criteria included.
 - [x] Module ownership, auth/privacy, safe deletion and retry/resume boundaries preserved.
 - [x] Implementation and live/hardware verification are not claimed complete by this plan.

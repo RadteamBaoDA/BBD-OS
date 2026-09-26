@@ -1,4 +1,4 @@
-.PHONY: setup dev stop migrate lint typecheck test build
+.PHONY: setup dev stop migrate seed lint typecheck test build
 
 setup:
 	uv sync --frozen
@@ -13,6 +13,9 @@ stop:
 
 migrate:
 	docker compose -f docker-compose.yml -f docker-compose.dev.yml run --rm migrate
+
+seed:
+	docker compose -f docker-compose.yml run --rm --build api python -m modules.knowledge.documents.seed
 
 lint:
 	uv run ruff check core apps modules tests infrastructure/postgres/migrations

@@ -1,6 +1,6 @@
 # BBD-OS Phase 9 — GitHub Collection and Project Knowledge Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax. The owner authorized continuous progress through ready tasks; use the [master plan](2026-09-25-bbd-os-master-plan.md) and [execution ledger](EXECUTION.md), without repeated phase-scope approval.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax. The owner authorized continuous progress through ready tasks; use the [master plan](2026-09-25-bbd-os-master-plan.md) and [execution ledger](EXECUTION.md), without repeated phase-scope approval.
 
 **Goal:** Collect repositories, issues, pull requests, commits and releases through packaged workflows and expose their evidence in knowledge, Timeline and Today.
 
@@ -13,6 +13,8 @@
 **Entry gate:** Phase 2 connector contract; Phases 4–8 entity/event/project presentation.
 
 **Implementation status:** Not started. This file is an implementation plan, not evidence of working code.
+
+Test execution is deferred until all Phase 1-12 production code is complete. Acceptance examples and test file paths below are specifications; do not create, modify or run test files during this implementation stage.
 
 ## Global Constraints
 
@@ -43,7 +45,7 @@ Module ownership: **connectors/github**. Backend domain models/services stay in 
 
 **Interfaces — consumes/produces:** GitHubSourceConfig(repository,include_issues,include_pulls,include_commits,include_releases); provider credentials remain n8n-owned references. Connector registry exposes validate/sync/normalize/health without GitHub-specific imports in ingestion.
 
-- [ ] **P09-T1.1 — Write the failing behavioral test.** Put this case in `tests/test_github_mapping.py` and implement any named test fixture in the same test package's `conftest.py` (browser fixtures in `tests/e2e/fixtures.ts`) as described below. Fixtures may control test transports/services; they must never introduce production test endpoints.
+- [ ] **P09-T1.1 - Review the behavior contract.** The acceptance example below is for the final test stage; do not create or modify test files during implementation.
 
 ```python
 def test_repository_identity_does_not_depend_on_name():
@@ -52,7 +54,7 @@ def test_repository_identity_does_not_depend_on_name():
         {"id":123,"full_name":"new/name"})
 ```
 
-- [ ] **P09-T1.2 — Observe the expected failure.** Run `./scripts/dev.ps1 test -PytestTarget tests/test_github_mapping.py` after P01 establishes the targeted runner. For P01-T1 before targeted-runner support is added, use the existing disposable `./scripts/dev.ps1 test`; subsequent tasks use the targeted command above. Expect the specific missing behavior/import/route assertion; configuration or unrelated fixture failure is not the red test.
+- [ ] **P09-T1.2 - Implement the production behavior.** Follow task interfaces; defer all test work until Phases 1-12 code is complete.
 
 - [ ] **P09-T1.3 — Implement the minimal production behavior.** Map stable numeric/node IDs to canonical external_id; document repository scope and permissions. Package real n8n export with credential references, source binding, batch receipt and response checking. Expose read-only collection only; no issue/comment writes implied. Validate selected repo and enabled resource types; display actual last successful validation.
 
@@ -62,9 +64,9 @@ Concrete contract/configuration shape (illustrative IDs/timestamps are test data
 {"provider":"github","repository":"owner/repo","include_issues":true,"include_pulls":true,"include_commits":true,"include_releases":true}
 ```
 
-- [ ] **P09-T1.4 — Verify the behavior and listed failure cases.** Mapping tests for all required resources, repository rename, missing fields, multiline Unicode and private credential redaction. Import the workflow in the pinned n8n and validate against a controlled test repository.
+- [ ] **P09-T1.4 - Build the affected deliverable.** Run `./scripts/dev.ps1 build` (or `make build`); fix build failures before proceeding. Deferred acceptance criteria: Mapping tests for all required resources, repository rename, missing fields, multiline Unicode and private credential redaction. Import the workflow in the pinned n8n and validate against a controlled test repository.
 
-- [ ] **P09-T1.5 — Record evidence and continue.** Record changed files, actual commands/results and any missing external evidence in `EXECUTION.md`; check this task only after its required behavior passes. Continue to P09-T2. Do not create a commit automatically.
+- [ ] **P09-T1.5 - Record build evidence and continue.** Record changed files, exact build command/result, review findings and unresolved gates in `EXECUTION.md`; then continue. Do not run tests during implementation.
 
 ## Task P09-T2: Pagination, incremental sync and verified webhooks
 
@@ -72,7 +74,7 @@ Concrete contract/configuration shape (illustrative IDs/timestamps are test data
 
 **Interfaces — consumes/produces:** POST /connectors/github/webhook verifies delivery signature and unique delivery ID; per-resource cursor persisted by BBD-OS only after durable batch acknowledgment. Source runs share the Phase 2 lease.
 
-- [ ] **P09-T2.1 — Write the failing behavioral test.** Put this case in `tests/integration/test_github_sync.py` and implement any named test fixture in the same test package's `conftest.py` (browser fixtures in `tests/e2e/fixtures.ts`) as described below. Fixtures may control test transports/services; they must never introduce production test endpoints.
+- [ ] **P09-T2.1 - Review the behavior contract.** The acceptance example below is for the final test stage; do not create or modify test files during implementation.
 
 ```python
 async def test_duplicate_webhook_has_one_effect(github_webhook_fixture):
@@ -82,7 +84,7 @@ async def test_duplicate_webhook_has_one_effect(github_webhook_fixture):
     assert await github_webhook_fixture.count_observations() == 1
 ```
 
-- [ ] **P09-T2.2 — Observe the expected failure.** Run `./scripts/dev.ps1 test -PytestTarget tests/integration/test_github_sync.py` after P01 establishes the targeted runner. For P01-T1 before targeted-runner support is added, use the existing disposable `./scripts/dev.ps1 test`; subsequent tasks use the targeted command above. Expect the specific missing behavior/import/route assertion; configuration or unrelated fixture failure is not the red test.
+- [ ] **P09-T2.2 - Implement the production behavior.** Follow task interfaces; defer all test work until Phases 1-12 code is complete.
 
 - [ ] **P09-T2.3 — Implement the minimal production behavior.** Create fixture with real receipt store and locally signed payloads. Follow provider pagination, use bounded history plus updated-time overlap, dedupe by stable identity/version and prevent stale cursors replacing newer ones. Verify signatures over original bytes with constant-time comparison before parsing/trusting events; reject unsupported oversized events. Honor Retry-After/reset times, bound retries, and distinguish invalid permissions. Document which deletion/visibility changes can be discovered by webhook or reconciliation and mark unobservable records stale/unverified when access disappears.
 
@@ -92,9 +94,9 @@ Concrete contract/configuration shape (illustrative IDs/timestamps are test data
 {"delivery_id":"provider-id","source_id":"uuid","resource":"issue","provider_id":"123","updated_at":"2026-09-25T03:00:00Z"}
 ```
 
-- [ ] **P09-T2.4 — Verify the behavior and listed failure cases.** Multiple pages, edits during scan, forged signature, out-of-order events, duplicate deliveries, permission revoke, 429/403 semantics and restart mid-page. No external writes during tests.
+- [ ] **P09-T2.4 - Build the affected deliverable.** Run `./scripts/dev.ps1 build` (or `make build`); fix build failures before proceeding. Deferred acceptance criteria: Multiple pages, edits during scan, forged signature, out-of-order events, duplicate deliveries, permission revoke, 429/403 semantics and restart mid-page. No external writes during tests.
 
-- [ ] **P09-T2.5 — Record evidence and continue.** Record changed files, actual commands/results and any missing external evidence in `EXECUTION.md`; check this task only after its required behavior passes. Continue to P09-T3. Do not create a commit automatically.
+- [ ] **P09-T2.5 - Record build evidence and continue.** Record changed files, exact build command/result, review findings and unresolved gates in `EXECUTION.md`; then continue. Do not run tests during implementation.
 
 ## Task P09-T3: Canonical mapping and incremental knowledge updates
 
@@ -102,7 +104,7 @@ Concrete contract/configuration shape (illustrative IDs/timestamps are test data
 
 **Interfaces — consumes/produces:** Normalized GitHub documents retain source URL/provider identity/version. Repository is an entity; commits/issues/pulls/releases contribute typed events and relationships through public contracts, not direct table writes.
 
-- [ ] **P09-T3.1 — Write the failing behavioral test.** Put this case in `tests/integration/test_github_knowledge.py` and implement any named test fixture in the same test package's `conftest.py` (browser fixtures in `tests/e2e/fixtures.ts`) as described below. Fixtures may control test transports/services; they must never introduce production test endpoints.
+- [ ] **P09-T3.1 - Review the behavior contract.** The acceptance example below is for the final test stage; do not create or modify test files during implementation.
 
 ```python
 async def test_issue_edit_appends_document_version(github_collection_fixture):
@@ -112,7 +114,7 @@ async def test_issue_edit_appends_document_version(github_collection_fixture):
     assert len(history) == 2
 ```
 
-- [ ] **P09-T3.2 — Observe the expected failure.** Run `./scripts/dev.ps1 test -PytestTarget tests/integration/test_github_knowledge.py` after P01 establishes the targeted runner. For P01-T1 before targeted-runner support is added, use the existing disposable `./scripts/dev.ps1 test`; subsequent tasks use the targeted command above. Expect the specific missing behavior/import/route assertion; configuration or unrelated fixture failure is not the red test.
+- [ ] **P09-T3.2 - Implement the production behavior.** Follow task interfaces; defer all test work until Phases 1-12 code is complete.
 
 - [ ] **P09-T3.3 — Implement the minimal production behavior.** Implement collection fixture against receipt+pipeline with deterministic provider pages. Separate issue and pull-request normalization to avoid duplicate issue-like records; preserve commit SHA and release identifiers. Update entities/events only for changed versions; project relationships keep evidence. Deletions invalidate derived content through the common deletion workflow. Register github read tools for Project Agent using canonical services.
 
@@ -122,9 +124,9 @@ Concrete contract/configuration shape (illustrative IDs/timestamps are test data
 {"external_id":"github:issue:123","canonical_url":"https://github.com/owner/repo/issues/1","event_type":"github_issue","repository_entity_id":"uuid"}
 ```
 
-- [ ] **P09-T3.4 — Verify the behavior and listed failure cases.** Edited/closed/reopened issue, PR changes, repeated commit observations, release edits, repository rename and deleted source evidence. Verify search/entity/timeline indexing reflects edits without duplicates.
+- [ ] **P09-T3.4 - Build the affected deliverable.** Run `./scripts/dev.ps1 build` (or `make build`); fix build failures before proceeding. Deferred acceptance criteria: Edited/closed/reopened issue, PR changes, repeated commit observations, release edits, repository rename and deleted source evidence. Verify search/entity/timeline indexing reflects edits without duplicates.
 
-- [ ] **P09-T3.5 — Record evidence and continue.** Record changed files, actual commands/results and any missing external evidence in `EXECUTION.md`; check this task only after its required behavior passes. Continue to P09-T4. Do not create a commit automatically.
+- [ ] **P09-T3.5 - Record build evidence and continue.** Record changed files, exact build command/result, review findings and unresolved gates in `EXECUTION.md`; then continue. Do not run tests during implementation.
 
 ## Task P09-T4: GitHub UI and end-to-end acceptance
 
@@ -132,7 +134,7 @@ Concrete contract/configuration shape (illustrative IDs/timestamps are test data
 
 **Interfaces — consumes/produces:** Sources renders GitHub scope, run state, fetched/indexed timestamps and separate errors. Project views and drawer context use existing entity/source IDs.
 
-- [ ] **P09-T4.1 — Write the failing behavioral test.** Put this case in `tests/e2e/github.spec.ts` and implement any named test fixture in the same test package's `conftest.py` (browser fixtures in `tests/e2e/fixtures.ts`) as described below. Fixtures may control test transports/services; they must never introduce production test endpoints.
+- [ ] **P09-T4.1 - Review the behavior contract.** The acceptance example below is for the final test stage; do not create or modify test files during implementation.
 
 ```typescript
 import { test, expect } from './fixtures';
@@ -145,7 +147,7 @@ test('GitHub source explains its collected scope', async ({ page }) => {
 });
 ```
 
-- [ ] **P09-T4.2 — Observe the expected failure.** Run `./scripts/dev.ps1 test -E2eTarget tests/e2e/github.spec.ts` after P01 establishes the targeted runner. For P01-T1 before targeted-runner support is added, use the existing disposable `./scripts/dev.ps1 test`; subsequent tasks use the targeted command above. Expect the specific missing behavior/import/route assertion; configuration or unrelated fixture failure is not the red test.
+- [ ] **P09-T4.2 - Implement the production behavior.** Follow task interfaces; defer all test work until Phases 1-12 code is complete.
 
 - [ ] **P09-T4.3 — Implement the minimal production behavior.** Guide credentials in n8n and return validation, not an invented credentials editor. Show live run counts/status and links to provider evidence; surface project changes in Today and Timeline via existing providers. Test with a controlled repository populated with all five required resource classes; fixtures alone prove mapping, not live permissions/connectivity.
 
@@ -155,22 +157,22 @@ Concrete contract/configuration shape (illustrative IDs/timestamps are test data
 {"resource_counts":{"repositories":1,"issues":2,"pull_requests":1,"commits":3,"releases":1},"live_verified":false}
 ```
 
-- [ ] **P09-T4.4 — Verify the behavior and listed failure cases.** Packaged workflow, initial collection, incremental edit, restart, project display and cited Ask about a known repository fact. Common gate; next P10-T1.
+- [ ] **P09-T4.4 - Build the affected deliverable.** Run `./scripts/dev.ps1 build` (or `make build`); fix build failures before proceeding. Deferred acceptance criteria: Packaged workflow, initial collection, incremental edit, restart, project display and cited Ask about a known repository fact. Common gate; next P10-T1.
 
-- [ ] **P09-T4.5 — Record evidence and continue.** Record changed files, actual commands/results and any missing external evidence in `EXECUTION.md`; check this task only after its required behavior passes. Continue to the phase acceptance gate, then P10-T1. Do not create a commit automatically.
+- [ ] **P09-T4.5 - Record build evidence and continue.** Record changed files, exact build command/result, review findings and unresolved gates in `EXECUTION.md`; then continue. Do not run tests during implementation.
 
 ## Phase Acceptance and Handoff
 
-- [ ] Run final sequential `./scripts/dev.ps1 lint`, `typecheck`, `test`, `build` (Make equivalents on Linux). Use targeted checks during tasks and the complete gate once after final phase changes.
+- [ ] Build the phase deliverables with `./scripts/dev.ps1 build` (or `make build`); no tests, lint or typecheck run during the code stage.
 - [ ] Verify new code is included in Docker/packaging, new tables in Alembic metadata, public APIs in OpenAPI and enabled UI/routes in module descriptors.
 - [ ] Complete independent final review under the execution skill, fix actionable findings, and repeat affected checks.
-- [ ] Record actual test counts, live integration evidence and capacity limitations; fixtures do not validate live providers or mini-host performance.
+- [ ] After all Phase 1-12 production code is complete, run the deferred test stage from the master plan; record results, live integration evidence and capacity limitations.
 - [ ] Update `docs/IMPLEMENTATION_STATUS.md`, this checklist and `EXECUTION.md`. Continue automatically to the next ready approved task; stop only the work that depends on an unresolved external gate or a material unapproved change.
 
 ## Plan Self-Review Checklist
 
 - [x] Goal and spec sections mapped to named tasks and public interfaces.
 - [x] Five review-focus risks assigned concrete failure checks in the owning tasks.
-- [x] Exact file targets, behavioral test examples, expected failure, implementation rules and passing criteria included.
+- [x] Exact file targets, acceptance examples, deferred test criteria, implementation rules and build criteria included.
 - [x] Module ownership, auth/privacy, safe deletion and retry/resume boundaries preserved.
 - [x] Implementation and live/hardware verification are not claimed complete by this plan.

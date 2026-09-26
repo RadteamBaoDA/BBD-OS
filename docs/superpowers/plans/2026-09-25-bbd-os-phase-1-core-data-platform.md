@@ -1,6 +1,6 @@
 # BBD-OS Phase 1 — Core Data Platform Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax. The owner authorized continuous progress through ready tasks; use the [master plan](2026-09-25-bbd-os-master-plan.md) and [execution ledger](EXECUTION.md), without repeated phase-scope approval.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax. The owner authorized continuous progress through ready tasks; use the [master plan](2026-09-25-bbd-os-master-plan.md) and [execution ledger](EXECUTION.md), without repeated phase-scope approval.
 
 **Goal:** Persist and manage sources and documents with provenance, immutable revisions, authenticated APIs, and useful library screens.
 
@@ -12,7 +12,9 @@
 
 **Entry gate:** Phase 0 acceptance.
 
-**Implementation status:** Not started. This file is an implementation plan, not evidence of working code.
+**Implementation status:** Phase 1 production code/build and whole-branch source review are complete. P01-T1 was completed and tested before the owner changed the sequence; its historical evidence is retained. P01-T2 through P01-T4 task reviews and the final Phase 1 review are clean. Behavioral acceptance is deferred until all Phase 1-12 production code is complete.
+
+Test execution is deferred until all Phase 1-12 production code is complete. Acceptance examples and test file paths below are specifications; do not create, modify or run test files during this implementation stage.
 
 ## Global Constraints
 
@@ -74,7 +76,7 @@ Concrete contract/configuration shape (illustrative IDs/timestamps are test data
 
 **Interfaces — consumes/produces:** SourceCreate(type,name,provider?), SourceRead(id,type,name,status,local_only,created_at,updated_at); DocumentCreate(source_id,title,content,external_id?,metadata?); DocumentRead includes current_version. GET/POST /sources and /documents; GET/PATCH/DELETE /sources/{id}, /documents/{id}; PUT /documents/{id}/content accepts expected_version; GET /documents/{id}/versions and /versions/{number}. Lists use limit<=100 and opaque next_cursor.
 
-- [ ] **P01-T2.1 — Write the failing behavioral test.** Put this case in `tests/integration/test_library_api.py` and implement any named test fixture in the same test package's `conftest.py` (browser fixtures in `tests/e2e/fixtures.ts`) as described below. Fixtures may control test transports/services; they must never introduce production test endpoints.
+- [x] **P01-T2.1 - Review the behavior contract.** The acceptance example below is for the final test stage; do not create or modify test files during implementation.
 
 ```python
 async def test_revision_keeps_original(owner_client):
@@ -89,9 +91,9 @@ async def test_revision_keeps_original(owner_client):
     assert old.json()["content"] == "first"
 ```
 
-- [ ] **P01-T2.2 — Observe the expected failure.** Run `./scripts/dev.ps1 test -PytestTarget tests/integration/test_library_api.py` after P01 establishes the targeted runner. For P01-T1 before targeted-runner support is added, use the existing disposable `./scripts/dev.ps1 test`; subsequent tasks use the targeted command above. Expect the specific missing behavior/import/route assertion; configuration or unrelated fixture failure is not the red test.
+- [x] **P01-T2.2 - Implement the production behavior.** Follow task interfaces; defer all test work until Phases 1-12 code is complete.
 
-- [ ] **P01-T2.3 — Implement the minimal production behavior.** Use UUIDs, JSONB and UTC timestamps; map the SQL column metadata through an ORM attribute such as metadata_json (DeclarativeBase reserves metadata). Match canonical fields; optional imported attributes start null. Keep source config server-managed and secret-free. Add unique non-null (source_id,external_id), unique (document_id,version_number), relevant FK/date indexes. Use a row lock and expected_version for append; stale input returns 409, identical content returns the current revision. Cap manual content at 1 MiB UTF-8 and metadata at 64 KiB; reject unknown fields and non-object metadata. Keep hashes server-derived. Implement core/modules.py with descriptors for these real source/knowledge consumers; reject duplicate IDs/missing dependencies and provide navigation/settings metadata. Source lifecycle active/paused/archived is separate from connector health. Connector-only deletion archives identity and retains documents; with_data deletes the owned documents/versions transactionally in this phase. Later phases extend this exact deletion intent to their derived data.
+- [x] **P01-T2.3 — Implement the minimal production behavior.** Use UUIDs, JSONB and UTC timestamps; map the SQL column metadata through an ORM attribute such as metadata_json (DeclarativeBase reserves metadata). Match canonical fields; optional imported attributes start null. Keep source config server-managed and secret-free. Add unique non-null (source_id,external_id), unique (document_id,version_number), relevant FK/date indexes. Use a row lock and expected_version for append; stale input returns 409, identical content returns the current revision. Cap manual content at 1 MiB UTF-8 and metadata at 64 KiB; reject unknown fields and non-object metadata. Keep hashes server-derived. Implement core/modules.py with descriptors for these real source/knowledge consumers; reject duplicate IDs/missing dependencies and provide navigation/settings metadata. Source lifecycle active/paused/archived is separate from connector health. Connector-only deletion archives identity and retains documents; with_data deletes the owned documents/versions transactionally in this phase. Later phases extend this exact deletion intent to their derived data.
 
 Concrete contract/configuration shape (illustrative IDs/timestamps are test data, not production defaults):
 
@@ -99,9 +101,9 @@ Concrete contract/configuration shape (illustrative IDs/timestamps are test data
 {"source_id":"uuid","title":"Manual note","content":"Original text","metadata":{},"external_id":null}
 ```
 
-- [ ] **P01-T2.4 — Verify the behavior and listed failure cases.** ./scripts/dev.ps1 test: real PostgreSQL constraints, simultaneous revision writes (one winner/one 409), unknown IDs, stable cursor ordering, protected reads/writes, upgrade from 0001_auth and repeat upgrade without auth loss. Downgrade checks only on disposable data.
+- [x] **P01-T2.4 - Build the affected deliverable.** Run `./scripts/dev.ps1 build` (or `make build`); fix build failures before proceeding. Deferred acceptance criteria: automated behavior checks, simultaneous revision writes (one winner/one 409), unknown IDs, stable cursor ordering, protected reads/writes, upgrade from 0001_auth and repeat upgrade without auth loss. Downgrade checks only on disposable data.
 
-- [ ] **P01-T2.5 — Record evidence and continue.** Record changed files, actual commands/results and any missing external evidence in `EXECUTION.md`; check this task only after its required behavior passes. Continue to P01-T3. Do not create a commit automatically.
+- [x] **P01-T2.5 - Record build evidence and continue.** Record changed files, exact build command/result, review findings and unresolved gates in `EXECUTION.md`; then continue. Do not run tests during implementation.
 
 ## Task P01-T3: Library UI and first real module consumers
 
@@ -109,7 +111,7 @@ Concrete contract/configuration shape (illustrative IDs/timestamps are test data
 
 **Interfaces — consumes/produces:** Frontend DTOs mirror the API. Thin Next route wrappers import their owning frontend module. /app becomes a compatibility redirect to /knowledge/documents; /settings/system preserves Phase 0 health. Root auth routing remains valid; Today takes over authenticated / in Phase 8.
 
-- [ ] **P01-T3.1 — Write the failing behavioral test.** Put this case in `tests/e2e/library.spec.ts` and implement any named test fixture in the same test package's `conftest.py` (browser fixtures in `tests/e2e/fixtures.ts`) as described below. Fixtures may control test transports/services; they must never introduce production test endpoints.
+- [x] **P01-T3.1 - Review the behavior contract.** The acceptance example below is for the final test stage; do not create or modify test files during implementation.
 
 ```typescript
 import { test, expect } from './fixtures';
@@ -125,9 +127,9 @@ test('manual document survives reload', async ({ page }) => {
 });
 ```
 
-- [ ] **P01-T3.2 — Observe the expected failure.** Run `./scripts/dev.ps1 test -E2eTarget tests/e2e/library.spec.ts` after P01 establishes the targeted runner. For P01-T1 before targeted-runner support is added, use the existing disposable `./scripts/dev.ps1 test`; subsequent tasks use the targeted command above. Expect the specific missing behavior/import/route assertion; configuration or unrelated fixture failure is not the red test.
+- [x] **P01-T3.2 - Implement the production behavior.** Follow task interfaces; defer all test work until Phases 1-12 code is complete.
 
-- [ ] **P01-T3.3 — Implement the minimal production behavior.** Provide an explicitly created manual source in the browser fixture and select it in the form; do not create it invisibly in product startup. Build sources/documents list, detail, version history, metadata edit and confirmed deletion using existing form/query/UI libraries. Preserve drafts on 409; invalidate affected query keys on success; clear private caches on logout/401. Module descriptors supply navigation/settings; do not show future screens. Reuse existing semantic colors and add proper empty/loading/error states. Update Phase 0 navigation assertions to visit System explicitly.
+- [x] **P01-T3.3 — Implement the minimal production behavior.** Make manual sources explicit in the product UI; browser fixture creation and Phase 0 navigation assertion updates are deferred to the test stage. Build sources/documents list, detail, version history, metadata edit and confirmed deletion using existing form/query/UI libraries. Preserve drafts on 409; invalidate affected query keys on success; clear private caches on logout/401. Module descriptors supply navigation/settings; do not show future screens. Reuse existing semantic colors and add proper empty/loading/error states.
 
 Concrete contract/configuration shape (illustrative IDs/timestamps are test data, not production defaults):
 
@@ -135,9 +137,9 @@ Concrete contract/configuration shape (illustrative IDs/timestamps are test data
 {"id":"knowledge","label":"Knowledge","href":"/knowledge/documents","enabled":true}
 ```
 
-- [ ] **P01-T3.4 — Verify the behavior and listed failure cases.** ./scripts/dev.ps1 lint; ./scripts/dev.ps1 typecheck; ./scripts/dev.ps1 test; ./scripts/dev.ps1 build. Browser covers keyboard form submission, revision conflict, delete cancel/confirm, source retirement and small viewport.
+- [x] **P01-T3.4 - Build the affected deliverable.** Run `./scripts/dev.ps1 build` (or `make build`); fix build failures before proceeding. Deferred browser checks: document creation and reload, keyboard submission, revision conflict with draft preservation, delete cancel/confirm, source retirement, and small viewport. No tests are run during code implementation.
 
-- [ ] **P01-T3.5 — Record evidence and continue.** Record changed files, actual commands/results and any missing external evidence in `EXECUTION.md`; check this task only after its required behavior passes. Continue to P01-T4. Do not create a commit automatically.
+- [x] **P01-T3.5 - Record build evidence and continue.** Record changed files, exact build command/result, review findings and unresolved gates in `EXECUTION.md`; then continue. Do not run tests during implementation.
 
 ## Task P01-T4: Seed, contracts and delivery record
 
@@ -145,7 +147,7 @@ Concrete contract/configuration shape (illustrative IDs/timestamps are test data
 
 **Interfaces — consumes/produces:** make seed and ./scripts/dev.ps1 seed explicitly import fictional Phase 1 fixtures; seed_demo(session) -> SeedReport(created,existing). No startup seeding or silent successful no-op commands.
 
-- [ ] **P01-T4.1 — Write the failing behavioral test.** Put this case in `tests/integration/test_seed.py` and implement any named test fixture in the same test package's `conftest.py` (browser fixtures in `tests/e2e/fixtures.ts`) as described below. Fixtures may control test transports/services; they must never introduce production test endpoints.
+- [x] **P01-T4.1 - Review the behavior contract.** The acceptance example below is for the final test stage; do not create or modify test files during implementation.
 
 ```python
 async def test_seed_is_idempotent(db_session):
@@ -156,9 +158,9 @@ async def test_seed_is_idempotent(db_session):
     assert second.created == 0
 ```
 
-- [ ] **P01-T4.2 — Observe the expected failure.** Run `./scripts/dev.ps1 test -PytestTarget tests/integration/test_seed.py` after P01 establishes the targeted runner. For P01-T1 before targeted-runner support is added, use the existing disposable `./scripts/dev.ps1 test`; subsequent tasks use the targeted command above. Expect the specific missing behavior/import/route assertion; configuration or unrelated fixture failure is not the red test.
+- [x] **P01-T4.2 - Implement the production behavior.** Follow task interfaces; defer all test work until Phases 1-12 code is complete.
 
-- [ ] **P01-T4.3 — Implement the minimal production behavior.** Use stable fixture identities in a dedicated demo namespace and never update user-edited records on repeat seed. Define db_session as a disposable PostgreSQL fixture for this test, not SQLite; integrate it into the test-only runner. Record schemas, deletion behavior and exact test evidence. Update status to implementation complete only after phase gates; do not classify the rest of the canonical catalog as omitted—its owning phases are in the master.
+- [x] **P01-T4.3 — Implement the minimal production behavior.** Use stable fixture identities in a dedicated demo namespace and never update user-edited records on repeat seed. The disposable PostgreSQL `db_session` fixture and test-only runner integration are deferred until the test stage; do not modify test files during code implementation. Record schema and deletion behavior now, then add exact test evidence during deferred acceptance. Do not classify the rest of the canonical catalog as omitted—its owning phases are in the master.
 
 Concrete contract/configuration shape (illustrative IDs/timestamps are test data, not production defaults):
 
@@ -166,22 +168,22 @@ Concrete contract/configuration shape (illustrative IDs/timestamps are test data
 {"created":3,"existing":0}
 ```
 
-- [ ] **P01-T4.4 — Verify the behavior and listed failure cases.** Seed twice on disposable data, preserve a modified demo note, migrate an existing Phase 0 DB copy and run the common gate. Update the execution ledger, then advance to P02-T1 during execution.
+- [x] **P01-T4.4 - Build the affected deliverable.** Run `./scripts/dev.ps1 build` (or `make build`); fix build failures before proceeding. Deferred acceptance criteria: Seed twice on disposable data, preserve a modified demo note, migrate an existing Phase 0 DB copy and run the common gate. Update the execution ledger, then advance to P02-T1 during execution.
 
-- [ ] **P01-T4.5 — Record evidence and continue.** Record changed files, actual commands/results and any missing external evidence in `EXECUTION.md`; check this task only after its required behavior passes. Continue to the phase acceptance gate, then P02-T1. Do not create a commit automatically.
+- [x] **P01-T4.5 - Record build evidence and continue.** Record changed files, exact build command/result, review findings and unresolved gates in `EXECUTION.md`; then continue. Do not run tests during implementation.
 
 ## Phase Acceptance and Handoff
 
-- [ ] Run final sequential `./scripts/dev.ps1 lint`, `typecheck`, `test`, `build` (Make equivalents on Linux). Use targeted checks during tasks and the complete gate once after final phase changes.
+- [x] Build the phase deliverables with `./scripts/dev.ps1 build` (or `make build`); no tests, lint or typecheck run during the code stage.
 - [ ] Verify new code is included in Docker/packaging, new tables in Alembic metadata, public APIs in OpenAPI and enabled UI/routes in module descriptors.
-- [ ] Complete independent final review under the execution skill, fix actionable findings, and repeat affected checks.
-- [ ] Record actual test counts, live integration evidence and capacity limitations; fixtures do not validate live providers or mini-host performance.
-- [ ] Update `docs/IMPLEMENTATION_STATUS.md`, this checklist and `EXECUTION.md`. Continue automatically to the next ready approved task; stop only the work that depends on an unresolved external gate or a material unapproved change.
+- [x] Complete independent final review under the execution skill, fix actionable findings, and repeat affected checks.
+- [ ] After all Phase 1-12 production code is complete, run the deferred test stage from the master plan; record results, live integration evidence and capacity limitations.
+- [x] Update `docs/IMPLEMENTATION_STATUS.md`, this checklist and `EXECUTION.md`. Continue automatically to the next ready approved task; stop only the work that depends on an unresolved external gate or a material unapproved change.
 
 ## Plan Self-Review Checklist
 
 - [x] Goal and spec sections mapped to named tasks and public interfaces.
 - [x] Five review-focus risks assigned concrete failure checks in the owning tasks.
-- [x] Exact file targets, behavioral test examples, expected failure, implementation rules and passing criteria included.
+- [x] Exact file targets, acceptance examples, deferred test criteria, implementation rules and build criteria included.
 - [x] Module ownership, auth/privacy, safe deletion and retry/resume boundaries preserved.
 - [x] Implementation and live/hardware verification are not claimed complete by this plan.

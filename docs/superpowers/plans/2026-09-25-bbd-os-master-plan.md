@@ -1,6 +1,6 @@
-# BBD-OS Approved Delivery Master Plan — Phases 0–12
+# BBD-OS Approved Delivery Master Plan â€” Phases 0â€“12
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:executing-plans for native task-by-task execution. Follow the phase files linked below and maintain [EXECUTION.md](EXECUTION.md). The owner approved the product scope and requested continuous progress through ready tasks; do not ask for repeated phase-scope approval.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development for task-by-task execution. Follow the phase files linked below and maintain [EXECUTION.md](EXECUTION.md). The owner approved the product scope and requested continuous progress through ready tasks; do not ask for repeated phase-scope approval.
 
 **Goal:** Deliver the entire approved single-owner Personal Intelligence OS, including daily dashboard, contextual chat drawer, collection, knowledge, agents and operational recovery.
 
@@ -8,7 +8,7 @@
 
 **Tech Stack:** The approved stack and Phase 0 lockfiles. Add and pin dependencies when the owning task uses them; capability/backend compatibility is checked against the installed versions.
 
-**Spec:** [Approved product/engineering specification](../../../specs/personal-intelligence-os-spec-v2.md), including sections 156–164. This plan translates the approved scope into executable phase plans; it does not declare their implementations complete.
+**Spec:** [Approved product/engineering specification](../../../specs/personal-intelligence-os-spec-v2.md), including sections 156â€“164. This plan translates the approved scope into executable phase plans; it does not declare their implementations complete.
 
 ## Global Constraints
 
@@ -23,14 +23,14 @@
 - Preserve raw-source and document-history retention unless the owner explicitly deletes the relevant data.
 - Python: four spaces; TypeScript: two spaces. Use existing dependencies before adding a framework.
 - Target 2 cores/8 GiB/SSD with no mandatory local inference; distinguish available development hardware from target acceptance.
-- No commit, push, reset, branch change, production deployment or destructive owner-volume operation without explicit direction.
+- Commit each completed phase as authorized. Merge Phase 1 into main after its implementation and review are complete. Do not push, deploy, reset, change branches or perform destructive owner-volume operations without explicit direction.
 - n8n is source-available/fair-code; do not label the entire stack exclusively OSI open source.
 
 ## Review Focus
 
 1. Durable acknowledgment must survive Redis/worker failure and duplicate delivery (P02, P07, P10).
 2. Egress grants, source isolation, model fallback and tools must fail closed (P03, P06, P07).
-3. Corrections, revisions and deletion propagate across every derived representation (P01, P04–P06, P12).
+3. Corrections, revisions and deletion propagate across every derived representation (P01, P04â€“P06, P12).
 4. The daily drawer retains the correct date/conversation through navigation and reconnect (P06, P08, P12).
 5. A fresh install, upgrade, verified restore and measured target workload are separate release gates (P12).
 
@@ -40,18 +40,18 @@ Phase 0 is implemented: [existing Phase 0 plan](2026-09-25-bbd-os-phase-0.md). P
 
 | Phase | Local implementation plan | Entry dependency | Tasks | Implementation |
 | --- | --- | --- | --- | --- |
-| 1 | [Core Data Platform](2026-09-25-bbd-os-phase-1-core-data-platform.md) | Phase 0 acceptance | 4 | Not started |
+| 1 | [Core Data Platform](2026-09-25-bbd-os-phase-1-core-data-platform.md) | Phase 0 acceptance | 4 | Code implemented; final review/acceptance handoff pending; tests deferred |
 | 2 | [Ingestion and Packaged Connectors](2026-09-25-bbd-os-phase-2-ingestion-connectors.md) | Phase 1 sources/documents public contracts | 4 | Not started |
 | 3 | [Search and Model Gateway Foundation](2026-09-25-bbd-os-phase-3-search-model-gateway.md) | Phase 2 chunks/provenance; live model acceptance needs configured endpoint and permitted aliases | 4 | Not started |
 | 4 | [Entity Knowledge and Corrections](2026-09-25-bbd-os-phase-4-entity-knowledge.md) | Phase 3 validated structured-output alias, search and public library | 4 | Not started |
 | 5 | [Temporal Knowledge and Timeline](2026-09-25-bbd-os-phase-5-temporal-knowledge.md) | Phase 4 entities/evidence; Phase 3 permitted chat/structured/embedding capabilities | 4 | Not started |
 | 6 | [Ask, Chat Drawer and Selective Memory](2026-09-25-bbd-os-phase-6-ask-chat-drawer-memory.md) | Phase 3 retrieval/gateway, Phase 4 entities, Phase 5 temporal public APIs | 4 | Not started |
 | 7 | [Agent Harness, Tools, MCP and Approvals](2026-09-25-bbd-os-phase-7-agent-harness-tools.md) | Phase 6 chat/memory; Phase 3 capabilities; Phase 2 isolated browser runtime | 4 | Not started |
-| 8 | [Today, Daily Chat Drawer, Tasks and Goals](2026-09-25-bbd-os-phase-8-today-daily-chat-tasks.md) | Phases 1–7 public knowledge, chat, events and tools; source collection already runs in Phase 2 | 4 | Not started |
-| 9 | [GitHub Collection and Project Knowledge](2026-09-25-bbd-os-phase-9-github-integration.md) | Phase 2 connector contract; Phases 4–8 entity/event/project presentation | 4 | Not started |
+| 8 | [Today, Daily Chat Drawer, Tasks and Goals](2026-09-25-bbd-os-phase-8-today-daily-chat-tasks.md) | Phases 1â€“7 public knowledge, chat, events and tools; source collection already runs in Phase 2 | 4 | Not started |
+| 9 | [GitHub Collection and Project Knowledge](2026-09-25-bbd-os-phase-9-github-integration.md) | Phase 2 connector contract; Phases 4â€“8 entity/event/project presentation | 4 | Not started |
 | 10 | [Automation Rules and Workflow Management](2026-09-25-bbd-os-phase-10-automation-workflows.md) | Phase 2 durable events/n8n; Phase 7 approvals; Phase 8 tasks/brief/notifications | 4 | Not started |
-| 11 | [Observability and Operational Controls](2026-09-25-bbd-os-phase-11-observability-operations.md) | Phases 1–10 already emit run IDs, events, status and timing | 4 | Not started |
-| 12 | [Hardening, Backup, Recovery and Full Acceptance](2026-09-25-bbd-os-phase-12-hardening-release-acceptance.md) | Functional acceptance from Phases 1–11; actual target hardware and permitted live integrations for final release gate | 5 | Not started |
+| 11 | [Observability and Operational Controls](2026-09-25-bbd-os-phase-11-observability-operations.md) | Phases 1â€“10 already emit run IDs, events, status and timing | 4 | Not started |
+| 12 | [Hardening, Backup, Recovery and Full Acceptance](2026-09-25-bbd-os-phase-12-hardening-release-acceptance.md) | Functional acceptance from Phases 1â€“11; actual target hardware and permitted live integrations for final release gate | 5 | Not started |
 
 Default execution order is P01 through P12. A blocked live integration does not prohibit independent schema/UI/test work, but dependent live acceptance stays blocked. Never mark a phase complete while its mandatory acceptance remains unverified.
 
@@ -107,7 +107,7 @@ Default execution order is P01 through P12. A blocked live integration does not 
 | Aggregated telemetry, quality/usage and retention settings | 11 |
 | Backup manifest, export/recovery and full deletion acceptance | 12 |
 
-Security, evidence, lifecycle logs and safe deletion are implemented with their owning feature; Phases 11–12 consolidate and audit them.
+Security, evidence, lifecycle logs and safe deletion are implemented with their owning feature; Phases 11â€“12 consolidate and audit them.
 
 ## Feature/UI Coverage and Scope Boundaries
 
@@ -134,30 +134,24 @@ Gmail/Calendar/Drive/Notion/Slack and named social/community providers remain la
 
 ## Task Execution and Verification Protocol
 
-1. Read this master, the phase plan, current code and `EXECUTION.md`. Reconcile drift before editing; preserve user changes and the approved behavior.
-2. Mark exactly one active task; record start state and acceptance cases. Native execution is the selected default.
-3. Write the task's failing behavioral test, observe the expected failure, implement the bounded change, then run focused checks.
-4. Each phase task supplies files, public interfaces, a concrete test, implementation rules and acceptance scenarios. Code examples are planned tests/contracts, not evidence of existing implementation.
-5. For every named test fixture in a task, create it in that task's test package/conftest and implement the explicitly described behavior. Production API never gains test-only routes.
-6. P01 adds optional test targets to the existing runners: `./scripts/dev.ps1 test -PytestTarget tests/...py` or `-E2eTarget tests/e2e/...spec.ts`; Linux parity via `make test PYTEST_TARGET=...` / `E2E_TARGET=...`. Without a target, run the complete suite. Targeted unit tests need no containers; targeted API/browser cases use disposable Compose and the required auth setup.
-7. API fixtures use unique per-test resources and owner credentials from the disposable test environment. Owner race runs once first on an empty DB. Reset data before the browser bootstrap only after verifying the ephemeral project/database; preserve Alembic revision. Never truncate or down-volumes on an owner deployment.
-8. Unit model tests inject deterministic transports; integration fixtures may substitute models only within test configuration. Record live-provider checks separately. Never claim functional provider support from a stub.
-9. At task completion record exact commands/results and mark the task checkbox; continue directly to the next ready task without another scope approval.
-10. At phase completion run sequential common gates: `./scripts/dev.ps1 lint`, `typecheck`, `test`, `build` (or Make equivalents), then independent final code review under the execution skill. Fix findings and rerun affected checks.
-11. Update `docs/IMPLEMENTATION_STATUS.md`, the phase plan, architecture decisions when material and `EXECUTION.md`. Advance to the next ready phase without repeating brainstorming for the approved scope.
-12. If credentials/hardware/provider compatibility block a required check, record exact missing evidence and the next independent task. Do not invent values or label that gate complete. Material architecture changes and destructive owner operations still require the owner's decision.
-13. Continuous execution means continuing within an active run or resuming from this ledger. These Markdown files do not create a scheduler/background process.
-
-Common checks are phase acceptance, not a demand to rerun every expensive suite after each trivial edit. Preserve focused evidence, broaden once after final phase changes, and repeat only for relevant new changes/failures.
-
+1. Read this master, the phase plan, current code and `EXECUTION.md`. Reconcile drift before editing and preserve user changes.
+2. The implementation stage covers Phases 1-12. Implement production code and run builds only. Do not create, modify or run test files, lint or typecheck; test examples and paths define deferred acceptance criteria.
+3. Keep one task active. Record its ID, scope, code changes, exact build command/result, review findings, unresolved external gates and next task in `EXECUTION.md`.
+4. Each task implements its production behavior and builds the affected deliverable. At phase completion, run `./scripts/dev.ps1 build` (or `make build`) and fix build failures before advancing. Do not use a test result to mark any task or phase complete during implementation.
+5. Preserve all behavioral test examples, failure cases, fixtures, and live integration requirements in the phase plans as the acceptance specification for the later test stage. Do not add production test-only routes or change security boundaries to accommodate future tests.
+6. Continue through every ready task in P01-P12. A blocked live integration does not stop independent code work; record missing external evidence and do not mark it verified.
+7. After all Phase 1-12 production code is complete and all phase builds succeed, begin a separate test stage. First add/update the planned test files and fixtures, then run focused tests, integration/E2E suites, lint/typecheck, and the complete suite in the order defined by the relevant plans. Run destructive/reset/volume operations only against a verified disposable project/database.
+8. At the end of the test stage, run the final build again, complete independent whole-branch review, fix findings and rerun the affected tests/builds, then update `docs/IMPLEMENTATION_STATUS.md`, the phase plans, architecture decisions when material, and `EXECUTION.md`.
+9. Record exact commands and results; never invent evidence. Keep live-provider, target-hardware, restore and mini-host capacity gates separate from local tests/builds. Material architecture decisions and destructive owner operations require owner direction.
+10. Continuous execution means continuing within an active run or resuming from this ledger. Markdown files do not create a scheduler/background process.
 ## Delivery Files and Current Checkpoint
 
 - This master is the execution index.
-- Twelve phase plans provide **49 task-level checklists**, test examples and public contracts.
+- Twelve phase plans provide **49 task-level checklists**, production-code/build steps, and deferred test acceptance criteria.
 - `EXECUTION.md` persists active/next task, gate status, evidence and handoff notes.
 - `docs/IMPLEMENTATION_STATUS.md` distinguishes plan availability from implementation completion.
-- Phase 0 remains complete. Phase 1–12 implementation is not started by writing these plans.
-- Next implementation task: **P01-T1**, after loading `superpowers:executing-plans`. Existing owner authorization covers continuing ready tasks/phase scope; no new approval loop is added.
+- Phase 0 remains complete. Phase 1 production implementation is done; final review and acceptance handoff are current, with behavioral acceptance deferred to the separate test stage. Phases 2-12 are not started.
+- Next implementation task: **P02-T1** after Phase 1 final review/handoff, using `superpowers:subagent-driven-development`. Existing owner authorization covers continuing ready tasks/phase scope; no new approval loop is added.
 
 ## External Integration Evidence and Release Gates
 

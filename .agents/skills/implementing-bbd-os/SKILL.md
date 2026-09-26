@@ -14,9 +14,9 @@ Paths below are relative to the repository root unless linked. Locate the checko
 1. Read `AGENTS.md` and run `git status --short`. Preserve existing edits.
 2. Read `docs/IMPLEMENTATION_STATUS.md`, `docs/ARCHITECTURE_DECISIONS.md`, and `docs/superpowers/plans/EXECUTION.md`.
 3. Read the [master plan](../../../docs/superpowers/plans/2026-09-25-bbd-os-master-plan.md), then use [plan-map.md](plan-map.md) to select the phase and specification sections. Read the selected plan completely, including its entry gate, interfaces, fixtures and failure cases; inspect current code before editing.
-4. Resolve requirements against the canonical [specification](../../../specs/personal-intelligence-os-spec-v2.md), especially revisions 156–164. Later explicit clarifications govern earlier examples. Report unresolved material contradictions rather than silently changing architecture.
+4. Resolve requirements against the canonical [specification](../../../specs/personal-intelligence-os-spec-v2.md), especially revisions 156â€“164. Later explicit clarifications govern earlier examples. Report unresolved material contradictions rather than silently changing architecture.
 
-Preparation/review requests produce readiness findings only. When implementation is requested, use **superpowers:executing-plans** as required by the plans, with native execution and the existing approval scope. This skill does not start background execution.
+When implementation is requested, use **superpowers:subagent-driven-development** with the approved scope. The owner requires a code/build stage across Phases 1-12 followed by a separate test stage after all production code is complete. This skill does not start background execution.
 
 ## Quick reference
 
@@ -30,18 +30,10 @@ Preparation/review requests produce readiness findings only. When implementation
 
 ## Implementation handoff
 
-Record task ID, prerequisite evidence, affected contracts/files, failing behavioral check, passing commands/results, unresolved gates, and next ready task in `EXECUTION.md`. Keep one task active. Check plan boxes only after their required verification; update implementation status at phase boundaries. Follow the master's test/review protocol and continue authorized ready work without repeated scope approval.
+Record task ID, prerequisite evidence, affected contracts/files, build commands/results, review findings, unresolved gates, and next task in `EXECUTION.md`. Keep one task active. During the Phase 1–12 implementation stage, implement production code and run builds only: do not create, modify or run tests, lint, or typecheck. Start the test stage after all phase code is complete. Follow the master plan and continue authorized ready work without repeated scope approval.
 
-On Windows, phase gates run sequentially:
+During implementation, run `./scripts/dev.ps1 build` on Windows or `make build` on Linux/macOS. Do not create, modify or run tests, lint or typecheck until all Phase 1-12 production code is complete; then follow the deferred test stage in the master plan.
 
-```powershell
-./scripts/dev.ps1 lint
-./scripts/dev.ps1 typecheck
-./scripts/dev.ps1 test
-./scripts/dev.ps1 build
-```
-
-Use Make equivalents on Linux/macOS. Inspect runner support first: P01-T1 introduces targeted test flags; its initial failing check uses the existing full disposable test runner. Test resets/volume removal belong only to verified disposable projects.
 
 ## Common mistakes
 
@@ -49,4 +41,5 @@ Use Make equivalents on Linux/macOS. Inspect runner support first: P01-T1 introd
 - Freezing the next task in this skill: always reread the ledger and reconcile with current code.
 - Equating mocks or larger-host checks with acceptance: keep live-provider, graph, browser, n8n, target-hardware and restore gates explicit; continue independent work.
 - Rebuilding completed Phase 0 or re-planning approved scope: use current evidence and phase dependencies.
-- Treating a checklist as Git/deployment authorization: no automatic commit, push, branch change or deployment.
+- Respect the current owner authorization: commit completed phases and merge Phase 1 into main after implementation and review; do not push or deploy.
+

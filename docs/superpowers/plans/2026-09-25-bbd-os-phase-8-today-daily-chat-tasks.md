@@ -1,6 +1,6 @@
 # BBD-OS Phase 8 — Today, Daily Chat Drawer, Tasks and Goals Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax. The owner authorized continuous progress through ready tasks; use the [master plan](2026-09-25-bbd-os-master-plan.md) and [execution ledger](EXECUTION.md), without repeated phase-scope approval.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax. The owner authorized continuous progress through ready tasks; use the [master plan](2026-09-25-bbd-os-master-plan.md) and [execution ledger](EXECUTION.md), without repeated phase-scope approval.
 
 **Goal:** Deliver the daily dashboard with an on-demand contextual chat drawer, actionable tasks/goals, ranked news and saved briefs.
 
@@ -13,6 +13,8 @@
 **Entry gate:** Phases 1–7 public knowledge, chat, events and tools; source collection already runs in Phase 2.
 
 **Implementation status:** Not started. This file is an implementation plan, not evidence of working code.
+
+Test execution is deferred until all Phase 1-12 production code is complete. Acceptance examples and test file paths below are specifications; do not create, modify or run test files during this implementation stage.
 
 ## Global Constraints
 
@@ -43,7 +45,7 @@ Module ownership: **dashboard, tasks, goals, news, notifications**. Backend doma
 
 **Interfaces — consumes/produces:** CRUD /tasks,/goals,/topics; goals own milestones and linked task/entity references. Task statuses inbox,todo,in_progress,blocked,done,cancelled. POST /goals/{id}/accept-plan atomically materializes an owner-accepted proposal once.
 
-- [ ] **P08-T1.1 — Write the failing behavioral test.** Put this case in `tests/integration/test_tasks_goals.py` and implement any named test fixture in the same test package's `conftest.py` (browser fixtures in `tests/e2e/fixtures.ts`) as described below. Fixtures may control test transports/services; they must never introduce production test endpoints.
+- [ ] **P08-T1.1 - Review the behavior contract.** The acceptance example below is for the final test stage; do not create or modify test files during implementation.
 
 ```python
 async def test_accepting_same_plan_does_not_duplicate_tasks(owner_client, goal_proposal):
@@ -54,7 +56,7 @@ async def test_accepting_same_plan_does_not_duplicate_tasks(owner_client, goal_p
     assert first.json()["task_ids"] == again.json()["task_ids"]
 ```
 
-- [ ] **P08-T1.2 — Observe the expected failure.** Run `./scripts/dev.ps1 test -PytestTarget tests/integration/test_tasks_goals.py` after P01 establishes the targeted runner. For P01-T1 before targeted-runner support is added, use the existing disposable `./scripts/dev.ps1 test`; subsequent tasks use the targeted command above. Expect the specific missing behavior/import/route assertion; configuration or unrelated fixture failure is not the red test.
+- [ ] **P08-T1.2 - Implement the production behavior.** Follow task interfaces; defer all test work until Phases 1-12 code is complete.
 
 - [ ] **P08-T1.3 — Implement the minimal production behavior.** Create goal_proposal via a deterministic Planning Agent fixture with public proposal schema. Implement Inbox/Today/Upcoming/Blocked/Completed and All, due dates with date-only versus instant semantics, completion times and optimistic revisions. Goals contain desired outcome/deadline/progress/milestones; progress from linked completed milestones unless owner explicitly selects manual tracking. Register tools with existing registry; never create proposed tasks before acceptance. Extend global search with tasks/goals and fictional seed.
 
@@ -64,9 +66,9 @@ Concrete contract/configuration shape (illustrative IDs/timestamps are test data
 {"title":"Prepare release","status":"todo","due_date":"2026-09-25","due_at":null,"goal_id":"uuid"}
 ```
 
-- [ ] **P08-T1.4 — Verify the behavior and listed failure cases.** Timezone/DST, completion/reopen, stale update, deleted linked entity, accepted plan replay and no task creation from an unaccepted proposal.
+- [ ] **P08-T1.4 - Build the affected deliverable.** Run `./scripts/dev.ps1 build` (or `make build`); fix build failures before proceeding. Deferred acceptance criteria: Timezone/DST, completion/reopen, stale update, deleted linked entity, accepted plan replay and no task creation from an unaccepted proposal.
 
-- [ ] **P08-T1.5 — Record evidence and continue.** Record changed files, actual commands/results and any missing external evidence in `EXECUTION.md`; check this task only after its required behavior passes. Continue to P08-T2. Do not create a commit automatically.
+- [ ] **P08-T1.5 - Record build evidence and continue.** Record changed files, exact build command/result, review findings and unresolved gates in `EXECUTION.md`; then continue. Do not run tests during implementation.
 
 ## Task P08-T2: Story clustering, trends and explainable relevance
 
@@ -74,7 +76,7 @@ Concrete contract/configuration shape (illustrative IDs/timestamps are test data
 
 **Interfaces — consumes/produces:** GET /stories,/trends; score_relevance(signals) -> {score,why_relevant}; cluster candidates preserve article IDs/evidence. Signals normalized [0,1]: topic,entity,goal,project,recency,importance,novelty. Default equal weights; editable owner interests.
 
-- [ ] **P08-T2.1 — Write the failing behavioral test.** Put this case in `tests/test_news_ranking.py` and implement any named test fixture in the same test package's `conftest.py` (browser fixtures in `tests/e2e/fixtures.ts`) as described below. Fixtures may control test transports/services; they must never introduce production test endpoints.
+- [ ] **P08-T2.1 - Review the behavior contract.** The acceptance example below is for the final test stage; do not create or modify test files during implementation.
 
 ```python
 def test_relevance_explains_positive_signals():
@@ -84,7 +86,7 @@ def test_relevance_explains_positive_signals():
     assert set(result["why_relevant"]) == {"topic","goal"}
 ```
 
-- [ ] **P08-T2.2 — Observe the expected failure.** Run `./scripts/dev.ps1 test -PytestTarget tests/test_news_ranking.py` after P01 establishes the targeted runner. For P01-T1 before targeted-runner support is added, use the existing disposable `./scripts/dev.ps1 test`; subsequent tasks use the targeted command above. Expect the specific missing behavior/import/route assertion; configuration or unrelated fixture failure is not the red test.
+- [ ] **P08-T2.2 - Implement the production behavior.** Follow task interfaces; defer all test work until Phases 1-12 code is complete.
 
 - [ ] **P08-T2.3 — Implement the minimal production behavior.** Use deterministic canonical URL/hash groups first, then bounded embedding/entity/time similarity when embeddings exist. Candidate window default 72h; uncertain matches remain separate. Preserve per-source observations, choose representative evidence, and label auto-generated summaries. Trends compare current 24h activity with preceding 7-day per-day baseline and require at least two distinct sources plus three items before a rising alert; low baseline is flagged rather than infinite growth. Scores derive from recorded signals, no LLM-invented numeric confidence. Keep lexical-only ranking when AI unavailable.
 
@@ -94,9 +96,9 @@ Concrete contract/configuration shape (illustrative IDs/timestamps are test data
 {"story_id":"uuid","trend":"rising","source_count":3,"evidence_ids":["uuid"],"why_relevant":["topic","goal"]}
 ```
 
-- [ ] **P08-T2.4 — Verify the behavior and listed failure cases.** Duplicate articles from one source, unrelated same-name entities, low baseline, stale stories, evidence removal and no-model behavior. Model-dependent summaries require citations and existing egress grants.
+- [ ] **P08-T2.4 - Build the affected deliverable.** Run `./scripts/dev.ps1 build` (or `make build`); fix build failures before proceeding. Deferred acceptance criteria: Duplicate articles from one source, unrelated same-name entities, low baseline, stale stories, evidence removal and no-model behavior. Model-dependent summaries require citations and existing egress grants.
 
-- [ ] **P08-T2.5 — Record evidence and continue.** Record changed files, actual commands/results and any missing external evidence in `EXECUTION.md`; check this task only after its required behavior passes. Continue to P08-T3. Do not create a commit automatically.
+- [ ] **P08-T2.5 - Record build evidence and continue.** Record changed files, exact build command/result, review findings and unresolved gates in `EXECUTION.md`; then continue. Do not run tests during implementation.
 
 ## Task P08-T3: Daily context, revisioned brief and notifications
 
@@ -104,7 +106,7 @@ Concrete contract/configuration shape (illustrative IDs/timestamps are test data
 
 **Interfaces — consumes/produces:** GET /context/current; GET /context/daily?date=YYYY-MM-DD&timezone=IANA; GET /briefs?date=&timezone=; POST /briefs/generate; GET/PATCH /notifications. DailyContext returns selected_date,timezone,generated_at,brief,widgets; briefs revisioned by date/timezone/input fingerprint.
 
-- [ ] **P08-T3.1 — Write the failing behavioral test.** Put this case in `tests/integration/test_daily_context.py` and implement any named test fixture in the same test package's `conftest.py` (browser fixtures in `tests/e2e/fixtures.ts`) as described below. Fixtures may control test transports/services; they must never introduce production test endpoints.
+- [ ] **P08-T3.1 - Review the behavior contract.** The acceptance example below is for the final test stage; do not create or modify test files during implementation.
 
 ```python
 async def test_regeneration_preserves_saved_brief(daily_brief_fixture):
@@ -115,7 +117,7 @@ async def test_regeneration_preserves_saved_brief(daily_brief_fixture):
     assert await daily_brief_fixture.read_revision(first["id"]) == first
 ```
 
-- [ ] **P08-T3.2 — Observe the expected failure.** Run `./scripts/dev.ps1 test -PytestTarget tests/integration/test_daily_context.py` after P01 establishes the targeted runner. For P01-T1 before targeted-runner support is added, use the existing disposable `./scripts/dev.ps1 test`; subsequent tasks use the targeted command above. Expect the specific missing behavior/import/route assertion; configuration or unrelated fixture failure is not the red test.
+- [ ] **P08-T3.2 - Implement the production behavior.** Follow task interfaces; defer all test work until Phases 1-12 code is complete.
 
 - [ ] **P08-T3.3 — Implement the minimal production behavior.** Define fixture against real repositories and deterministic model client. Default brief schedule 07:00 Asia/Ho_Chi_Minh, editable; ARQ owns this internal schedule. During startup catch up once for current day if missing, not every missed historical day. Build context from public module providers, rank, generate cited brief and retain each revision. Historical brief stays saved; widgets use current records filtered to the selected date and show updated_at. Past-day open tasks are not claimed as historical task-state snapshots. Future dates show planned commitments without fabricated generated news. Notifications have dedupe keys and read state; emit only meaningful actionable changes.
 
@@ -125,9 +127,9 @@ Concrete contract/configuration shape (illustrative IDs/timestamps are test data
 {"selected_date":"2026-09-25","timezone":"Asia/Ho_Chi_Minh","brief_revision":1,"widgets_updated_at":"2026-09-25T09:00:00Z","history_mode":"saved_brief_current_records"}
 ```
 
-- [ ] **P08-T3.4 — Verify the behavior and listed failure cases.** Concurrent generation, model outage preserving last brief, notification dedupe, date-only tasks, configured timezone changes, missed schedule and source data deleted after a brief (citations invalidated/brief marked stale).
+- [ ] **P08-T3.4 - Build the affected deliverable.** Run `./scripts/dev.ps1 build` (or `make build`); fix build failures before proceeding. Deferred acceptance criteria: Concurrent generation, model outage preserving last brief, notification dedupe, date-only tasks, configured timezone changes, missed schedule and source data deleted after a brief (citations invalidated/brief marked stale).
 
-- [ ] **P08-T3.5 — Record evidence and continue.** Record changed files, actual commands/results and any missing external evidence in `EXECUTION.md`; check this task only after its required behavior passes. Continue to P08-T4. Do not create a commit automatically.
+- [ ] **P08-T3.5 - Record build evidence and continue.** Record changed files, exact build command/result, review findings and unresolved gates in `EXECUTION.md`; then continue. Do not run tests during implementation.
 
 ## Task P08-T4: Today dashboard and contextual drawer UX
 
@@ -135,7 +137,7 @@ Concrete contract/configuration shape (illustrative IDs/timestamps are test data
 
 **Interfaces — consumes/produces:** GET /context/daily drives widgets. ChatContext {kind:'day',date,timezone}; a chosen day conversation stores that immutable context. Drawer inherits the Phase 6 component; no permanent chat column. Widgets register id,module,title,priority,provider,refresh_policy,permissions.
 
-- [ ] **P08-T4.1 — Write the failing behavioral test.** Put this case in `tests/e2e/today-drawer.spec.ts` and implement any named test fixture in the same test package's `conftest.py` (browser fixtures in `tests/e2e/fixtures.ts`) as described below. Fixtures may control test transports/services; they must never introduce production test endpoints.
+- [ ] **P08-T4.1 - Review the behavior contract.** The acceptance example below is for the final test stage; do not create or modify test files during implementation.
 
 ```typescript
 import { test, expect } from './fixtures';
@@ -150,7 +152,7 @@ test('day drawer keeps context and frees width when closed', async ({ page }) =>
 });
 ```
 
-- [ ] **P08-T4.2 — Observe the expected failure.** Run `./scripts/dev.ps1 test -E2eTarget tests/e2e/today-drawer.spec.ts` after P01 establishes the targeted runner. For P01-T1 before targeted-runner support is added, use the existing disposable `./scripts/dev.ps1 test`; subsequent tasks use the targeted command above. Expect the specific missing behavior/import/route assertion; configuration or unrelated fixture failure is not the red test.
+- [ ] **P08-T4.2 - Implement the production behavior.** Follow task interfaces; defer all test work until Phases 1-12 code is complete.
 
 - [ ] **P08-T4.3 — Implement the minimal production behavior.** Today becomes authenticated root with previous/next/today/date picker, Daily Brief, Upcoming, Tasks/Goals, important events, stories/trends, knowledge changes and recent activity. No calendar connector means only available manual/imported events, with explicit source status. Desktop chat is right overlay; mobile full-screen Sheet; default closed. History, citations and approvals stay inside the drawer. Selecting another day switches the drawer's selected conversation to that day without modifying an old conversation or cancelling its background run; in-flight output remains associated with its original response. Opening full Ask preserves conversation ID and date badge. Closing restores focus/draft and the main viewport remains full-width.
 
@@ -160,22 +162,22 @@ Concrete contract/configuration shape (illustrative IDs/timestamps are test data
 {"conversationId":"uuid","context":{"kind":"day","date":"2026-09-25","timezone":"Asia/Ho_Chi_Minh"}}
 ```
 
-- [ ] **P08-T4.4 — Verify the behavior and listed failure cases.** Today/mobile/keyboard, day switching while streaming, cross-midnight, saved brief versus updated widgets labels, accepted tasks from chat, no duplicate chat history, and chat closed consuming zero layout column. Common gate; next P09-T1.
+- [ ] **P08-T4.4 - Build the affected deliverable.** Run `./scripts/dev.ps1 build` (or `make build`); fix build failures before proceeding. Deferred acceptance criteria: Today/mobile/keyboard, day switching while streaming, cross-midnight, saved brief versus updated widgets labels, accepted tasks from chat, no duplicate chat history, and chat closed consuming zero layout column. Common gate; next P09-T1.
 
-- [ ] **P08-T4.5 — Record evidence and continue.** Record changed files, actual commands/results and any missing external evidence in `EXECUTION.md`; check this task only after its required behavior passes. Continue to the phase acceptance gate, then P09-T1. Do not create a commit automatically.
+- [ ] **P08-T4.5 - Record build evidence and continue.** Record changed files, exact build command/result, review findings and unresolved gates in `EXECUTION.md`; then continue. Do not run tests during implementation.
 
 ## Phase Acceptance and Handoff
 
-- [ ] Run final sequential `./scripts/dev.ps1 lint`, `typecheck`, `test`, `build` (Make equivalents on Linux). Use targeted checks during tasks and the complete gate once after final phase changes.
+- [ ] Build the phase deliverables with `./scripts/dev.ps1 build` (or `make build`); no tests, lint or typecheck run during the code stage.
 - [ ] Verify new code is included in Docker/packaging, new tables in Alembic metadata, public APIs in OpenAPI and enabled UI/routes in module descriptors.
 - [ ] Complete independent final review under the execution skill, fix actionable findings, and repeat affected checks.
-- [ ] Record actual test counts, live integration evidence and capacity limitations; fixtures do not validate live providers or mini-host performance.
+- [ ] After all Phase 1-12 production code is complete, run the deferred test stage from the master plan; record results, live integration evidence and capacity limitations.
 - [ ] Update `docs/IMPLEMENTATION_STATUS.md`, this checklist and `EXECUTION.md`. Continue automatically to the next ready approved task; stop only the work that depends on an unresolved external gate or a material unapproved change.
 
 ## Plan Self-Review Checklist
 
 - [x] Goal and spec sections mapped to named tasks and public interfaces.
 - [x] Five review-focus risks assigned concrete failure checks in the owning tasks.
-- [x] Exact file targets, behavioral test examples, expected failure, implementation rules and passing criteria included.
+- [x] Exact file targets, acceptance examples, deferred test criteria, implementation rules and build criteria included.
 - [x] Module ownership, auth/privacy, safe deletion and retry/resume boundaries preserved.
 - [x] Implementation and live/hardware verification are not claimed complete by this plan.
