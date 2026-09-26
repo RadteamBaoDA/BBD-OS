@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timedelta
 from uuid import UUID, uuid4
 
 from sqlalchemy import CheckConstraint, DateTime, ForeignKey, Index, Integer, String, Text, UniqueConstraint, func
@@ -7,6 +7,9 @@ from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.types import Uuid
 
 from core.database import Base
+
+# 15 minutes exceeds five 120s attempts plus their maximum 30s backoff; expiry releases abandoned runs.
+COLLECTION_LEASE = timedelta(minutes=15)
 
 
 class IngestionBatch(Base):

@@ -1,4 +1,5 @@
 import asyncio
+import logging
 import random
 from datetime import UTC, datetime, timedelta
 from typing import Any, ClassVar, cast
@@ -9,6 +10,7 @@ from arq.connections import RedisSettings
 from arq.cron import cron
 from sqlalchemy import delete, func, select
 from sqlalchemy.engine import CursorResult
+from sqlalchemy.exc import OperationalError
 from sqlalchemy.ext.asyncio import (
     AsyncEngine,
     AsyncSession,
@@ -21,6 +23,7 @@ from core.config import Settings
 from core.system.health import ARQ_WORKER_HEALTH_KEY
 from modules.ingestion.dispatcher import dispatch_pending_work, mark_event_delivered
 from modules.ingestion.models import (
+    COLLECTION_LEASE,
     EventOutbox,
     IngestionRun,
     IngestionStage,
@@ -28,6 +31,39 @@ from modules.ingestion.models import (
     SourceObservation,
 )
 from modules.sources.models import Source
+
+logger = logging.getLogger("bbd.worker")
+STAGE_TIMEOUT_SECONDS = 120
+MAX_STAGE_ATTEMPTS = 5
+
+
+async def _fail_ingestion_stage(
+    factory: async_sessionmaker[AsyncSession],
+    event_id: UUID,
+    run_id: UUID,
+    stage_id: UUID,
+    error_code: str,
+) -> None:
+    async with factory() as session:
+        stage = await session.scalar(
+            select(IngestionStage).where(IngestionStage.id == stage_id).with_for_update()
+        )
+        run = await session.scalar(select(IngestionRun).where(IngestionRun.id == run_id).with_for_update())
+        event = await session.get(EventOutbox, event_id, with_for_update=True)
+        if stage is None or run is None or event is None:
+            return
+        stage.status = "failed"
+        stage.error_code = error_code
+        stage.lease_expires_at = None
+        run.status = "failed"
+        run.error_code = error_code
+        event.status = "failed"
+        state = await session.get(SourceIngestionState, run.source_id, with_for_update=True)
+        if state is not None and state.lease_run_id == run.id:
+            state.lease_run_id = None
+            state.lease_expires_at = None
+        logger.warning("Ingestion stage failed run_id=%s stage_id=%s error_code=%s", run.id, stage.id, error_code)
+        await session.commit()
 
 
 async def startup(ctx: dict[str, object]) -> None:
@@ -71,6 +107,7 @@ async def process_ingestion_event(ctx: dict[str, object], event_id: str) -> None
             if state is not None and state.lease_run_id == run.id:
                 state.lease_run_id = None
                 state.lease_expires_at = None
+            logger.warning("Ingestion stage rejected run_id=%s stage_id=%s source unavailable", run.id, stage.id)
             await session.commit()
             return
         now = datetime.now(UTC)
@@ -79,16 +116,36 @@ async def process_ingestion_event(ctx: dict[str, object], event_id: str) -> None
             return
         if stage.status == "running" and stage.lease_expires_at and stage.lease_expires_at > now:
             return
+        state = await session.get(SourceIngestionState, run.source_id, with_for_update=True)
+        if (
+            state is None
+            or state.lease_run_id != run.id
+            or state.lease_expires_at is None
+            or state.lease_expires_at <= now
+        ):
+            stage.status = "failed"
+            stage.error_code = "lease_expired"
+            run.status = "failed"
+            run.error_code = "lease_expired"
+            event.status = "failed"
+            if state is not None and state.lease_run_id == run.id:
+                state.lease_run_id = None
+                state.lease_expires_at = None
+            logger.warning("Ingestion stage rejected run_id=%s stage_id=%s lease expired", run.id, stage.id)
+            await session.commit()
+            return
         stage.status = "running"
         stage.attempts += 1
-        stage.lease_expires_at = now + timedelta(seconds=120)
+        stage.lease_expires_at = now + timedelta(seconds=STAGE_TIMEOUT_SECONDS)
+        state.lease_expires_at = now + COLLECTION_LEASE
         stage.error_code = None
         run.status = "running"
+        logger.info("Ingestion stage started run_id=%s stage_id=%s attempt=%s", run.id, stage.id, stage.attempts)
         await session.commit()
 
     try:
         # Stage work is deliberately bounded; later ingestion tasks add extraction consumers.
-        async with asyncio.timeout(120):
+        async with asyncio.timeout(STAGE_TIMEOUT_SECONDS):
             async with factory() as session:
                 observed = await session.scalar(
                     select(func.count()).select_from(SourceObservation).where(
@@ -99,7 +156,7 @@ async def process_ingestion_event(ctx: dict[str, object], event_id: str) -> None
                 )
                 if not observed:
                     raise RuntimeError("Accepted ingestion batch has no observations")
-    except (TimeoutError, OSError, RuntimeError) as exc:
+    except (TimeoutError, OSError, OperationalError) as exc:
         async with factory() as session:
             stage = await session.scalar(
                 select(IngestionStage).where(IngestionStage.id == stage_id).with_for_update()
@@ -111,17 +168,9 @@ async def process_ingestion_event(ctx: dict[str, object], event_id: str) -> None
             if stage is None or run is None or event is None:
                 return
             attempt = stage.attempts
-            if attempt >= 5:
-                stage.status = "failed"
-                stage.error_code = "stage_failed"
-                run.status = "failed"
-                run.error_code = "stage_failed"
-                event.status = "failed"
-                state = await session.get(SourceIngestionState, run.source_id, with_for_update=True)
-                if state is not None and state.lease_run_id == run.id:
-                    state.lease_run_id = None
-                    state.lease_expires_at = None
-                await session.commit()
+            if attempt >= MAX_STAGE_ATTEMPTS:
+                await session.rollback()
+                await _fail_ingestion_stage(factory, identifier, run_id, stage_id, "retry_exhausted")
                 return
             delay = random.uniform(0.5, min(60.0, 2.0 ** attempt))
             stage.status = "retrying"
@@ -131,8 +180,20 @@ async def process_ingestion_event(ctx: dict[str, object], event_id: str) -> None
             run.status = "queued"
             event.status = "pending"
             event.next_attempt_at = stage.next_attempt_at
+            state = await session.get(SourceIngestionState, run.source_id, with_for_update=True)
+            if state is not None and state.lease_run_id == run.id:
+                state.lease_expires_at = datetime.now(UTC) + COLLECTION_LEASE
+            logger.warning(
+                "Ingestion stage retry scheduled run_id=%s stage_id=%s attempt=%s",
+                run.id,
+                stage.id,
+                attempt,
+            )
             await session.commit()
         raise Retry(defer=delay) from exc
+    except Exception:
+        await _fail_ingestion_stage(factory, identifier, run_id, stage_id, "stage_failed")
+        return
 
     async with factory() as session:
         stage = await session.scalar(
@@ -150,6 +211,7 @@ async def process_ingestion_event(ctx: dict[str, object], event_id: str) -> None
         if state is not None and state.lease_run_id == run.id:
             state.lease_run_id = None
             state.lease_expires_at = None
+        logger.info("Ingestion stage completed run_id=%s stage_id=%s", run.id, stage.id)
         await session.commit()
         await mark_event_delivered(session, identifier)
 

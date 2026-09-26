@@ -1,7 +1,7 @@
 import hashlib
 import json
 import secrets
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
 from uuid import UUID, uuid4
 
 from fastapi import HTTPException
@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.events import DomainEvent
 from modules.ingestion.models import (
+    COLLECTION_LEASE,
     CollectorCredential,
     EventOutbox,
     IngestionBatch,
@@ -20,9 +21,6 @@ from modules.ingestion.models import (
 )
 from modules.ingestion.schemas import ReceiveBatch
 from modules.sources.models import Source
-
-COLLECTION_LEASE = timedelta(minutes=5)
-
 
 def _digest(value: object) -> str:
     encoded = json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
