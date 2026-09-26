@@ -10,11 +10,11 @@ import httpx
 from redis.asyncio import Redis
 from redis.exceptions import RedisError
 
+from core.model_gateway.cache import capability_key
 from core.model_gateway.policy import may_send
 from core.model_gateway.schemas import ModelMapping, RequestPolicy
 
 _LEASE_PREFIX = "bbd:model-gateway:slot:"
-_CAPABILITY_PREFIX = "bbd:model-gateway:capability:"
 _RELEASE = "if redis.call('get', KEYS[1]) == ARGV[1] then return redis.call('del', KEYS[1]) else return 0 end"
 
 
@@ -88,7 +88,7 @@ class ModelGateway:
         if self.base_url is None or mapping is None:
             raise ModelGatewayError("Model gateway is not configured")
         if not probe:
-            key = f"{_CAPABILITY_PREFIX}{alias}:{mapping.model}:{mapping.version or 'unknown'}:{capability}"
+            key = capability_key(alias, mapping.model, mapping.version, capability)
             stored = await self.redis.get(key)
             try:
                 capability_result = json.loads(stored) if stored else {}
@@ -137,7 +137,7 @@ class ModelGateway:
         if not may_send(policy, alias, mapping, self.destination_id, bool(self.api_key), "streaming") or self.base_url is None or mapping is None:
             raise PrivacyPolicyDenied("Model request denied by privacy policy")
         if not probe:
-            stored = await self.redis.get(f"{_CAPABILITY_PREFIX}{alias}:{mapping.model}:{mapping.version or 'unknown'}:streaming")
+            stored = await self.redis.get(capability_key(alias, mapping.model, mapping.version, "streaming"))
             try:
                 capability_result = json.loads(stored) if stored else {}
             except (TypeError, json.JSONDecodeError):
@@ -147,6 +147,7 @@ class ModelGateway:
         endpoint = f"{self.base_url}/chat/completions" if self.base_url.endswith("/v1") else f"{self.base_url}/v1/chat/completions"
         async with self._slot():
             async with httpx.AsyncClient(timeout=httpx.Timeout(self.timeout_seconds)) as client:
+                emitted = False
                 for attempt in range(2):
                     try:
                         headers = {"Authorization": f"Bearer {self.api_key}"} if self.api_key else {}
@@ -160,10 +161,11 @@ class ModelGateway:
                                 raise ModelGatewayError(f"Model gateway returned HTTP {response.status_code}")
                             async for line in response.aiter_lines():
                                 if line:
+                                    emitted = True
                                     yield line
                             return
                     except (httpx.TimeoutException, httpx.NetworkError) as exc:
-                        if attempt == 1:
+                        if attempt == 1 or emitted:
                             raise ModelGatewayError("Model gateway stream failed") from exc
 
     async def embed(self, alias: str, mapping: ModelMapping | None, policy: RequestPolicy, inputs: list[str], probe: bool = False) -> Any:

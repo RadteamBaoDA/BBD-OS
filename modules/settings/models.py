@@ -3,12 +3,12 @@ from datetime import UTC, datetime, timedelta
 from redis.asyncio import Redis
 
 from core.config import Settings
+from core.model_gateway.cache import capability_alias_pattern, capability_key, capability_model_pattern
 from core.model_gateway.schemas import CapabilityResult, ModelMapping, PrivacySettings
 
 ALIASES = ("reasoning-large", "reasoning-small", "fast", "embedding", "reranker", "vision", "local-private")
 _MAPPINGS = "bbd:settings:model-mappings"
 _PRIVACY = "bbd:settings:privacy"
-_CAPABILITIES = "bbd:model-gateway:capability:"
 CAPABILITY_TTL_SECONDS = 86400
 
 
@@ -30,7 +30,7 @@ async def update_mappings(redis: Redis, settings: Settings, updates: dict[str, M
         if alias not in ALIASES:
             continue
         if current.get(alias) != mapping:
-            async for key in redis.scan_iter(match=f"{_CAPABILITIES}{alias}:*"):
+            async for key in redis.scan_iter(match=capability_alias_pattern(alias)):
                 pipe.delete(key)
         pipe.hset(_MAPPINGS, alias, mapping.model_dump_json())
     await pipe.execute()
@@ -52,10 +52,6 @@ async def save_privacy(redis: Redis, value: PrivacySettings) -> None:
     await redis.set(_PRIVACY, value.model_dump_json())
 
 
-def capability_key(alias: str, model: str, version: str | None, capability: str) -> str:
-    return f"{_CAPABILITIES}{alias}:{model}:{version or 'unknown'}:{capability}"
-
-
 async def save_capability(redis: Redis, result: CapabilityResult) -> None:
     await redis.set(
         capability_key(result.alias, result.model, result.version, result.capability),
@@ -67,7 +63,7 @@ async def save_capability(redis: Redis, result: CapabilityResult) -> None:
 async def list_capabilities(redis: Redis, mappings: dict[str, ModelMapping]) -> list[CapabilityResult]:
     output = []
     for alias, mapping in mappings.items():
-        async for key in redis.scan_iter(match=f"{_CAPABILITIES}{alias}:{mapping.model}:{mapping.version or 'unknown'}:*"):
+        async for key in redis.scan_iter(match=capability_model_pattern(alias, mapping.model, mapping.version)):
             value = await redis.get(key)
             if value:
                 try:

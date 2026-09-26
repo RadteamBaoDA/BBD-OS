@@ -26,9 +26,17 @@ def _capability_proved(capability: str, response: object) -> bool:
             for row in rows
         )
     if capability == "reranking":
-        return bool(response.get("results")) and isinstance(response.get("results"), list)
+        rows = response.get("results")
+        return bool(rows) and isinstance(rows, list) and all(
+            isinstance(row, dict)
+            and isinstance(row.get("index"), int)
+            and not isinstance(row.get("index"), bool)
+            and isinstance(row.get("relevance_score", row.get("score")), (int, float))
+            and not isinstance(row.get("relevance_score", row.get("score")), bool)
+            for row in rows
+        )
     if capability == "streaming":
-        return response.get("streamed") is True
+        return isinstance(response.get("streamed"), str) and bool(response["streamed"].strip())
     choices = response.get("choices")
     if not isinstance(choices, list) or not choices or not isinstance(choices[0], dict):
         return False
@@ -75,15 +83,26 @@ async def probe_model(
         elif body.capability == "reranking":
             response = await client.rerank(alias, mapping, policy, "synthetic probe", ["synthetic probe document"], probe=True)
         elif body.capability == "streaming":
-            streamed = False
+            streamed_content = ""
             total_chars = 0
             async for line in client.stream(alias, mapping, policy, probe_message, probe=True):
                 total_chars += len(line)
                 if line.startswith("data:"):
-                    streamed = True
+                    data = line.removeprefix("data:").strip()
+                    if data == "[DONE]":
+                        break
+                    try:
+                        chunk = json.loads(data)
+                        choices = chunk.get("choices", [])
+                        if isinstance(choices, list) and choices and isinstance(choices[0], dict):
+                            delta = choices[0].get("delta", {})
+                            if isinstance(delta, dict) and isinstance(delta.get("content"), str):
+                                streamed_content += delta["content"]
+                    except (TypeError, json.JSONDecodeError):
+                        pass
                 if total_chars >= 16384 or line.strip() == "data: [DONE]":
                     break
-            response = {"streamed": streamed}
+            response = {"streamed": streamed_content}
         elif body.capability == "structured":
             response = await client.structured(alias, mapping, policy, probe_message, {"name": "probe", "schema": {"type": "object"}}, probe=True)
         elif body.capability == "tools":
