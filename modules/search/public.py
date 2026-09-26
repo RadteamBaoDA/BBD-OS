@@ -134,10 +134,8 @@ async def search(session: AsyncSession, redis: Redis, settings: Settings, reques
             ):
                 raise ValueError("No permitted active embedding generation")
             response = await gateway(settings, redis).embed("embedding", mapping, policy, [request.query])
-            values, returned_model = embedding_values(
-                response, generation.response_model_id or generation.model_id, generation.dimensions,
-            )
-            if returned_model is not None and generation.response_model_id not in (None, returned_model):
+            values, returned_model = embedding_values(response, generation.dimensions)
+            if returned_model != generation.response_model_id:
                 raise ValueError("Embedding response identity changed")
             vector = await _vector_ids(session, request, generation, values)
             effective_mode = "hybrid"
