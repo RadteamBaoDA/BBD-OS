@@ -24,6 +24,10 @@ Use four-space Python indentation and two-space TypeScript indentation. Use `sna
 
 The specification requires ESLint and TypeScript checks for frontend code, and Ruff and mypy for Python. Keep changes focused and avoid unused scaffolding.
 
+## UI Design System
+
+For BBD-OS frontend design, implementation, or review, load `.agents/skills/bbd-os-ui-system/SKILL.md` and follow `docs/DESIGN_SYSTEM.md`. Use shadcn/ui components and semantic tokens, Recharts for financial charts, light/dark/system themes, and the two locale preferences `en-us` / `vi-vi` (normalized to `en-US` / `vi-VN` for formatting). Main navigation remains Dashboard / Chat / Settings. These explicit UI decisions govern older UI examples; they do not authorize unrelated backend changes or override the code/build-only stage.
+
 ## Testing Guidelines
 
 Use pytest for backend tests and Playwright for end-to-end flows; the frontend unit-test framework is not selected. For Phases 1-12, do not create, modify or run tests, lint, or typecheck during implementation; run builds only. Begin the deferred test stage after all phase production code is complete. Name Python tests `test_*.py` and Playwright tests `*.spec.ts`. Cover module contracts, ingestion, permissions, search, and citation flows. No numeric coverage threshold is specified. Report checks run and any unavailable validation.
@@ -39,7 +43,7 @@ Never commit secrets or personal data. Provide placeholder configuration in `.en
 <!-- gitnexus:start -->
 # GitNexus — Code Intelligence
 
-This project is indexed by GitNexus as **BBD-OS** (697 symbols, 1001 relationships, 14 execution flows). Use the GitNexus MCP tools to understand code, assess impact, and navigate safely.
+This project is indexed by GitNexus as **BBD-OS** (1207 symbols, 2440 relationships, 68 execution flows). Use the GitNexus MCP tools to understand code, assess impact, and navigate safely.
 
 > If any GitNexus tool warns the index is stale, run `npx gitnexus analyze` in terminal first.
 
@@ -137,4 +141,3 @@ To check whether embeddings exist, inspect `.gitnexus/meta.json` — the `stats.
 | Index, status, clean, wiki CLI commands | `.claude/skills/gitnexus/gitnexus-cli/SKILL.md` |
 
 <!-- gitnexus:end -->
-
