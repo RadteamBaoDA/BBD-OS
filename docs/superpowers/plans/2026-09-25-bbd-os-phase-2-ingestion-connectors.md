@@ -12,7 +12,7 @@
 
 **Entry gate:** Phase 1 sources/documents public contracts.
 
-**Implementation status:** P02-T1 is in progress in the code/build stage. No behavioral acceptance is claimed; tests remain deferred until all Phase 1-12 production code is complete.
+**Implementation status:** P02-T1 production code/build and independent review are complete. P02-T2 is active; behavioral acceptance remains deferred until all Phase 1-12 production code is complete.
 
 Test execution is deferred until all Phase 1-12 production code is complete. Acceptance examples and test file paths below are specifications; do not create, modify or run test files during this implementation stage.
 
@@ -45,7 +45,7 @@ Module ownership: **ingestion, connectors, news**. Backend domain models/service
 
 **Interfaces — consumes/produces:** POST /ingestion/batches -> 202 Receipt(batch_id,run_id,status); GET /ingestion/runs/{id}; POST /ingestion/runs/{id}/retry. Collector credentials are restricted to ingestion and allowed source IDs. ReceiveBatch contains source_id,batch_key,cursor_before,cursor_after,records; record identity is provider_id + version/hash. DomainEvent(id,type,version,occurred_at,producer,payload).
 
-- [ ] **P02-T1.1 - Review the behavior contract.** The acceptance example below is for the final test stage; do not create or modify test files during implementation.
+- [x] **P02-T1.1 - Review the behavior contract.** The acceptance example below is for the final test stage; do not create or modify test files during implementation.
 
 ```python
 async def test_duplicate_batch_returns_same_run(collector_client, batch_payload):
@@ -55,9 +55,9 @@ async def test_duplicate_batch_returns_same_run(collector_client, batch_payload)
     assert first.json()["run_id"] == again.json()["run_id"]
 ```
 
-- [ ] **P02-T1.2 - Implement the production behavior.** Follow task interfaces; defer all test work until Phases 1-12 code is complete.
+- [x] **P02-T1.2 - Implement the production behavior.** Follow task interfaces; defer all test work until Phases 1-12 code is complete.
 
-- [ ] **P02-T1.3 — Implement the minimal production behavior.** Add scoped collector_client and batch_payload fixtures to tests/integration/conftest.py, creating a source and credential only in disposable storage. Persist batch identity, observations, expected cursor and pending stage rows in one PostgreSQL transaction; acknowledge only after commit. Use PostgreSQL pending-work/outbox records and ARQ execution, not a second queue implementation. Compare-and-set cursor advancement, one source collection lease with expiry, idempotent stage keys, explicit timeouts and 4 transient retries with backoff/jitter; permanent auth/schema errors fail visibly. A dispatcher reconciles pending rows after Redis restart.
+- [x] **P02-T1.3 — Implement the minimal production behavior.** Add scoped collector_client and batch_payload fixtures to tests/integration/conftest.py, creating a source and credential only in disposable storage. Persist batch identity, observations, expected cursor and pending stage rows in one PostgreSQL transaction; acknowledge only after commit. Use PostgreSQL pending-work/outbox records and ARQ execution, not a second queue implementation. Compare-and-set cursor advancement, one source collection lease with expiry, idempotent stage keys, explicit timeouts and 4 transient retries with backoff/jitter; permanent auth/schema errors fail visibly. A dispatcher reconciles pending rows after Redis restart.
 
 Concrete contract/configuration shape (illustrative IDs/timestamps are test data, not production defaults):
 
@@ -65,9 +65,9 @@ Concrete contract/configuration shape (illustrative IDs/timestamps are test data
 {"source_id":"uuid","batch_key":"provider-page-version","cursor_before":null,"cursor_after":"page-2","records":[{"provider_id":"item-1","content":"text","observed_at":"2026-09-25T02:00:00Z"}]}
 ```
 
-- [ ] **P02-T1.4 - Build the affected deliverable.** Run `./scripts/dev.ps1 build` (or `make build`); fix build failures before proceeding. Deferred acceptance criteria: automated behavior checks, crash after DB commit/before enqueue, stale cursor writer, overlapping sync, cancellation and scoped token denial. Operational logs identify run/stage without full payloads.
+- [x] **P02-T1.4 - Build the affected deliverable.** Run `./scripts/dev.ps1 build` (or `make build`); fix build failures before proceeding. Deferred acceptance criteria: automated behavior checks, crash after DB commit/before enqueue, stale cursor writer, overlapping sync, cancellation and scoped token denial. Operational logs identify run/stage without full payloads.
 
-- [ ] **P02-T1.5 - Record build evidence and continue.** Record changed files, exact build command/result, review findings and unresolved gates in `EXECUTION.md`; then continue. Do not run tests during implementation.
+- [x] **P02-T1.5 - Record build evidence and continue.** Record changed files, exact build command/result, review findings and unresolved gates in `EXECUTION.md`; then continue. Do not run tests during implementation.
 
 ## Task P02-T2: File storage, parsers and chunking
 
@@ -81,7 +81,9 @@ Concrete contract/configuration shape (illustrative IDs/timestamps are test data
 def test_csv_parser_preserves_unicode_and_headers(tmp_path):
     from modules.ingestion.parsers import parse_file
     path = tmp_path / "sample.csv"
-    path.write_text("name,note\nAn,Tiếng Việt\n", encoding="utf-8")
+    path.write_text("name,note
+An,Tiếng Việt
+", encoding="utf-8")
     parsed = parse_file(path, "text/csv")
     assert "Tiếng Việt" in parsed.text
     assert "name" in parsed.text

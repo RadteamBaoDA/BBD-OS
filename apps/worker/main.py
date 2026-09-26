@@ -30,6 +30,7 @@ from modules.ingestion.models import (
     SourceIngestionState,
     SourceObservation,
 )
+from modules.ingestion.worker import cleanup_storage_orphans, process_uploaded_file
 from modules.sources.models import Source
 
 logger = logging.getLogger("bbd.worker")
@@ -68,6 +69,7 @@ async def _fail_ingestion_stage(
 
 async def startup(ctx: dict[str, object]) -> None:
     settings = Settings()
+    ctx["settings"] = settings
     engine = create_async_engine(settings.database_url, pool_pre_ping=True, pool_size=2)
     ctx["session_factory"] = async_sessionmaker(engine, expire_on_commit=False)
     ctx["db_engine"] = engine
@@ -234,9 +236,10 @@ async def purge_expired_sessions(ctx: dict[str, object]) -> int:
 
 
 class WorkerSettings:
-    functions: ClassVar[list[object]] = [purge_expired_sessions, process_ingestion_event]
+    functions: ClassVar[list[object]] = [purge_expired_sessions, process_ingestion_event, process_uploaded_file]
     cron_jobs: ClassVar[list[object]] = [
         cron(purge_expired_sessions, minute=0),
+        cron(cleanup_storage_orphans, minute=set(range(0, 60, 5))),
         cron(dispatch_pending_work, second=set(range(0, 60, 5)), run_at_start=True),
     ]
     redis_settings = RedisSettings.from_dsn(Settings().redis_url)

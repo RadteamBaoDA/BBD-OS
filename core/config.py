@@ -10,6 +10,11 @@ class Settings(BaseSettings):
     database_url: str = Field(default="postgresql+asyncpg://bbd:bbd@postgres:5432/bbd", repr=False)
     redis_url: str = Field(default="redis://redis:6379/0", repr=False)
     data_dir: Path = Path("/data")
+    upload_max_bytes: int = Field(default=25 * 1024 * 1024, gt=0, le=1024 * 1024 * 1024)
+    parser_timeout_seconds: int = Field(default=120, gt=0, le=3600)
+    docx_expanded_max_bytes: int = Field(default=100 * 1024 * 1024, gt=0)
+    pdf_page_max: int = Field(default=500, gt=0)
+    storage_orphan_grace_seconds: int = Field(default=3600, gt=0)
     public_origin: AnyHttpUrl = AnyHttpUrl("http://localhost:3000")
     secure_cookies: bool = False
     setup_token: SecretStr = SecretStr("")

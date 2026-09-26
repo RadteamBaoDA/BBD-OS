@@ -11,6 +11,7 @@ from core.errors import install_error_handling
 from core.modules import register_modules
 from core.system.routes import router as system_router
 from modules.knowledge.documents.routes import router as documents_router
+from modules.ingestion.routes import documents_router as document_upload_router
 from modules.ingestion.routes import router as ingestion_router
 from modules.sources.routes import router as sources_router
 
@@ -35,6 +36,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(system_router)
     app.include_router(sources_router)
     app.include_router(documents_router)
+    app.include_router(document_upload_router)
     app.include_router(ingestion_router)
     app.state.modules = register_modules()
 

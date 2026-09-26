@@ -20,6 +20,8 @@ from modules.ingestion.models import (
     SourceObservation,
 )
 from modules.ingestion.schemas import ReceiveBatch
+from modules.knowledge.documents import public as documents
+from modules.sources import public as sources
 from modules.sources.models import Source
 
 def _digest(value: object) -> str:
@@ -172,6 +174,69 @@ async def receive_batch(session: AsyncSession, payload: ReceiveBatch) -> tuple[I
     return batch, run
 
 
+async def receive_file(
+    session: AsyncSession,
+    source_id: UUID,
+    document_id: UUID,
+    filename: str,
+    mime_type: str,
+    raw_uri: str,
+    size: int,
+    digest: str,
+) -> tuple[IngestionRun, bool]:
+    await sources.lock_source_for_document(session, source_id)
+    source = await session.get(Source, source_id)
+    if source is None or source.status != "active":
+        raise HTTPException(status_code=409, detail="Source is not active")
+    batch_key = f"file:{digest}"
+    existing = await session.scalar(
+        select(IngestionBatch).where(IngestionBatch.source_id == source_id, IngestionBatch.batch_key == batch_key)
+    )
+    if existing is not None:
+        if existing.payload_hash != digest:
+            raise HTTPException(status_code=409, detail="Upload identity conflicts with stored content")
+        run = await session.scalar(select(IngestionRun).where(IngestionRun.batch_id == existing.id))
+        if run is None:
+            raise RuntimeError("Ingestion batch has no run")
+        await session.commit()
+        return run, False
+
+    now = datetime.now(UTC)
+    batch = IngestionBatch(source_id=source_id, batch_key=batch_key, payload_hash=digest)
+    session.add(batch)
+    await session.flush()
+    run = IngestionRun(batch_id=batch.id, source_id=source_id, status="queued")
+    session.add(run)
+    await session.flush()
+    stage = IngestionStage(run_id=run.id, stage_key="parse_file", status="pending")
+    session.add(stage)
+    await session.flush()
+    metadata = {"filename": filename, "raw_sha256": digest, "raw_size": size, "format": mime_type}
+    document = await documents.add_uploaded_document(
+        session, source_id, filename[:500] or "Uploaded file", mime_type, raw_uri, metadata, f"file:{digest}", document_id
+    )
+    event = DomainEvent(
+        id=uuid4(),
+        type="document.file.uploaded",
+        version=1,
+        occurred_at=now,
+        producer="modules.ingestion",
+        payload={"run_id": str(run.id), "stage_id": str(stage.id), "document_id": str(document.id), "raw_uri": raw_uri, "mime_type": mime_type},
+    )
+    session.add(EventOutbox(
+        id=event.id,
+        type=event.type,
+        version=event.version,
+        occurred_at=event.occurred_at,
+        producer=event.producer,
+        payload=event.payload,
+        status="pending",
+    ))
+    await session.commit()
+    await session.refresh(run)
+    return run, True
+
+
 async def get_run(session: AsyncSession, run_id: UUID) -> tuple[IngestionRun, list[IngestionStage]] | None:
     run = await session.get(IngestionRun, run_id)
     if run is None:
@@ -209,13 +274,19 @@ async def retry_run(session: AsyncSession, run_id: UUID) -> IngestionRun | None:
     stage.lease_expires_at = None
     run.status = "queued"
     run.error_code = None
+    prior_event = await session.scalar(
+        select(EventOutbox)
+        .where(EventOutbox.payload["stage_id"].astext == str(stage.id))
+        .order_by(EventOutbox.created_at.desc())
+        .limit(1)
+    )
     event = DomainEvent(
         id=uuid4(),
-        type="ingestion.stage.requested",
+        type=prior_event.type if prior_event is not None else "ingestion.stage.requested",
         version=1,
         occurred_at=datetime.now(UTC),
         producer="modules.ingestion",
-        payload={"run_id": str(run.id), "stage_id": str(stage.id)},
+        payload=prior_event.payload if prior_event is not None else {"run_id": str(run.id), "stage_id": str(stage.id)},
     )
     session.add(
         EventOutbox(

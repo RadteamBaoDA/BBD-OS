@@ -26,7 +26,7 @@ class IngestionBatch(Base):
 class IngestionRun(Base):
     __tablename__ = "ingestion_runs"
     __table_args__ = (
-        CheckConstraint("status IN ('queued', 'running', 'succeeded', 'failed')", name="ck_ingestion_runs_status"),
+        CheckConstraint("status IN ('queued', 'running', 'succeeded', 'needs_ocr', 'failed')", name="ck_ingestion_runs_status"),
         Index("ix_ingestion_runs_source_created", "source_id", "created_at"),
     )
 

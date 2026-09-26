@@ -44,6 +44,7 @@ class Document(Base):
     )
     current_version: Mapped[int] = mapped_column(Integer, nullable=False)
     content_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    extraction_status: Mapped[str] = mapped_column(String(16), nullable=False, server_default="ready")
     published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     observed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     language: Mapped[str | None] = mapped_column(String(32))
@@ -74,4 +75,24 @@ class DocumentVersion(Base):
     )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+
+class DocumentChunk(Base):
+    __tablename__ = "document_chunks"
+    __table_args__ = (
+        UniqueConstraint("document_version_id", "chunk_index", name="uq_document_chunks_version_index"),
+        Index("ix_document_chunks_version", "document_version_id", "chunk_index"),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid4)
+    document_version_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("document_versions.id", ondelete="CASCADE"), nullable=False
+    )
+    chunk_index: Mapped[int] = mapped_column(Integer, nullable=False)
+    content: Mapped[str] = mapped_column(Text, nullable=False)
+    content_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    token_count: Mapped[int] = mapped_column(Integer, nullable=False)
+    metadata_json: Mapped[dict[str, object]] = mapped_column(
+        "metadata", JSONB, nullable=False, server_default="{}"
     )

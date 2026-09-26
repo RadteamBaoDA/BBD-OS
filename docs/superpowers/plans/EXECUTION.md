@@ -4,10 +4,10 @@
 
 - Approved scope: master specification plus the approved Phase 1–12 breakdown and chat drawer clarification.
 - Execution method: Subagent-driven as previously requested; continuous progression through ready tasks and phases. Implementation stage is code plus builds only; tests begin after all Phase 1-12 code is complete.
-- Current action: Phase 1 production code/build and whole-branch review are complete and merged into main as `d425057`; P02-T1 is active in `codex/bbd-os-phase-2`. Tests remain deferred until all Phase 1-12 production code is complete.
+- Current action: Phase 1 is merged into main as `d425057`; P02-T1 code/build/review is complete in `codex/bbd-os-phase-2`. P02-T2 is active. Tests remain deferred until all Phase 1-12 production code is complete.
 - Current implementation phase: 2.
-- Active implementation task: **P02-T1 - Ingestion durable contracts and worker boundary**.
-- Next task: P02-T2 after P02-T1 implementation, build and review.
+- Active implementation task: **P02-T2 - File storage, parsers and chunking**.
+- Next task: P02-T2 production code, build and independent review.
 - Read [master plan](2026-09-25-bbd-os-master-plan.md) before implementation.
 - Preserve Phase 0 and user changes. Commit each completed phase; merge Phase 1 into main after implementation and review. Do not push or deploy.
 
@@ -17,7 +17,7 @@
 | --- | --- | --- | --- | --- |
 | 0 | Existing | Complete | None | See ../../IMPLEMENTATION_STATUS.md |
 | 1 | [Ready](2026-09-25-bbd-os-phase-1-core-data-platform.md) | Code/build and review complete; merged to main | P02-T1 | Build and whole-branch review passed; commit `da2baee`, merge `d425057`; deferred behavioral acceptance remains |
-| 2 | [Ready](2026-09-25-bbd-os-phase-2-ingestion-connectors.md) | In progress | P02-T1 | Started in isolated worktree `D:\Project\BBD-OS-phase-2`; build pending |
+| 2 | [Ready](2026-09-25-bbd-os-phase-2-ingestion-connectors.md) | In progress | P02-T2 | P02-T1 code/build/review complete; commits `8aa1ec7`, `3738ef7`; acceptance deferred |
 | 3 | [Ready](2026-09-25-bbd-os-phase-3-search-model-gateway.md) | Not started | P03-T1 | Not executed |
 | 4 | [Ready](2026-09-25-bbd-os-phase-4-entity-knowledge.md) | Not started | P04-T1 | Not executed |
 | 5 | [Ready](2026-09-25-bbd-os-phase-5-temporal-knowledge.md) | Not started | P05-T1 | Not executed |
@@ -119,3 +119,17 @@ Exact final build: `./scripts/dev.ps1 build` from `D:\Project\BBD-OS-phase-2`, w
 Deferred acceptance: duplicate batches and changed-key conflicts, transaction rollback/commit-before-202, cursor CAS, source lease concurrency/expiry, Redis loss/recovery, ARQ at-least-once behavior and retry timing, grant rotation/denial/source isolation, pause during worker execution, migration upgrade/downgrade, and run retry/status behavior. The current `receive` worker stage verifies accepted observations and marks the durable receipt stage complete; document parsing/indexing belongs to P02-T2 and is not claimed here. Next ready task: P02-T2 after independent P02-T1 review.
 
 P02-T1 scoped review fix wave: extended the source lease to 15 minutes (greater than five 120-second attempts plus maximum retry backoff), renew it whenever a worker attempt starts or schedules a retry, and reject delayed outbox work whose lease expired or was superseded. This lets recovery dispatch retry an active run without allowing a second source batch to overlap; abandoned runs become visible failures after the bounded lease. Retry only timeouts, OS errors and SQLAlchemy operational errors; unexpected exceptions now fail the run/outbox and release its lease. Exact validation: `./scripts/dev.ps1 build` with process-only `POSTGRES_PASSWORD=build-only-placeholder` — exit 0; Next.js build and Docker web/api/worker/migrate images succeeded. No tests, lint or standalone typecheck. GitNexus impact for `process_ingestion_event` and `retry_run` remained UNKNOWN/not found in the stale index; staged change detection returned zero indexed changes because these files/symbols are absent from the index. Manual call path review remains authoritative. Fix wave files: `apps/worker/main.py`, `modules/ingestion/models.py`, `modules/ingestion/public.py`, this ledger, and the task report.
+
+P02-T1 is complete for the code/build stage. The initial independent review found two medium findings (lease could expire during the retry budget; unexpected worker exceptions could leave runs in `running`). Fix commits `3738ef7` and scoped re-review addressed both; no new Critical/Important findings. Feature commit `8aa1ec7`; fix commit `3738ef7`. Tests and runtime/migration acceptance remain deferred. Next: P02-T2.
+
+## P02-T2 start
+
+Started 2026-09-26 after P02-T1 code/build and scoped review completed. Scope: UUID-backed local file storage, bounded PDF/TXT/Markdown/DOCX/JSON/CSV parsing, deterministic chunking, upload/raw retrieval, and durable processing integration. No test files or fixtures during the implementation stage; build only. P02-T1 behavior and its runtime/migration acceptance remain deferred to the final test stage.
+
+P02-T2 production code/build completed 2026-09-26; independent review is pending. Added UUID-named atomic raw storage under `Settings.data_dir`, authenticated upload/raw routes, source+SHA-256 idempotency, durable file parse events through the existing PostgreSQL outbox/ARQ dispatcher, bounded subprocess parsing, and orphan cleanup after a configurable grace period. Added stdlib TXT/Markdown/JSON/CSV parsing plus locked pypdf, python-docx, tiktoken, and multipart dependencies. Defaults: 25 MiB input, 120-second parser timeout, 100 MiB DOCX expanded bytes, 500 PDF pages, deterministic 750-token chunks with 12% overlap. Scanned PDFs report `needs_ocr`; there is no vector indexing. Alembic revision `0004_document_processing` adds extraction status and document-version-owned chunks; API and worker share the `/data` Compose volume.
+
+Changed production files: `.env.example`, `apps/api/main.py`, `apps/worker/main.py`, `core/config.py`, `core/storage.py`, `docker-compose.yml`, `infrastructure/docker/api.Dockerfile`, `infrastructure/postgres/migrations/env.py`, `infrastructure/postgres/migrations/versions/0004_document_processing.py`, `modules/ingestion/{chunking,dispatcher,files,models,parsers,public,routes,schemas,worker}.py`, `modules/knowledge/documents/{descriptor,models,public,routes,schemas}.py`, `pyproject.toml`, and `uv.lock`. Full file list and review caveats: `.superpowers/sdd/2026-09-25-bbd-os-phase-2/task-2-report.md`.
+
+GitNexus upstream impact for `process_ingestion_event`, `append_content`, and `dispatch_pending_work` was UNKNOWN/lower-bound with zero resolved callers. `create_document` was ambiguous between route/service candidates; both results were UNKNOWN with zero resolved callers. `DocumentVersion` was UNKNOWN/lower-bound with dispatch boundary 12. No HIGH/CRITICAL result appeared. Manual source tracing covered API/public contracts, source locking, migration metadata, outbox dispatch, and ARQ registration; the stale index does not establish zero blast radius.
+
+Exact build: `./scripts/dev.ps1 build` from `D:\Project\BBD-OS-phase-2`, with process-only `POSTGRES_PASSWORD=build-only-placeholder`; exit 0. Next.js 16.3.6 production build and Docker web/API/worker/migrate image builds succeeded with locked dependencies. No tests, fixtures, lint, standalone typecheck, migration execution, or runtime acceptance ran. Tests remain deferred until all Phase 1-12 production code is complete. Next: independent P02-T2 review, then P02-T3 after review findings are resolved.

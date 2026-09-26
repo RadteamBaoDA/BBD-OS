@@ -43,7 +43,7 @@ class ReceiveBatch(BaseModel):
 class Receipt(BaseModel):
     batch_id: UUID
     run_id: UUID
-    status: Literal["queued", "running", "succeeded", "failed"]
+    status: Literal["queued", "running", "succeeded", "needs_ocr", "failed"]
 
 
 class CollectorCredentialRead(BaseModel):
@@ -62,7 +62,7 @@ class StageRead(BaseModel):
 class RunRead(BaseModel):
     run_id: UUID
     source_id: UUID
-    status: Literal["queued", "running", "succeeded", "failed"]
+    status: Literal["queued", "running", "succeeded", "needs_ocr", "failed"]
     stages: list[StageRead]
     error_code: str | None
     created_at: datetime

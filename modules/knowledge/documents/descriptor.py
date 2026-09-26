@@ -9,9 +9,9 @@ class DocumentDescriptor:
     description: str = "Store source-backed documents and immutable revisions."
     enabled: bool = True
     dependencies: tuple[str, ...] = ("sources",)
-    provides: tuple[str, ...] = ("documents", "document_versions")
+    provides: tuple[str, ...] = ("documents", "document_versions", "document_chunks")
     requires: tuple[str, ...] = ("sources",)
-    routes: tuple[str, ...] = ("/api/v1/documents",)
+    routes: tuple[str, ...] = ("/api/v1/documents", "/api/v1/documents/upload", "/api/v1/documents/{id}/raw")
     emitted_events: tuple[str, ...] = ()
     consumed_events: tuple[str, ...] = ()
     tools: tuple[str, ...] = ()
