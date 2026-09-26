@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { mkdir } from 'node:fs/promises';
 
 test('owner can set up, log in, and log out', async ({ page }) => {
   const setupToken = process.env.E2E_SETUP_TOKEN;
@@ -15,4 +16,9 @@ test('owner can set up, log in, and log out', async ({ page }) => {
   await expect(page.getByRole('heading', { name: 'System status' })).toBeVisible();
   await page.getByRole('button', { name: 'Sign out' }).click();
   await expect(page).toHaveURL(/\/login$/);
+  await page.getByLabel('Password', { exact: true }).fill('test-owner-password-42');
+  await page.getByRole('button', { name: 'Sign in' }).click();
+  await expect(page.getByRole('heading', { name: 'System status' })).toBeVisible();
+  await mkdir('playwright/.auth', { recursive: true });
+  await page.context().storageState({ path: 'playwright/.auth/owner.json' });
 });

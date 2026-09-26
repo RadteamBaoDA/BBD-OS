@@ -1,5 +1,7 @@
 services:
   postgres:
+    ports:
+      - "127.0.0.1:${TEST_POSTGRES_PORT:-35432}:5432"
     environment:
       POSTGRES_DB: bbd_test
       POSTGRES_USER: bbd_test

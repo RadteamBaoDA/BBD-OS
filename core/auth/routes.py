@@ -1,9 +1,7 @@
-import hashlib
 import hmac
 import secrets
 import time
 from datetime import UTC, datetime, timedelta
-from hmac import compare_digest
 from typing import Annotated, cast
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Request, Response
@@ -13,6 +11,17 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from core.auth.dependencies import (
+    CSRF_COOKIE,
+    CSRF_MAX_AGE_SECONDS,
+    SESSION_COOKIE,
+    _csrf_signature,
+    _current_session,
+    _hash,
+    _origin_allowed,
+    _valid_csrf,
+    require_owner_write,
+)
 from core.auth.models import AuthSession, Owner
 from core.auth.schemas import (
     AuthState,
@@ -27,9 +36,6 @@ from core.config import Settings
 from core.database import get_session
 
 router = APIRouter(prefix="/api/v1/auth", tags=["auth"])
-SESSION_COOKIE = "bbd_session"
-CSRF_COOKIE = "bbd_csrf"
-CSRF_MAX_AGE_SECONDS = 600
 
 
 def _is_owner_conflict(exc: IntegrityError) -> bool:
@@ -48,42 +54,10 @@ def get_auth_redis(request: Request) -> Redis:
     return cast(Redis, request.app.state.redis)
 
 
-def _hash(value: str) -> str:
-    return hashlib.sha256(value.encode()).hexdigest()
-
-
-def _origin_allowed(origin: str | None, settings: Settings) -> bool:
-    return origin is not None and origin.rstrip("/") == str(settings.public_origin).rstrip("/")
-
-
-def _csrf_signature(token: str, expires_at: int, settings: Settings) -> str:
-    secret = settings.csrf_signing_secret.get_secret_value()
-    if not secret:
-        raise HTTPException(status_code=503, detail="CSRF protection is not configured")
-    signed = f"{token}.{expires_at}"
-    return hmac.new(secret.encode(), signed.encode(), hashlib.sha256).hexdigest()
-
-
 def _new_csrf(settings: Settings) -> tuple[str, str]:
     token = secrets.token_urlsafe(32)
     expires_at = int(time.time()) + CSRF_MAX_AGE_SECONDS
     return token, f"{token}.{expires_at}.{_csrf_signature(token, expires_at, settings)}"
-
-
-def _valid_csrf(cookie: str | None, submitted: str | None, settings: Settings) -> bool:
-    if not cookie or not submitted:
-        return False
-    try:
-        token, expiry, signature = cookie.rsplit(".", 2)
-        expires_at = int(expiry)
-    except ValueError:
-        return False
-    now = int(time.time())
-    if expires_at <= now or expires_at > now + CSRF_MAX_AGE_SECONDS:
-        return False
-    return compare_digest(token, submitted) and compare_digest(
-        signature, _csrf_signature(token, expires_at, settings)
-    )
 
 
 def _set_csrf_cookie(request: Request, response: Response, value: str) -> None:
@@ -120,20 +94,6 @@ async def _allow_attempt(request: Request, redis: Redis, action: str) -> None:
         )
 
 
-async def _current_session(
-    request: Request,
-    session: AsyncSession,
-    token: str | None,
-) -> AuthSession:
-    if not token:
-        raise HTTPException(status_code=401, detail="Authentication required")
-    row = await session.get(AuthSession, _hash(token))
-    if row is None or row.expires_at <= datetime.now(UTC):
-        raise HTTPException(status_code=401, detail="Authentication required")
-    request.state.auth_session = row
-    return row
-
-
 @router.get("/setup-status", response_model=SetupStatus)
 async def setup_status(session: Annotated[AsyncSession, Depends(get_session)]) -> SetupStatus:
     has_owner = await session.scalar(select(Owner.id).limit(1)) is not None
@@ -157,7 +117,7 @@ async def create_owner(
         raise HTTPException(status_code=503, detail="Owner setup is not configured")
     if not _origin_allowed(origin, settings):
         raise HTTPException(status_code=403, detail="Origin is not allowed")
-    if not x_setup_token or not compare_digest(configured_token, x_setup_token):
+    if not x_setup_token or not hmac.compare_digest(configured_token, x_setup_token):
         raise HTTPException(status_code=403, detail="Setup token is invalid")
     await _allow_attempt(request, redis, "setup")
     if not _valid_csrf(request.cookies.get(CSRF_COOKIE), csrf_token, settings):
@@ -239,7 +199,7 @@ async def auth_session(
     if (
         existing_token
         and _valid_csrf(existing_cookie, existing_token, settings)
-        and compare_digest(row.csrf_hash, _hash(existing_token))
+        and hmac.compare_digest(row.csrf_hash, _hash(existing_token))
     ):
         csrf_token = existing_token
     else:
@@ -255,18 +215,9 @@ async def logout(
     request: Request,
     response: Response,
     session: Annotated[AsyncSession, Depends(get_session)],
-    origin: Annotated[str | None, Header()] = None,
-    csrf_token: Annotated[str | None, Header(alias="X-CSRF-Token")] = None,
+    _auth_session: Annotated[AuthSession, Depends(require_owner_write)],
 ) -> None:
-    settings: Settings = request.app.state.settings
-    if not _origin_allowed(origin, settings):
-        raise HTTPException(status_code=403, detail="Origin is not allowed")
-    row = await _current_session(request, session, request.cookies.get(SESSION_COOKIE))
-    if not _valid_csrf(request.cookies.get(CSRF_COOKIE), csrf_token, settings) or not compare_digest(
-        row.csrf_hash, _hash(csrf_token or "")
-    ):
-        raise HTTPException(status_code=403, detail="CSRF token is invalid")
-    await session.delete(row)
+    await session.delete(_auth_session)
     await session.commit()
     response.delete_cookie(SESSION_COOKIE, path="/")
     response.delete_cookie(CSRF_COOKIE, path="/")

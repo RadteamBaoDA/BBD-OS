@@ -1,6 +1,6 @@
 # BBD-OS implementation status
 
-Updated: 2026-09-25.
+Updated: 2026-09-26.
 
 Markers: `[ ]` not started; `[~]` in progress; `[x]` complete; `[!]` blocked.
 
@@ -10,8 +10,8 @@ Markers: `[ ]` not started; `[~]` in progress; `[x]` complete; `[!]` blocked.
 - [x] Phase 0: repository foundation, login, Compose, migrations, worker health, UI, CI, and operator docs.
 - [x] Saved master plan and all 12 Phase 1–12 implementation plans, with 49 task checklists: [master index](superpowers/plans/2026-09-25-bbd-os-master-plan.md).
 - [x] Recorded the approved chat drawer and day-context/history UX in the canonical spec and Phase 6/8/12 plans.
-- [x] Created [execution ledger](superpowers/plans/EXECUTION.md) for evidence, external gates and continuous task progression. Next implementation task: P01-T1.
-- [ ] Phase 1: core data platform.
+- [x] Created [execution ledger](superpowers/plans/EXECUTION.md) for evidence, external gates and continuous task progression. Next implementation task: P02-T1 after Phase 1 commit/merge. Phase 1-12 implementation uses a code/build stage first; tests begin only after all phase code is complete.
+- [~] Phase 1: core data platform (P01-T1 through P01-T4 code/build and whole-branch review complete; behavioral acceptance remains deferred).
 - [ ] Phase 2: ingestion and packaged collection workflows.
 - [ ] Phase 3: search and embeddings.
 - [ ] Phase 4: entity knowledge.

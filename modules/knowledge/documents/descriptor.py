@@ -1,0 +1,24 @@
+from dataclasses import dataclass
+
+
+@dataclass(frozen=True)
+class DocumentDescriptor:
+    id: str = "knowledge.documents"
+    name: str = "Documents"
+    version: str = "1.0.0"
+    description: str = "Store source-backed documents and immutable revisions."
+    enabled: bool = True
+    dependencies: tuple[str, ...] = ("sources",)
+    provides: tuple[str, ...] = ("documents", "document_versions")
+    requires: tuple[str, ...] = ("sources",)
+    routes: tuple[str, ...] = ("/api/v1/documents",)
+    emitted_events: tuple[str, ...] = ()
+    consumed_events: tuple[str, ...] = ()
+    tools: tuple[str, ...] = ()
+    navigation: tuple[dict[str, str], ...] = (
+        {"label": "Documents", "href": "/knowledge/documents"},
+    )
+    settings_schema: dict[str, object] | None = None
+
+
+descriptor = DocumentDescriptor()

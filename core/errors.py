@@ -17,6 +17,8 @@ def install_error_handling(app: FastAPI) -> None:
         response.headers["X-Request-ID"] = request.state.request_id
         if request.url.path.startswith("/api/v1/auth/"):
             response.headers["Cache-Control"] = "no-store"
+        elif request.url.path.startswith("/api/v1/"):
+            response.headers["Cache-Control"] = "private, no-store"
         return response
 
     @app.exception_handler(StarletteHTTPException)

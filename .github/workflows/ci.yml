@@ -22,8 +22,8 @@ jobs:
       - uses: docker/setup-buildx-action@v3
       - run: uv sync --frozen
       - run: npm ci
-      - run: uv run ruff check core apps tests infrastructure/postgres/migrations
-      - run: uv run mypy core apps
+      - run: uv run ruff check core apps modules tests infrastructure/postgres/migrations
+      - run: uv run mypy core apps modules
       - run: npm run lint
       - run: npm run typecheck
       - name: Create disposable CI configuration

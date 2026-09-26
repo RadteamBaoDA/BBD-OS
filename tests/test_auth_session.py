@@ -95,7 +95,7 @@ def test_csrf_cookie_expires_on_server(monkeypatch) -> None:
 @pytest.mark.asyncio
 async def test_login_requires_csrf_and_rotates_session_tokens() -> None:
     store = MemoryAuthStore()
-    app = create_app(Settings(csrf_signing_secret="test-csrf-signing-secret"))
+    app = create_app(Settings(public_origin="http://localhost:3000", csrf_signing_secret="test-csrf-signing-secret"))
 
     async def session_override():
         yield MemorySession(store)
@@ -180,7 +180,7 @@ async def test_expired_session_is_rejected() -> None:
         csrf_hash="unused",
         expires_at=datetime.now(UTC) - timedelta(seconds=1),
     )
-    app = create_app(Settings(csrf_signing_secret="test-csrf-signing-secret"))
+    app = create_app(Settings(public_origin="http://localhost:3000", csrf_signing_secret="test-csrf-signing-secret"))
 
     async def session_override():
         yield MemorySession(store)
@@ -199,7 +199,7 @@ async def test_expired_session_is_rejected() -> None:
 async def test_login_rate_limit_rejects_the_sixth_attempt() -> None:
     store = MemoryAuthStore()
     redis = MemoryRedis()
-    app = create_app(Settings(csrf_signing_secret="test-csrf-signing-secret"))
+    app = create_app(Settings(public_origin="http://localhost:3000", csrf_signing_secret="test-csrf-signing-secret"))
 
     async def session_override():
         yield MemorySession(store)

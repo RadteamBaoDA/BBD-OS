@@ -4,6 +4,7 @@ COPY pyproject.toml uv.lock ./
 RUN pip install --no-cache-dir uv==0.12.11 && uv sync --frozen --no-dev
 COPY apps ./apps
 COPY core ./core
+COPY modules ./modules
 COPY infrastructure/postgres/migrations ./infrastructure/postgres/migrations
 COPY alembic.ini ./alembic.ini
 

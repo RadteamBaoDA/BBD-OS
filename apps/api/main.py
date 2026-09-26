@@ -8,7 +8,10 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from core.auth.routes import router as auth_router
 from core.config import Settings
 from core.errors import install_error_handling
+from core.modules import register_modules
 from core.system.routes import router as system_router
+from modules.knowledge.documents.routes import router as documents_router
+from modules.sources.routes import router as sources_router
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -29,6 +32,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     install_error_handling(app)
     app.include_router(auth_router)
     app.include_router(system_router)
+    app.include_router(sources_router)
+    app.include_router(documents_router)
+    app.state.modules = register_modules()
 
     @app.get("/health")
     async def health() -> dict[str, str]:

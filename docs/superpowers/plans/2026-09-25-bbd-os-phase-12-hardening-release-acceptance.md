@@ -1,6 +1,6 @@
 # BBD-OS Phase 12 — Hardening, Backup, Recovery and Full Acceptance Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax. The owner authorized continuous progress through ready tasks; use the [master plan](2026-09-25-bbd-os-master-plan.md) and [execution ledger](EXECUTION.md), without repeated phase-scope approval.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax. The owner authorized continuous progress through ready tasks; use the [master plan](2026-09-25-bbd-os-master-plan.md) and [execution ledger](EXECUTION.md), without repeated phase-scope approval.
 
 **Goal:** Verify the full approved product on a clean installation and documented mini-host workload with recoverable backups and honest operational limits.
 
@@ -13,6 +13,8 @@
 **Entry gate:** Functional acceptance from Phases 1–11; actual target hardware and permitted live integrations for final release gate.
 
 **Implementation status:** Not started. This file is an implementation plan, not evidence of working code.
+
+Test execution is deferred until all Phase 1-12 production code is complete. Acceptance examples and test file paths below are specifications; do not create, modify or run test files during this implementation stage.
 
 ## Global Constraints
 
@@ -43,7 +45,7 @@ Module ownership: **backup, export, settings plus cross-module validation**. Bac
 
 **Interfaces — consumes/produces:** make backup, make restore BACKUP=... and PowerShell equivalents; authenticated backup/export operation endpoints return operation_id. Manifest includes component/schema versions,checksums,files,creation time,consistency method and required protected key references.
 
-- [ ] **P12-T1.1 — Write the failing behavioral test.** Put this case in `tests/integration/test_restore.py` and implement any named test fixture in the same test package's `conftest.py` (browser fixtures in `tests/e2e/fixtures.ts`) as described below. Fixtures may control test transports/services; they must never introduce production test endpoints.
+- [ ] **P12-T1.1 - Review the behavior contract.** The acceptance example below is for the final test stage; do not create or modify test files during implementation.
 
 ```python
 async def test_restored_document_matches_original(backup_fixture):
@@ -53,7 +55,7 @@ async def test_restored_document_matches_original(backup_fixture):
     assert restored["content_hash"] == original["content_hash"]
 ```
 
-- [ ] **P12-T1.2 — Observe the expected failure.** Run `./scripts/dev.ps1 test -PytestTarget tests/integration/test_restore.py` after P01 establishes the targeted runner. For P01-T1 before targeted-runner support is added, use the existing disposable `./scripts/dev.ps1 test`; subsequent tasks use the targeted command above. Expect the specific missing behavior/import/route assertion; configuration or unrelated fixture failure is not the red test.
+- [ ] **P12-T1.2 - Implement the production behavior.** Follow task interfaces; defer all test work until Phases 1-12 code is complete.
 
 - [ ] **P12-T1.3 — Implement the minimal production behavior.** Quiesce ingestion/agents/automations and writes for the baseline consistency window; record state and resume even on failure. Snapshot PostgreSQL, raw files, compatible graph backup, n8n data and its encryption key, schedules and configuration; protect secret-bearing archive content and do not log keys. Restore into a separate instance first, validate versions/checksums and database migrations, then verify jobs and workflows. Export JSON/Markdown/CSV per domain through public APIs, excluding credentials. Whole-instance restore onto existing owner data requires explicit destructive confirmation.
 
@@ -63,9 +65,9 @@ Concrete contract/configuration shape (illustrative IDs/timestamps are test data
 {"format_version":1,"consistency":"quiesced","components":["postgres","raw_files","graph","n8n","configuration"],"checksums":{}}
 ```
 
-- [ ] **P12-T1.4 — Verify the behavior and listed failure cases.** Successful restore after simulated host loss, missing raw blob/key, corrupt checksum, incompatible schema and interrupted backup; restored n8n credentials usable without printing them. Export-import roundtrip for supported canonical fields.
+- [ ] **P12-T1.4 - Build the affected deliverable.** Run `./scripts/dev.ps1 build` (or `make build`); fix build failures before proceeding. Deferred acceptance criteria: Successful restore after simulated host loss, missing raw blob/key, corrupt checksum, incompatible schema and interrupted backup; restored n8n credentials usable without printing them. Export-import roundtrip for supported canonical fields.
 
-- [ ] **P12-T1.5 — Record evidence and continue.** Record changed files, actual commands/results and any missing external evidence in `EXECUTION.md`; check this task only after its required behavior passes. Continue to P12-T2. Do not create a commit automatically.
+- [ ] **P12-T1.5 - Record build evidence and continue.** Record changed files, exact build command/result, review findings and unresolved gates in `EXECUTION.md`; then continue. Do not run tests during implementation.
 
 ## Task P12-T2: Cross-module deletion, security and recovery audit
 
@@ -73,7 +75,7 @@ Concrete contract/configuration shape (illustrative IDs/timestamps are test data
 
 **Interfaces — consumes/produces:** Source deletion modes connector_only|with_data; immediate tombstone denies retrieval, durable purge removes every owned derived copy. DELETE entity/conversation and memory forget preserve unrelated/shared evidence; backup retention is explained separately.
 
-- [ ] **P12-T2.1 — Write the failing behavioral test.** Put this case in `tests/integration/test_forget_lifecycle.py` and implement any named test fixture in the same test package's `conftest.py` (browser fixtures in `tests/e2e/fixtures.ts`) as described below. Fixtures may control test transports/services; they must never introduce production test endpoints.
+- [ ] **P12-T2.1 - Review the behavior contract.** The acceptance example below is for the final test stage; do not create or modify test files during implementation.
 
 ```python
 async def test_forget_excludes_all_retrieval_paths(forget_fixture):
@@ -84,7 +86,7 @@ async def test_forget_excludes_all_retrieval_paths(forget_fixture):
     assert await forget_fixture.memory_hits(resource) == []
 ```
 
-- [ ] **P12-T2.2 — Observe the expected failure.** Run `./scripts/dev.ps1 test -PytestTarget tests/integration/test_forget_lifecycle.py` after P01 establishes the targeted runner. For P01-T1 before targeted-runner support is added, use the existing disposable `./scripts/dev.ps1 test`; subsequent tasks use the targeted command above. Expect the specific missing behavior/import/route assertion; configuration or unrelated fixture failure is not the red test.
+- [ ] **P12-T2.2 - Implement the production behavior.** Follow task interfaces; defer all test work until Phases 1-12 code is complete.
 
 - [ ] **P12-T2.3 — Implement the minimal production behavior.** Test source documents/chunks/vectors/graph episodes/memory/citation payloads/cache/queued jobs and trace content against one deletion intent. Keep shared facts only when independent retained evidence supports them. Audit session/CSRF, input size, upload ZIP/PDF, SSRF redirects/DNS/browser requests, prompt injection, MCP grants, approval replay and logs. Recovery matrix covers kill API/worker/Redis/graph/n8n at durable boundaries; external uncertain effects require review. Apply critical fixes at the owning module and rerun affected contracts.
 
@@ -94,9 +96,9 @@ Concrete contract/configuration shape (illustrative IDs/timestamps are test data
 {"operation_id":"uuid","status":"running","immediate_access_revoked":true,"remaining_stages":["graph","files"]}
 ```
 
-- [ ] **P12-T2.4 — Verify the behavior and listed failure cases.** No deleted content returned while purge pending, no resurrection after worker replay, independent evidence retained, expiry/revocation checks, and recovery without losing acknowledged data. Old backups remain governed by backup retention rather than falsely claimed erased.
+- [ ] **P12-T2.4 - Build the affected deliverable.** Run `./scripts/dev.ps1 build` (or `make build`); fix build failures before proceeding. Deferred acceptance criteria: No deleted content returned while purge pending, no resurrection after worker replay, independent evidence retained, expiry/revocation checks, and recovery without losing acknowledged data. Old backups remain governed by backup retention rather than falsely claimed erased.
 
-- [ ] **P12-T2.5 — Record evidence and continue.** Record changed files, actual commands/results and any missing external evidence in `EXECUTION.md`; check this task only after its required behavior passes. Continue to P12-T3. Do not create a commit automatically.
+- [ ] **P12-T2.5 - Record build evidence and continue.** Record changed files, exact build command/result, review findings and unresolved gates in `EXECUTION.md`; then continue. Do not run tests during implementation.
 
 ## Task P12-T3: Complete onboarding, demo data and drawer accessibility
 
@@ -104,7 +106,7 @@ Concrete contract/configuration shape (illustrative IDs/timestamps are test data
 
 **Interfaces — consumes/produces:** Onboarding: owner -> model/privacy -> capability test -> sources -> explicit sample/personal import -> indexing progress -> Today. Each step is resumable; no model or network still permits existing local data access.
 
-- [ ] **P12-T3.1 — Write the failing behavioral test.** Put this case in `tests/e2e/onboarding.spec.ts` and implement any named test fixture in the same test package's `conftest.py` (browser fixtures in `tests/e2e/fixtures.ts`) as described below. Fixtures may control test transports/services; they must never introduce production test endpoints.
+- [ ] **P12-T3.1 - Review the behavior contract.** The acceptance example below is for the final test stage; do not create or modify test files during implementation.
 
 ```typescript
 import { test, expect } from './fixtures';
@@ -119,7 +121,7 @@ test('mobile drawer closes without losing selected day', async ({ page }) => {
 });
 ```
 
-- [ ] **P12-T3.2 — Observe the expected failure.** Run `./scripts/dev.ps1 test -E2eTarget tests/e2e/onboarding.spec.ts` after P01 establishes the targeted runner. For P01-T1 before targeted-runner support is added, use the existing disposable `./scripts/dev.ps1 test`; subsequent tasks use the targeted command above. Expect the specific missing behavior/import/route assertion; configuration or unrelated fixture failure is not the red test.
+- [ ] **P12-T3.2 - Implement the production behavior.** Follow task interfaces; defer all test work until Phases 1-12 code is complete.
 
 - [ ] **P12-T3.3 — Implement the minimal production behavior.** Seed fictional projects/events/articles/tasks/entities/relationships/conversations only on explicit command with stable IDs and no user-data overwrite. Verify all navigation/settings screens, language consistency with existing UI, keyboard focus, readable contrast, reduced motion, error states and mobile Today/Ask/Tasks/Notifications. Drawer default closed, right overlay/full-mobile, focus trap/return, preserved draft/context, explicit Stop and citations/history inside drawer; no permanent empty column. Offline guarantees stored data and lexical search; remote-dependent chat/semantic query visibly unavailable. Add safe reset command with named workspace and explicit destructive confirmation, never a successful no-op.
 
@@ -129,9 +131,9 @@ Concrete contract/configuration shape (illustrative IDs/timestamps are test data
 {"onboarding_step":"indexing","lexical_ready":true,"semantic_ready":false,"reason":"No permitted embedding model"}
 ```
 
-- [ ] **P12-T3.4 — Verify the behavior and listed failure cases.** Fresh/resumed onboarding, keyboard-only flow, screen-reader dialog labels, viewport overflow, day switch during stream, drawer/full Ask same conversation, offline mode and demo repeat idempotency.
+- [ ] **P12-T3.4 - Build the affected deliverable.** Run `./scripts/dev.ps1 build` (or `make build`); fix build failures before proceeding. Deferred acceptance criteria: Fresh/resumed onboarding, keyboard-only flow, screen-reader dialog labels, viewport overflow, day switch during stream, drawer/full Ask same conversation, offline mode and demo repeat idempotency.
 
-- [ ] **P12-T3.5 — Record evidence and continue.** Record changed files, actual commands/results and any missing external evidence in `EXECUTION.md`; check this task only after its required behavior passes. Continue to P12-T4. Do not create a commit automatically.
+- [ ] **P12-T3.5 - Record build evidence and continue.** Record changed files, exact build command/result, review findings and unresolved gates in `EXECUTION.md`; then continue. Do not run tests during implementation.
 
 ## Task P12-T4: Target hardware capacity and service budget
 
@@ -139,7 +141,7 @@ Concrete contract/configuration shape (illustrative IDs/timestamps are test data
 
 **Interfaces — consumes/produces:** Report exact hardware/OS/architecture,all versions,enabled profiles,gateway location,model IDs,dataset/concurrency,peak memory,CPU,queue delay and latency distribution. No hardware capacity statement from the development host alone.
 
-- [ ] **P12-T4.1 — Write the failing behavioral test.** Put this case in `tests/performance/test_workload.py` and implement any named test fixture in the same test package's `conftest.py` (browser fixtures in `tests/e2e/fixtures.ts`) as described below. Fixtures may control test transports/services; they must never introduce production test endpoints.
+- [ ] **P12-T4.1 - Review the behavior contract.** The acceptance example below is for the final test stage; do not create or modify test files during implementation.
 
 ```python
 def test_report_records_concurrent_workload(performance_report):
@@ -149,7 +151,7 @@ def test_report_records_concurrent_workload(performance_report):
     assert performance_report["oom_events"] == 0
 ```
 
-- [ ] **P12-T4.2 — Observe the expected failure.** Run `./scripts/dev.ps1 test -PytestTarget tests/performance/test_workload.py` after P01 establishes the targeted runner. For P01-T1 before targeted-runner support is added, use the existing disposable `./scripts/dev.ps1 test`; subsequent tasks use the targeted command above. Expect the specific missing behavior/import/route assertion; configuration or unrelated fixture failure is not the red test.
+- [ ] **P12-T4.2 - Implement the production behavior.** Follow task interfaces; defer all test work until Phases 1-12 code is complete.
 
 - [ ] **P12-T4.3 — Implement the minimal production behavior.** Run controlled workload with 1000 documents/10000 chunks, 2000 entities/5000 relationships and 10000 events, plus the final acceptance dataset, labeling both synthetic and real data. Measure 30 minutes of ingestion while one user searches/asks and one bounded browser task is queued; ensure the global heavy-work lease prevents overlapping heavy browser/parsing/indexing. Base targets: Today initial <2s, normal API <300ms, search <1s, timeline first page <500ms, first agent token <3s excluding separately recorded provider latency. Report p50/p95 with p95 used for acceptance, no OOM/data loss and bounded queue recovery. Prebuild images; tune one-heavy/two-model limits downward first if required.
 
@@ -159,9 +161,9 @@ Concrete contract/configuration shape (illustrative IDs/timestamps are test data
 {"target_host_verified":false,"latency":{"provider_ms":null,"application_ms":null},"oom_events":null}
 ```
 
-- [ ] **P12-T4.4 — Verify the behavior and listed failure cases.** The performance_report fixture reads measured output, never fabricated metrics; skip with explicit reason when target host absent, leaving this gate blocked. Off-host graph/browser or changing capabilities requires an explicit architecture/deployment decision.
+- [ ] **P12-T4.4 - Build the affected deliverable.** Run `./scripts/dev.ps1 build` (or `make build`); fix build failures before proceeding. Deferred acceptance criteria: The performance_report fixture reads measured output, never fabricated metrics; skip with explicit reason when target host absent, leaving this gate blocked. Off-host graph/browser or changing capabilities requires an explicit architecture/deployment decision.
 
-- [ ] **P12-T4.5 — Record evidence and continue.** Record changed files, actual commands/results and any missing external evidence in `EXECUTION.md`; check this task only after its required behavior passes. Continue to P12-T5. Do not create a commit automatically.
+- [ ] **P12-T4.5 - Record build evidence and continue.** Record changed files, exact build command/result, review findings and unresolved gates in `EXECUTION.md`; then continue. Do not run tests during implementation.
 
 ## Task P12-T5: Clean-install, upgrade and complete-product release gate
 
@@ -169,7 +171,7 @@ Concrete contract/configuration shape (illustrative IDs/timestamps are test data
 
 **Interfaces — consumes/produces:** Final acceptance uses published documented commands, protected production proxy paths, backup/restore and module enable/disable. Add a test-only module descriptor to prove navigation/settings/widgets/tools are registered without editing unrelated feature logic.
 
-- [ ] **P12-T5.1 — Write the failing behavioral test.** Put this case in `tests/e2e/full-product.spec.ts` and implement any named test fixture in the same test package's `conftest.py` (browser fixtures in `tests/e2e/fixtures.ts`) as described below. Fixtures may control test transports/services; they must never introduce production test endpoints.
+- [ ] **P12-T5.1 - Review the behavior contract.** The acceptance example below is for the final test stage; do not create or modify test files during implementation.
 
 ```typescript
 import { test, expect } from './fixtures';
@@ -183,7 +185,7 @@ test('approved task appears in Today', async ({ page }) => {
 });
 ```
 
-- [ ] **P12-T5.2 — Observe the expected failure.** Run `./scripts/dev.ps1 test -E2eTarget tests/e2e/full-product.spec.ts` after P01 establishes the targeted runner. For P01-T1 before targeted-runner support is added, use the existing disposable `./scripts/dev.ps1 test`; subsequent tasks use the targeted command above. Expect the specific missing behavior/import/route assertion; configuration or unrelated fixture failure is not the red test.
+- [ ] **P12-T5.2 - Implement the production behavior.** Follow task interfaces; defer all test work until Phases 1-12 code is complete.
 
 - [ ] **P12-T5.3 — Implement the minimal production behavior.** Create an isolated acceptance installation, add three RSS feeds, one GitHub repository, five text-bearing PDFs and several URLs. Verify extraction/chunking/embeddings/entities/events/graph, useful Today, mixed-source Timeline, citations, agent task proposal/acceptance, automatic brief, automations and restore. Fixture the proposed task through a controlled agent run; no assumption that a live model emits exact arbitrary text. Run all required checks, dependency/license audit and production Docker builds. Validate upgrade of a Phase 0 database copy and module enable/disable without editing dashboard internals. Do not mark full product complete with blocked live/hardware/restore checks.
 
@@ -193,22 +195,22 @@ Concrete contract/configuration shape (illustrative IDs/timestamps are test data
 {"functional_acceptance":"pending","live_integrations":"pending","target_capacity":"pending","restore_verified":false}
 ```
 
-- [ ] **P12-T5.4 — Verify the behavior and listed failure cases.** make lint/typecheck/test/build or sequential PowerShell equivalents; disposable clean migrations, seed, E2E, live connector/model evidence, recovery, and target performance report. Final independent review fixes actionable findings; preserve no-commit/no-push/no-deploy boundary unless separately authorized.
+- [ ] **P12-T5.4 - Build the affected deliverable.** Run `./scripts/dev.ps1 build` (or `make build`); fix build failures before proceeding. Deferred acceptance criteria: automated behavior checks; disposable clean migrations, seed, E2E, live connector/model evidence, recovery, and target performance report. Final independent review fixes actionable findings; preserve no-commit/no-push/no-deploy boundary unless separately authorized.
 
-- [ ] **P12-T5.5 — Record evidence and continue.** Record changed files, actual commands/results and any missing external evidence in `EXECUTION.md`; check this task only after its required behavior passes. Continue to the final release acceptance gate. Do not create a commit automatically.
+- [ ] **P12-T5.5 - Record build evidence and continue.** Record changed files, exact build command/result, review findings and unresolved gates in `EXECUTION.md`; then continue. Do not run tests during implementation.
 
 ## Phase Acceptance and Handoff
 
-- [ ] Run final sequential `./scripts/dev.ps1 lint`, `typecheck`, `test`, `build` (Make equivalents on Linux). Use targeted checks during tasks and the complete gate once after final phase changes.
+- [ ] Build the phase deliverables with `./scripts/dev.ps1 build` (or `make build`); no tests, lint or typecheck run during the code stage.
 - [ ] Verify new code is included in Docker/packaging, new tables in Alembic metadata, public APIs in OpenAPI and enabled UI/routes in module descriptors.
 - [ ] Complete independent final review under the execution skill, fix actionable findings, and repeat affected checks.
-- [ ] Record actual test counts, live integration evidence and capacity limitations; fixtures do not validate live providers or mini-host performance.
+- [ ] After all Phase 1-12 production code is complete, run the deferred test stage from the master plan; record results, live integration evidence and capacity limitations.
 - [ ] Update `docs/IMPLEMENTATION_STATUS.md`, this checklist and `EXECUTION.md`. Continue automatically to the next ready approved task; stop only the work that depends on an unresolved external gate or a material unapproved change.
 
 ## Plan Self-Review Checklist
 
 - [x] Goal and spec sections mapped to named tasks and public interfaces.
 - [x] Five review-focus risks assigned concrete failure checks in the owning tasks.
-- [x] Exact file targets, behavioral test examples, expected failure, implementation rules and passing criteria included.
+- [x] Exact file targets, acceptance examples, deferred test criteria, implementation rules and build criteria included.
 - [x] Module ownership, auth/privacy, safe deletion and retry/resume boundaries preserved.
 - [x] Implementation and live/hardware verification are not claimed complete by this plan.
