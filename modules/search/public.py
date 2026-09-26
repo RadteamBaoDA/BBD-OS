@@ -8,6 +8,7 @@ from fastapi import HTTPException
 from redis.asyncio import Redis
 from redis.exceptions import RedisError
 from sqlalchemy import func, select, text
+from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.config import Settings
@@ -133,10 +134,17 @@ async def search(session: AsyncSession, redis: Redis, settings: Settings, reques
             ):
                 raise ValueError("No permitted active embedding generation")
             response = await gateway(settings, redis).embed("embedding", mapping, policy, [request.query])
-            values = embedding_values(response, generation.dimensions)
+            values, returned_model = embedding_values(
+                response, generation.response_model_id or generation.model_id, generation.dimensions,
+            )
+            if returned_model is not None and generation.response_model_id not in (None, returned_model):
+                raise ValueError("Embedding response identity changed")
             vector = await _vector_ids(session, request, generation, values)
             effective_mode = "hybrid"
         except (ModelGatewayError, RedisError, ValueError, OSError):
+            warnings.append(FALLBACK_WARNING)
+        except DBAPIError:
+            await session.rollback()
             warnings.append(FALLBACK_WARNING)
     ranked: dict[UUID, float] = {}
     for candidates in (lexical, vector) if effective_mode == "hybrid" else (lexical,):

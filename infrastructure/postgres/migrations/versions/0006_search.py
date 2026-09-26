@@ -20,6 +20,7 @@ def upgrade() -> None:
         sa.Column("id", postgresql.UUID(as_uuid=True), primary_key=True),
         sa.Column("model_id", sa.String(200), nullable=False),
         sa.Column("model_version", sa.String(200)),
+        sa.Column("response_model_id", sa.String(200)),
         sa.Column("dimensions", sa.Integer()),
         sa.Column("status", sa.String(16), server_default="queued", nullable=False),
         sa.Column("error_code", sa.String(64)),

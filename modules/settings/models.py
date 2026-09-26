@@ -17,8 +17,12 @@ async def get_mappings(redis: Redis, settings: Settings) -> dict[str, ModelMappi
     stored = await redis.hgetall(_MAPPINGS)
     for alias, value in stored.items():
         try:
+            if isinstance(alias, bytes):
+                alias = alias.decode("utf-8")
+            if alias not in ALIASES:
+                continue
             configured[alias] = ModelMapping.model_validate_json(value)
-        except ValueError:
+        except (ValueError, UnicodeDecodeError):
             continue
     return configured
 

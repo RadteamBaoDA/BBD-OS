@@ -20,9 +20,12 @@ from modules.sources.models import Source
 MAX_VECTOR_DIMENSIONS = 2000  # pgvector HNSW vector index limit.
 
 
-def embedding_values(response: object, expected_dimensions: int | None = None) -> list[float]:
+def embedding_values(response: object, expected_model: str, expected_dimensions: int | None = None) -> tuple[list[float], str | None]:
     if not isinstance(response, dict) or not isinstance(response.get("data"), list) or len(response["data"]) != 1:
         raise ValueError("Invalid embedding response")
+    returned_model = response.get("model")
+    if returned_model is not None and (not isinstance(returned_model, str) or returned_model != expected_model):
+        raise ValueError("Embedding response model does not match the index generation")
     row = response["data"][0]
     if not isinstance(row, dict) or not isinstance(row.get("embedding"), list):
         raise ValueError("Invalid embedding response")
@@ -33,7 +36,8 @@ def embedding_values(response: object, expected_dimensions: int | None = None) -
         raise ValueError("Embedding contains invalid values")
     if not any(value != 0 for value in values):
         raise ValueError("Embedding cannot be a zero vector")
-    return [float(value) for value in values]
+    # An omitted response identity retains the explicit configured request identity.
+    return [float(value) for value in values], returned_model
 
 
 def gateway(settings: Settings, redis: Redis) -> ModelGateway:
@@ -133,6 +137,17 @@ async def index_pending_chunks(ctx: dict[str, object]) -> int:
             )).first()
             if row is None:
                 if generation.status == "running":
+                    await session.execute(text(
+                        "DELETE FROM search_index_items i WHERE i.generation_id = :generation_id "
+                        "AND i.status IN ('pending', 'failed') AND NOT EXISTS ("
+                        "SELECT 1 FROM document_chunks c "
+                        "JOIN document_versions v ON v.id = c.document_version_id "
+                        "JOIN documents d ON d.id = v.document_id "
+                        "JOIN sources s ON s.id = d.source_id "
+                        "WHERE c.id = i.chunk_id AND v.version_number = d.current_version "
+                        "AND d.extraction_status IN ('ready', 'succeeded') "
+                        "AND s.status = 'active' AND s.local_only = false)"
+                    ), {"generation_id": generation_id})
                     failed = await session.scalar(select(func.count()).select_from(SearchIndexItem).where(
                         SearchIndexItem.generation_id == generation_id, SearchIndexItem.status != "succeeded",
                     ))
@@ -170,13 +185,24 @@ async def index_pending_chunks(ctx: dict[str, object]) -> int:
                            Document.extraction_status.in_(("ready", "succeeded")))
                 )
                 if source is None or source.status != "active" or source.local_only or current is None:
+                    item = await session.get(SearchIndexItem, item_id, with_for_update=True)
+                    if item is not None:
+                        await session.delete(item)
+                        await session.commit()
                     continue
                 response = await client.embed("embedding", mapping, policy, [content])
-                values = embedding_values(response, dimensions)
+                values, returned_model = embedding_values(response, generation.model_id, dimensions)
                 generation = await session.get(IndexGeneration, generation_id, with_for_update=True)
                 item = await session.get(SearchIndexItem, item_id, with_for_update=True)
                 if generation is None or item is None or generation.status not in {"running", "active"}:
+                    if item is not None:
+                        await session.delete(item)
+                        await session.commit()
                     continue
+                if returned_model is not None:
+                    if generation.response_model_id not in (None, returned_model):
+                        raise ValueError("Embedding response identity changed during indexing")
+                    generation.response_model_id = returned_model
                 if generation.dimensions is None:
                     generation.dimensions = len(values)
                 elif generation.dimensions != len(values):
