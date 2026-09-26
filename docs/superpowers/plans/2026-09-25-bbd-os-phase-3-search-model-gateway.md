@@ -12,7 +12,7 @@
 
 **Entry gate:** Phase 2 chunks/provenance; live model acceptance needs configured endpoint and permitted aliases.
 
-**Implementation status:** In progress. P03-T1 and P03-T2 production code, affected builds, and independent reviews are complete; P03-T3 is next.
+**Implementation status:** Production code, affected builds, and independent reviews for P03-T1 through P03-T4 are complete. Behavioral acceptance remains deferred to the post-code test stage.
 
 Code stage: implement production code and run affected production builds only. Do not create, modify or run tests, lint, or standalone typecheck until production code for all Phase 1-12 is complete. Behavioral acceptance is listed separately in the deferred test-stage section.
 
@@ -86,7 +86,7 @@ Concrete contract/configuration shape (illustrative IDs/timestamps are test data
 
 - [x] **P03-T3.2 - Build the affected deliverable.** Run `./scripts/dev.ps1 build` (or `make build`) and fix production build failures before proceeding.
 
-- [ ] **P03-T3.3 - Record build evidence, commit and continue.** Record changed files, the exact production build command/result, review findings and unresolved gates in `EXECUTION.md`; commit the completed task and continue to the next ready task.
+- [x] **P03-T3.3 - Record build evidence, commit and continue.** Record changed files, the exact production build command/result, review findings and unresolved gates in `EXECUTION.md`; commit `5445f5a`. Independent review approved with no material findings. Continue to P03-T4.
 
 ## Task P03-T4: Search quality baseline and model acceptance record
 
@@ -95,7 +95,7 @@ Concrete contract/configuration shape (illustrative IDs/timestamps are test data
 
 **Interfaces:** `recall_at_k(ranked_ids: list[str], expected_ids: set[str], k: int) -> float`; empty expected sets return 1.0 only for empty results, otherwise 0.0 for explicit no-answer fixtures. Deferred evaluation data contain queries, expected document IDs and allowed filters; reports include recall@10 and latency, with provider latency separate and current-generation configuration captured.
 
-- [ ] **P03-T4.1 - Implement production behavior.** Implement `recall_at_k(ranked_ids, expected_ids, k)` with the specified empty-set behavior. Create the model compatibility record with fields for endpoint release, model identity, dimensions, privacy routing guarantees and capabilities; unknown values remain unknown. This record is a dependency for extraction and Graphiti.
+- [x] **P03-T4.1 - Implement production behavior.** Implement `recall_at_k(ranked_ids, expected_ids, k)` with the specified empty-set behavior. Create the model compatibility record with fields for endpoint release, model identity, dimensions, privacy routing guarantees and capabilities; unknown values remain unknown. This record is a dependency for extraction and Graphiti.
 
 Concrete contract/configuration shape (illustrative IDs/timestamps are test data, not production defaults):
 
@@ -103,16 +103,16 @@ Concrete contract/configuration shape (illustrative IDs/timestamps are test data
 {"alias":"embedding","model_id":"configured-model","dimensions":1536,"live_verified":false}
 ```
 
-- [ ] **P03-T4.2 - Build the affected deliverable.** Run `./scripts/dev.ps1 build` (or `make build`) and fix production build failures before proceeding.
+- [x] **P03-T4.2 - Build the affected deliverable.** `./scripts/dev.ps1 build` passed on 2026-09-26; Next.js and Docker web/API/worker/migrate images built.
 
-- [ ] **P03-T4.3 - Record build evidence, commit and continue.** Record changed files, the exact production build command/result, review findings and unresolved gates in `EXECUTION.md`; commit the completed task and continue to the next ready task.
+- [x] **P03-T4.3 - Record build evidence, commit and continue.** Record changed files, exact build command/result, review findings and unresolved gates in `EXECUTION.md`; commit the completed task and proceed to Phase 3 whole-branch review.
 
 ## Phase Acceptance and Handoff
 
-- [ ] Build the phase deliverables with `./scripts/dev.ps1 build` (or `make build`).
-- [ ] Confirm packaging, Alembic metadata, API routes and module descriptors are included in affected production builds.
-- [ ] Complete independent source review and fix actionable findings, then repeat affected production builds.
-- [ ] Update `docs/IMPLEMENTATION_STATUS.md`, this checklist and `EXECUTION.md`; advance to the next ready task.
+- [x] Build the phase deliverables with `./scripts/dev.ps1 build` (or `make build`).
+- [x] Confirm packaging, Alembic metadata, API routes and module descriptors are included in affected production builds.
+- [x] Complete independent source review and fix actionable findings; rebuild after production-code fixes.
+- [x] Update `docs/IMPLEMENTATION_STATUS.md`, this checklist and `EXECUTION.md`; advance to whole-branch review.
 
 Production-code completion for all Phases 1-12 is the gate to begin the separate deferred test stage.
 
