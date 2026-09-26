@@ -14,7 +14,7 @@
 
 **Implementation status:** Not started. This file is an implementation plan, not evidence of working code.
 
-Test execution is deferred until all Phase 1-12 production code is complete. Acceptance examples and test file paths below are specifications; do not create, modify or run test files during this implementation stage.
+Code stage: implement production code and run affected production builds only. Do not create, modify or run tests, lint, or standalone typecheck until production code for all Phase 1-12 is complete. Behavioral acceptance is listed separately in the deferred test-stage section.
 
 ## Global Constraints
 
@@ -25,15 +25,7 @@ Test execution is deferred until all Phase 1-12 production code is complete. Acc
 - Public APIs use `/api/v1`; preserve single-owner auth, session-bound CSRF, source policy and provenance.
 - Target 2 CPU cores/8 GiB with remote inference; never claim measured capacity from a larger host.
 - Follow the master's mandatory privacy, module, durable-job, deletion and UI contracts. Keep source data and credentials out of logs.
-- No stage/commit/push/deploy, branch change or destructive owner-data operations are authorized by writing this plan.
-
-## Review Focus
-
-1. Local-only content cannot leave via a reasoning or embedding fallback.
-2. Changing embedding model or dimensions never mixes vector spaces.
-3. No gateway preserves lexical retrieval and explicitly disables remote-dependent search.
-4. Deleting content removes it from retrieval even while indexing jobs are running.
-5. Search must handle Vietnamese text, filters and empty queries without unsafe SQL.
+- The owner has authorized committing completed work and merging a completed phase into `main`; do not push, deploy, change branches outside planned worktrees, or perform destructive owner-data operations.
 
 ## File Structure and Boundaries
 
@@ -41,22 +33,12 @@ Module ownership: **search, model_gateway, settings**. Backend domain models/ser
 
 ## Task P03-T1: Gateway configuration, capability probes and privacy policy
 
-**Files and responsibilities:** Create core/model_gateway/schemas.py, core/model_gateway/client.py, core/model_gateway/policy.py; modules/settings/models.py, modules/settings/schemas.py, modules/settings/routes.py; modules/model_gateway/routes.py; apps/web/src/modules/settings/models.tsx, apps/web/src/modules/settings/privacy.tsx; tests/test_model_policy.py.
+
+**Production files and responsibilities:** Create core/model_gateway/schemas.py, core/model_gateway/client.py and core/model_gateway/policy.py; modules/settings/models.py, modules/settings/schemas.py and modules/settings/routes.py; modules/model_gateway/routes.py; apps/web/src/modules/settings/models.tsx and apps/web/src/modules/settings/privacy.tsx.
 
 **Interfaces — consumes/produces:** ModelGateway.chat, stream, embed, structured, tools, rerank accept an explicit RequestPolicy with reasoning_allowed,embeddings_allowed,local_only, permitted_destinations. POST /settings/models/{alias}/test; GET/PATCH /settings/privacy; secret values are write-only and represented as configured flags. Aliases: reasoning-large,reasoning-small,fast,embedding,reranker,vision,local-private.
 
-- [ ] **P03-T1.1 - Review the behavior contract.** The acceptance example below is for the final test stage; do not create or modify test files during implementation.
-
-```python
-def test_local_only_rejects_remote_destination():
-    from core.model_gateway.policy import may_send
-    assert may_send(local_only=True, destination="remote", opted_in=True) is False
-    assert may_send(local_only=False, destination="remote", opted_in=False) is False
-```
-
-- [ ] **P03-T1.2 - Implement the production behavior.** Follow task interfaces; defer all test work until Phases 1-12 code is complete.
-
-- [ ] **P03-T1.3 — Implement the minimal production behavior.** Implement may_send as a fail-closed predicate and apply it before all outgoing requests, including probes containing owner data. Store secrets in server configuration initially; settings UI edits alias mappings, not provider secrets. Separate capability results per alias/model/version and expire results when mapping changes. Cache no evidence of privacy guarantees from gateway hostname alone; unknown destination denies local-only sends. Add synthetic capability probes, explicit request deadlines, bounded retry only on transient errors, shared two-request concurrency cap with expiring leases across API/worker. Do not install a local LLM by default.
+- [ ] **P03-T1.1 - Implement production behavior.** Implement may_send as a fail-closed predicate and apply it before all outgoing requests, including probes containing owner data. Store secrets in server configuration initially; settings UI edits alias mappings, not provider secrets. Separate capability results per alias/model/version and expire results when mapping changes. Cache no evidence of privacy guarantees from gateway hostname alone; unknown destination denies local-only sends. Add synthetic capability probes, explicit request deadlines, bounded retry only on transient errors, shared two-request concurrency cap with expiring leases across API/worker. Do not install a local LLM by default.
 
 Concrete contract/configuration shape (illustrative IDs/timestamps are test data, not production defaults):
 
@@ -64,30 +46,18 @@ Concrete contract/configuration shape (illustrative IDs/timestamps are test data
 {"alias":"embedding","capabilities":{"embeddings":"untested","streaming":"unsupported"},"credential_configured":false}
 ```
 
-- [ ] **P03-T1.4 - Build the affected deliverable.** Run `./scripts/dev.ps1 build` (or `make build`); fix build failures before proceeding. Deferred acceptance criteria: Unit tests for every privacy/fallback branch using an injected HTTP transport; assert transport sees zero calls when denied. Live probe writes redacted evidence only after endpoint/aliases/opt-in are supplied; unavailable prerequisites block live acceptance, not pure API/UI development.
+- [ ] **P03-T1.2 - Build the affected deliverable.** Run `./scripts/dev.ps1 build` (or `make build`) and fix production build failures before proceeding.
 
-- [ ] **P03-T1.5 - Record build evidence and continue.** Record changed files, exact build command/result, review findings and unresolved gates in `EXECUTION.md`; then continue. Do not run tests during implementation.
+- [ ] **P03-T1.3 - Record build evidence, commit and continue.** Record changed files, the exact production build command/result, review findings and unresolved gates in `EXECUTION.md`; commit the completed task and continue to the next ready task.
 
 ## Task P03-T2: Lexical index and embedding generations
 
-**Files and responsibilities:** Create modules/search/models.py, modules/search/indexing.py, modules/search/public.py, modules/search/schemas.py, modules/search/routes.py; infrastructure/postgres/migrations/versions/0004_search.py; tests/integration/test_search_index.py; tests/test_index_generation.py; extend worker and deletion hooks.
+
+**Production files and responsibilities:** Create modules/search/models.py, modules/search/indexing.py, modules/search/public.py, modules/search/schemas.py and modules/search/routes.py; infrastructure/postgres/migrations/versions/0004_search.py; extend worker and deletion hooks.
 
 **Interfaces — consumes/produces:** POST /search {query,filters,mode,limit,cursor}; SearchHit includes title,excerpt,score,source,observed_at,published_at,document_version_id,chunk_id,citation. IndexGeneration(model_id,dimensions,status); POST /search/reindex -> run_id. Modes lexical|hybrid, with effective_mode and warnings.
 
-- [ ] **P03-T2.1 - Review the behavior contract.** The acceptance example below is for the final test stage; do not create or modify test files during implementation.
-
-```python
-async def test_lexical_search_works_without_embedding(owner_client, searchable_document):
-    response = await owner_client.post("/api/v1/search",
-        json={"query":"Tiếng Việt","mode":"lexical","limit":10})
-    assert response.status_code == 200
-    assert response.json()["effective_mode"] == "lexical"
-    assert searchable_document["id"] in [x["document_id"] for x in response.json()["items"]]
-```
-
-- [ ] **P03-T2.2 - Implement the production behavior.** Follow task interfaces; defer all test work until Phases 1-12 code is complete.
-
-- [ ] **P03-T2.3 — Implement the minimal production behavior.** Define searchable_document fixture by ingesting a test note and waiting for lexical readiness. Use PostgreSQL simple text-search configuration for Unicode lexical baseline; parameterize query construction. Pin vector dimensions per generation; create a new physical index for new generations, then switch active generation atomically after verification. Keep per-item indexing status so partial failures are visible. Use reciprocal-rank fusion for hybrid results. If query embeddings are unavailable return lexical results with effective_mode=lexical and a warning; never report hybrid success. Gate deleted/private references at retrieval time as well as indexing.
+- [ ] **P03-T2.1 - Implement production behavior.** Use PostgreSQL simple text-search configuration for Unicode lexical baseline; parameterize query construction. Pin vector dimensions per generation; create a new physical index for new generations, then switch active generation atomically after verification. Keep per-item indexing status so partial failures are visible. Use reciprocal-rank fusion for hybrid results. If query embeddings are unavailable return lexical results with effective_mode=lexical and a warning; never report hybrid success. Gate deleted/private references at retrieval time as well as indexing.
 
 Concrete contract/configuration shape (illustrative IDs/timestamps are test data, not production defaults):
 
@@ -95,33 +65,18 @@ Concrete contract/configuration shape (illustrative IDs/timestamps are test data
 {"items":[],"next_cursor":null,"effective_mode":"lexical","warnings":["Semantic search unavailable"]}
 ```
 
-- [ ] **P03-T2.4 - Build the affected deliverable.** Run `./scripts/dev.ps1 build` (or `make build`); fix build failures before proceeding. Deferred acceptance criteria: Filter combinations, Unicode queries, stale generation, provider dimension mismatch, delete while embedding, failed rebuild preserving current index, and duplicate indexing events. Verify hybrid with a permitted live embedding alias separately from deterministic test transport.
+- [ ] **P03-T2.2 - Build the affected deliverable.** Run `./scripts/dev.ps1 build` (or `make build`) and fix production build failures before proceeding.
 
-- [ ] **P03-T2.5 - Record build evidence and continue.** Record changed files, exact build command/result, review findings and unresolved gates in `EXECUTION.md`; then continue. Do not run tests during implementation.
+- [ ] **P03-T2.3 - Record build evidence, commit and continue.** Record changed files, the exact production build command/result, review findings and unresolved gates in `EXECUTION.md`; commit the completed task and continue to the next ready task.
 
 ## Task P03-T3: Search UI and command palette
 
-**Files and responsibilities:** Create apps/web/src/modules/search/api.ts, apps/web/src/modules/search/search-page.tsx, apps/web/src/modules/search/search-results.tsx; apps/web/src/core/command-palette.tsx; tests/e2e/search.spec.ts; thin /search route.
+
+**Production files and responsibilities:** Create apps/web/src/modules/search/api.ts, apps/web/src/modules/search/search-page.tsx and apps/web/src/modules/search/search-results.tsx; apps/web/src/core/command-palette.tsx; add thin /search route.
 
 **Interfaces — consumes/produces:** Search UI consumes the response contract without inventing normalized confidence. Ctrl/Cmd+K opens available actions; '/' focuses search except in inputs/editors. Citation links navigate to protected document revision views.
 
-- [ ] **P03-T3.1 - Review the behavior contract.** The acceptance example below is for the final test stage; do not create or modify test files during implementation.
-
-```typescript
-import { test, expect } from './fixtures';
-
-test('search keyboard shortcut preserves input typing', async ({ page }) => {
-  await page.goto('/search');
-  await page.getByRole('textbox', { name: 'Search' }).fill('path/to/note');
-  await expect(page.getByRole('textbox', { name: 'Search' })).toHaveValue('path/to/note');
-  await page.getByRole('button', { name: 'Search' }).click();
-  await expect(page.getByRole('status')).toBeVisible();
-});
-```
-
-- [ ] **P03-T3.2 - Implement the production behavior.** Follow task interfaces; defer all test work until Phases 1-12 code is complete.
-
-- [ ] **P03-T3.3 — Implement the minimal production behavior.** Add query, source/date/type filters and stable pagination; show lexical fallback and indexing progress. Use accessible list results with date/source/excerpt, no fabricated scores or snippets. Register command-palette actions from enabled modules as they appear. Preserve typed search/filter state in URL; never put auth or raw private text in unrelated telemetry.
+- [ ] **P03-T3.1 - Implement production behavior.** Add query, source/date/type filters and stable pagination; show lexical fallback and indexing progress. Use accessible list results with date/source/excerpt, no fabricated scores or snippets. Register command-palette actions from enabled modules as they appear. Preserve typed search/filter state in URL; never put auth or raw private text in unrelated telemetry.
 
 Concrete contract/configuration shape (illustrative IDs/timestamps are test data, not production defaults):
 
@@ -129,27 +84,18 @@ Concrete contract/configuration shape (illustrative IDs/timestamps are test data
 {"query":"project","filters":{"source_ids":[],"date_from":null,"date_to":null,"content_types":[]}}
 ```
 
-- [ ] **P03-T3.4 - Build the affected deliverable.** Run `./scripts/dev.ps1 build` (or `make build`); fix build failures before proceeding. Deferred acceptance criteria: Keyboard shortcut exclusions, empty results, error/retry, filters, citation navigation and offline lexical access. Common phase gate.
+- [ ] **P03-T3.2 - Build the affected deliverable.** Run `./scripts/dev.ps1 build` (or `make build`) and fix production build failures before proceeding.
 
-- [ ] **P03-T3.5 - Record build evidence and continue.** Record changed files, exact build command/result, review findings and unresolved gates in `EXECUTION.md`; then continue. Do not run tests during implementation.
+- [ ] **P03-T3.3 - Record build evidence, commit and continue.** Record changed files, the exact production build command/result, review findings and unresolved gates in `EXECUTION.md`; commit the completed task and continue to the next ready task.
 
 ## Task P03-T4: Search quality baseline and model acceptance record
 
-**Files and responsibilities:** Create tests/fixtures/search/relevance.json, tests/test_search_quality.py, docs/model-compatibility.md; update docs/IMPLEMENTATION_STATUS.md and execution ledger. Create modules/search/evaluation.py.
 
-**Interfaces — consumes/produces:** Fixtures contain query,expected_document_ids and allowed filters; evaluation reports recall@10 and latency, separate provider latency. Current-generation configuration is included in evidence. recall_at_k(ranked_ids: list[str], expected_ids: set[str], k: int) -> float; empty expected set returns 1.0 only for an empty result, otherwise 0.0 for explicit no-answer fixtures.
+**Production files and responsibilities:** Create modules/search/evaluation.py and docs/model-compatibility.md; update docs/IMPLEMENTATION_STATUS.md and execution ledger.
 
-- [ ] **P03-T4.1 - Review the behavior contract.** The acceptance example below is for the final test stage; do not create or modify test files during implementation.
+**Interfaces:** `recall_at_k(ranked_ids: list[str], expected_ids: set[str], k: int) -> float`; empty expected sets return 1.0 only for empty results, otherwise 0.0 for explicit no-answer fixtures. Deferred evaluation data contain queries, expected document IDs and allowed filters; reports include recall@10 and latency, with provider latency separate and current-generation configuration captured.
 
-```python
-def test_recall_penalizes_missing_relevant_documents():
-    from modules.search.evaluation import recall_at_k
-    assert recall_at_k(["a","b"], {"a","c"}, k=10) == 0.5
-```
-
-- [ ] **P03-T4.2 - Implement the production behavior.** Follow task interfaces; defer all test work until Phases 1-12 code is complete.
-
-- [ ] **P03-T4.3 — Implement the minimal production behavior.** Build at least ten deterministic retrieval questions spanning Vietnamese text, dates, sources and no-answer cases. Require all exact known-term documents in lexical top10 and record hybrid recall without claiming provider quality from stubs. Record endpoint release, tested model identity, dimensions, privacy routing guarantees and capabilities; retain unavailable values as unknown. This record is a dependency for extraction and Graphiti, not an invitation to skip live checks.
+- [ ] **P03-T4.1 - Implement production behavior.** Implement `recall_at_k(ranked_ids, expected_ids, k)` with the specified empty-set behavior. Create the model compatibility record with fields for endpoint release, model identity, dimensions, privacy routing guarantees and capabilities; unknown values remain unknown. This record is a dependency for extraction and Graphiti.
 
 Concrete contract/configuration shape (illustrative IDs/timestamps are test data, not production defaults):
 
@@ -157,22 +103,57 @@ Concrete contract/configuration shape (illustrative IDs/timestamps are test data
 {"alias":"embedding","model_id":"configured-model","dimensions":1536,"live_verified":false}
 ```
 
-- [ ] **P03-T4.4 - Build the affected deliverable.** Run `./scripts/dev.ps1 build` (or `make build`); fix build failures before proceeding. Deferred acceptance criteria: Run evaluation against disposable corpus and permitted live provider when available. Dimension above is example data only, never a configured default. Common gate; next P04-T1 only for model-dependent acceptance after the corresponding probe passes.
+- [ ] **P03-T4.2 - Build the affected deliverable.** Run `./scripts/dev.ps1 build` (or `make build`) and fix production build failures before proceeding.
 
-- [ ] **P03-T4.5 - Record build evidence and continue.** Record changed files, exact build command/result, review findings and unresolved gates in `EXECUTION.md`; then continue. Do not run tests during implementation.
+- [ ] **P03-T4.3 - Record build evidence, commit and continue.** Record changed files, the exact production build command/result, review findings and unresolved gates in `EXECUTION.md`; commit the completed task and continue to the next ready task.
 
 ## Phase Acceptance and Handoff
 
-- [ ] Build the phase deliverables with `./scripts/dev.ps1 build` (or `make build`); no tests, lint or typecheck run during the code stage.
-- [ ] Verify new code is included in Docker/packaging, new tables in Alembic metadata, public APIs in OpenAPI and enabled UI/routes in module descriptors.
-- [ ] Complete independent final review under the execution skill, fix actionable findings, and repeat affected checks.
-- [ ] After all Phase 1-12 production code is complete, run the deferred test stage from the master plan; record results, live integration evidence and capacity limitations.
-- [ ] Update `docs/IMPLEMENTATION_STATUS.md`, this checklist and `EXECUTION.md`. Continue automatically to the next ready approved task; stop only the work that depends on an unresolved external gate or a material unapproved change.
+- [ ] Build the phase deliverables with `./scripts/dev.ps1 build` (or `make build`).
+- [ ] Confirm packaging, Alembic metadata, API routes and module descriptors are included in affected production builds.
+- [ ] Complete independent source review and fix actionable findings, then repeat affected production builds.
+- [ ] Update `docs/IMPLEMENTATION_STATUS.md`, this checklist and `EXECUTION.md`; advance to the next ready task.
+
+Production-code completion for all Phases 1-12 is the gate to begin the separate deferred test stage.
+
+## Deferred test-stage acceptance
+
+This section is informational only during the code stage. Do not create or modify tests until production code for all Phase 1-12 is complete.
+
+- Local-only content cannot leave via a reasoning or embedding fallback.
+- Changing embedding model or dimensions never mixes vector spaces.
+- No gateway preserves lexical retrieval and explicitly disables remote-dependent search.
+- Deleting content removes it from retrieval even while indexing jobs are running.
+- Search must handle Vietnamese text, filters and empty queries without unsafe SQL.
+
+### P03-T1
+
+Planned test-stage files: `tests/test_model_policy.py`.
+
+- Local-only or non-opted-in remote requests are denied before any transport call. Cover privacy/fallback branches using an injected transport. Live probes write redacted evidence only when endpoint, aliases and opt-in are supplied; missing prerequisites defer live acceptance.
+
+### P03-T2
+
+Planned test-stage files: `tests/integration/test_search_index.py`, `tests/test_index_generation.py`.
+
+- Lexical search returns results without embeddings. Cover filters, Unicode queries, stale generations, provider dimension mismatch, deletion during embedding, failed rebuild preserving the active index, and duplicate indexing events. Verify hybrid mode separately with a permitted live embedding alias.
+
+### P03-T3
+
+Planned test-stage files: `tests/e2e/search.spec.ts`.
+
+- Cover keyboard shortcut exclusions, empty results, error/retry, filters, citation navigation and offline lexical access.
+
+### P03-T4
+
+Planned test-stage files: `tests/fixtures/search/relevance.json`, `tests/test_search_quality.py`.
+
+- After all production code is complete, evaluate at least ten deterministic retrieval questions spanning Vietnamese text, dates, sources and no-answer cases; require exact known-term documents in lexical top 10. Record hybrid recall without claiming provider quality from stubs and complete the compatibility record using permitted live-provider evidence when available. The example dimension is not a configured default.
 
 ## Plan Self-Review Checklist
 
 - [x] Goal and spec sections mapped to named tasks and public interfaces.
-- [x] Five review-focus risks assigned concrete failure checks in the owning tasks.
-- [x] Exact file targets, acceptance examples, deferred test criteria, implementation rules and build criteria included.
+- [x] Deferred acceptance risks retained for the post-code test stage.
+- [x] Exact production file targets, deferred acceptance criteria, implementation rules and build criteria included.
 - [x] Module ownership, auth/privacy, safe deletion and retry/resume boundaries preserved.
 - [x] Implementation and live/hardware verification are not claimed complete by this plan.

@@ -81,6 +81,7 @@ class DocumentRead(BaseModel):
     metadata: dict[str, Any]
     current_version: int
     content_hash: str
+    extraction_status: str
     published_at: datetime | None
     observed_at: datetime | None
     language: str | None

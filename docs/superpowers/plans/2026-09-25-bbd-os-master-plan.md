@@ -135,10 +135,10 @@ Gmail/Calendar/Drive/Notion/Slack and named social/community providers remain la
 ## Task Execution and Verification Protocol
 
 1. Read this master, the phase plan, current code and `EXECUTION.md`. Reconcile drift before editing and preserve user changes.
-2. The implementation stage covers Phases 1-12. Implement production code and run builds only. Do not create, modify or run test files, lint or typecheck; test examples and paths define deferred acceptance criteria.
+2. The implementation stage covers Phases 1-12. Implement production code and run production builds only. Do not create, modify or run test files or fixtures, or run tests, lint, or standalone typechecks. The plans keep behavioral acceptance in a separately labeled deferred test-stage section.
 3. Keep one task active. Record its ID, scope, code changes, exact build command/result, review findings, unresolved external gates and next task in `EXECUTION.md`.
 4. Each task implements its production behavior and builds the affected deliverable. At phase completion, run `./scripts/dev.ps1 build` (or `make build`) and fix build failures before advancing. Do not use a test result to mark any task or phase complete during implementation.
-5. Preserve all behavioral test examples, failure cases, fixtures, and live integration requirements in the phase plans as the acceptance specification for the later test stage. Do not add production test-only routes or change security boundaries to accommodate future tests.
+5. Keep all test authoring and execution out of phase implementation checklists. Preserve behavioral acceptance requirements separately for the later test stage. Do not add production test-only routes or change security boundaries to accommodate future tests.
 6. Continue through every ready task in P01-P12. A blocked live integration does not stop independent code work; record missing external evidence and do not mark it verified.
 7. After all Phase 1-12 production code is complete and all phase builds succeed, begin a separate test stage. First add/update the planned test files and fixtures, then run focused tests, integration/E2E suites, lint/typecheck, and the complete suite in the order defined by the relevant plans. Run destructive/reset/volume operations only against a verified disposable project/database.
 8. At the end of the test stage, run the final build again, complete independent whole-branch review, fix findings and rerun the affected tests/builds, then update `docs/IMPLEMENTATION_STATUS.md`, the phase plans, architecture decisions when material, and `EXECUTION.md`.
@@ -150,8 +150,8 @@ Gmail/Calendar/Drive/Notion/Slack and named social/community providers remain la
 - Twelve phase plans provide **49 task-level checklists**, production-code/build steps, and deferred test acceptance criteria.
 - `EXECUTION.md` persists active/next task, gate status, evidence and handoff notes.
 - `docs/IMPLEMENTATION_STATUS.md` distinguishes plan availability from implementation completion.
-- Phase 0 remains complete. Phase 1 production implementation is done; final review and acceptance handoff are current, with behavioral acceptance deferred to the separate test stage. Phases 2-12 are not started.
-- Next implementation task: **P02-T1** after Phase 1 final review/handoff, using `superpowers:subagent-driven-development`. Existing owner authorization covers continuing ready tasks/phase scope; no new approval loop is added.
+- Phase 0 and Phase 1 code/build delivery are complete. Phase 2 P02-T1 and P02-T2 are reviewed and complete; P02-T2 commits are `cfe481b`, `e57ea74`, and `14b0f41`. P02-T3 is next. Behavioral acceptance remains deferred until all Phase 1-12 production code is complete. Phases 3-12 have not started.
+- Next implementation task: **P02-T3** using `superpowers:subagent-driven-development`. Existing owner authorization covers continuing ready tasks/phase scope; no new approval loop is added.
 
 ## External Integration Evidence and Release Gates
 

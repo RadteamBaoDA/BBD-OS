@@ -9,7 +9,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.pagination import decode_cursor, encode_cursor
-from modules.knowledge.documents.models import Document, DocumentVersion
+from modules.knowledge.documents.models import Document, DocumentChunk, DocumentVersion
 from modules.knowledge.documents.schemas import DocumentCreate, DocumentPatch
 from modules.sources import public as sources
 
@@ -52,6 +52,95 @@ async def get_document(session: AsyncSession, document_id: UUID) -> Document | N
     return await session.get(Document, document_id)
 
 
+async def has_document_identity(session: AsyncSession, source_id: UUID, external_id: str) -> bool:
+    return bool(
+        await session.scalar(
+            select(Document.id).where(Document.source_id == source_id, Document.external_id == external_id)
+        )
+    )
+
+
+async def add_uploaded_document(
+    session: AsyncSession,
+    source_id: UUID,
+    title: str,
+    mime_type: str,
+    raw_uri: str,
+    metadata: dict[str, object],
+    external_id: str,
+    document_id: UUID,
+) -> Document:
+    document = Document(
+        id=document_id,
+        source_id=source_id,
+        external_id=external_id,
+        title=title,
+        content_type="file",
+        mime_type=mime_type,
+        raw_uri=raw_uri,
+        metadata_json=metadata,
+        current_version=1,
+        content_hash=content_hash(""),
+        extraction_status="queued",
+    )
+    session.add(document)
+    await session.flush()
+    session.add(DocumentVersion(document_id=document.id, version_number=1, content="", content_hash=content_hash("")))
+    await session.flush()
+    return document
+
+
+async def save_extraction(
+    session: AsyncSession,
+    document_id: UUID,
+    text: str,
+    chunks: list[dict[str, object]],
+    extraction_status: str,
+) -> Document | None:
+    document = await session.scalar(select(Document).where(Document.id == document_id).with_for_update())
+    if document is None:
+        return None
+    current = await session.scalar(
+        select(DocumentVersion).where(
+            DocumentVersion.document_id == document_id,
+            DocumentVersion.version_number == document.current_version,
+        )
+    )
+    if current is None:
+        raise RuntimeError("Current document version is missing")
+    if current.content != text:
+        digest = content_hash(text)
+        current = DocumentVersion(
+            document_id=document.id,
+            version_number=document.current_version + 1,
+            content=text,
+            content_hash=digest,
+        )
+        session.add(current)
+        document.current_version += 1
+        document.content_hash = digest
+        await session.flush()
+    document.extraction_status = extraction_status
+    existing = await session.scalar(
+        select(DocumentChunk.id).where(DocumentChunk.document_version_id == current.id).limit(1)
+    )
+    if existing is None:
+        for index, chunk in enumerate(chunks):
+            content = str(chunk["content"])
+            session.add(
+                DocumentChunk(
+                    document_version_id=current.id,
+                    chunk_index=index,
+                    content=content,
+                    content_hash=content_hash(content),
+                    token_count=int(chunk["token_count"]),
+                    metadata_json=dict(chunk.get("metadata", {})),
+                )
+            )
+    await session.flush()
+    return document
+
+
 async def list_documents(
     session: AsyncSession, limit: int, cursor: str | None, source_id: UUID | None
 ) -> tuple[list[Document], str | None]:
@@ -84,8 +173,15 @@ async def update_document(
 
 
 async def delete_document(session: AsyncSession, document_id: UUID) -> bool:
+    identity = await session.execute(select(Document.source_id).where(Document.id == document_id))
+    source_id = identity.scalar_one_or_none()
+    if source_id is None:
+        return False
+    await sources.lock_source(session, source_id)
     result = await session.scalars(
-        delete(Document).where(Document.id == document_id).returning(Document.id)
+        delete(Document)
+        .where(Document.id == document_id, Document.source_id == source_id)
+        .returning(Document.id)
     )
     await session.commit()
     return result.first() is not None

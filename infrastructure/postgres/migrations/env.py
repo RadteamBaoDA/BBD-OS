@@ -10,11 +10,29 @@ from sqlalchemy.ext.asyncio import async_engine_from_config
 import modules  # noqa: F401  # Domain model packages are imported here as they are added.
 from core.auth.models import AuthSession, Owner
 from core.database import Base
-from modules.knowledge.documents.models import Document, DocumentVersion
-from modules.sources.models import Source
+from modules.knowledge.documents.models import Document, DocumentChunk, DocumentVersion
+from modules.ingestion.models import (
+    CollectorCredential,
+    EventOutbox,
+    IngestionBatch,
+    IngestionRun,
+    IngestionStage,
+    SourceIngestionState,
+    SourceObservation,
+)
+from modules.sources.models import Source, SourcePurgeOperation
 
 _auth_models = (AuthSession, Owner)
-_library_models = (Source, Document, DocumentVersion)
+_library_models = (Source, SourcePurgeOperation, Document, DocumentVersion, DocumentChunk)
+_ingestion_models = (
+    CollectorCredential,
+    EventOutbox,
+    IngestionBatch,
+    IngestionRun,
+    IngestionStage,
+    SourceIngestionState,
+    SourceObservation,
+)
 config = context.config
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)

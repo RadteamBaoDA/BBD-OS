@@ -1,13 +1,15 @@
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Path, Query
+from fastapi import APIRouter, Depends, HTTPException, Path, Query, Request
+from fastapi.responses import FileResponse
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.auth.dependencies import require_owner, require_owner_write
 from core.auth.models import AuthSession
 from core.database import get_session
+from core.storage import storage_path
 from modules.knowledge.documents import public
 from modules.knowledge.documents.models import Document
 from modules.knowledge.documents.schemas import (
@@ -43,6 +45,7 @@ def as_document_read(document: Document) -> DocumentRead:
         metadata=document.metadata_json,
         current_version=document.current_version,
         content_hash=document.content_hash,
+        extraction_status=document.extraction_status,
         published_at=document.published_at,
         observed_at=document.observed_at,
         language=document.language,
@@ -76,6 +79,26 @@ async def create_document(
     except IntegrityError as exc:
         raise HTTPException(status_code=409, detail="Document identifier already exists") from exc
     return as_document_read(document)
+
+
+@router.get("/{document_id}/raw")
+async def get_raw_document(
+    document_id: UUID, request: Request, session: Session, _owner: OwnerRead
+) -> FileResponse:
+    document = await public.get_document(session, document_id)
+    if document is None or document.raw_uri is None:
+        raise HTTPException(status_code=404, detail="Raw document not found")
+    try:
+        path = storage_path(request.app.state.settings.data_dir, document.raw_uri)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail="Raw document not found") from exc
+    if not path.is_file():
+        raise HTTPException(status_code=404, detail="Raw document not found")
+    filename = str(document.metadata_json.get("filename", "download"))
+    response = FileResponse(path, media_type=document.mime_type or "application/octet-stream", filename=filename)
+    response.headers["Cache-Control"] = "private, no-store"
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    return response
 
 
 @router.get("/{document_id}", response_model=DocumentRead)

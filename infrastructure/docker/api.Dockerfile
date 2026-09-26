@@ -11,7 +11,7 @@ COPY alembic.ini ./alembic.ini
 FROM python:3.12.14-slim-bookworm AS runtime
 ENV PATH="/app/.venv/bin:$PATH" PYTHONUNBUFFERED=1 PYTHONDONTWRITEBYTECODE=1
 WORKDIR /app
-RUN groupadd --system --gid 10001 bbd && useradd --system --uid 10001 --gid bbd --no-create-home bbd
+RUN groupadd --system --gid 10001 bbd && useradd --system --uid 10001 --gid bbd --no-create-home bbd && mkdir -p /data && chown bbd:bbd /data
 COPY --from=build --chown=bbd:bbd /app /app
 USER bbd
 EXPOSE 8000
