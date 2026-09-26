@@ -1,14 +1,15 @@
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Response
+from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.auth.dependencies import require_owner, require_owner_write
 from core.auth.models import AuthSession
 from core.database import get_session
 from modules.sources import public
-from modules.sources.schemas import SourceCreate, SourceList, SourcePatch, SourceRead
+from modules.sources.schemas import OperationRead, SourceCreate, SourceList, SourcePatch, SourceRead
 
 router = APIRouter(
     prefix="/api/v1/sources",
@@ -64,14 +65,29 @@ async def update_source(
     return SourceRead.model_validate(source, from_attributes=True)
 
 
-@router.delete("/{source_id}", response_model=SourceRead)
+@router.delete("/{source_id}")
 async def delete_source(
     source_id: UUID,
     session: Session,
     _owner: OwnerWrite,
     with_data: bool = False,
-) -> SourceRead:
-    source = await public.archive_source(session, source_id, with_data)
+) -> Response:
+    if with_data:
+        operation = await public.start_source_purge(session, source_id)
+        if operation is None:
+            raise HTTPException(status_code=404, detail="Source not found")
+        return JSONResponse(
+            status_code=202,
+            content=OperationRead(
+                operation_id=operation.id,
+                source_id=operation.source_id,
+                status=operation.status,
+                error_code=operation.error_code,
+                created_at=operation.created_at,
+                updated_at=operation.updated_at,
+            ).model_dump(mode="json"),
+        )
+    source = await public.archive_source(session, source_id)
     if source is None:
         raise HTTPException(status_code=404, detail="Source not found")
-    return SourceRead.model_validate(source, from_attributes=True)
+    return Response(status_code=204)

@@ -41,7 +41,11 @@ async def process_uploaded_file(ctx: dict[str, object], event_id: str) -> None:
         )
         stage = await session.scalar(select(IngestionStage).where(IngestionStage.id == stage_id).with_for_update())
         document = await session.scalar(select(Document).where(Document.id == document_id).with_for_update())
-        if stage is None or run is None or document is None or source is None or source.status != "active":
+        if (
+            stage is None or run is None or document is None or source is None
+            or source.status != "active"
+            or source.generation != int(event.payload.get("source_generation", source.generation))
+        ):
             if stage is not None:
                 stage.status = "failed"
                 stage.error_code = "source_or_document_unavailable"
@@ -83,7 +87,11 @@ async def process_uploaded_file(ctx: dict[str, object], event_id: str) -> None:
                 select(IngestionRun).where(IngestionRun.id == run_id, IngestionRun.source_id == source_id).with_for_update()
             )
             stage = await session.scalar(select(IngestionStage).where(IngestionStage.id == stage_id).with_for_update())
-            if source is None or source.status != "active" or run is None or stage is None:
+            if (
+                source is None or source.status != "active"
+                or source.generation != int(event.payload.get("source_generation", -1))
+                or run is None or stage is None
+            ):
                 if stage is not None:
                     stage.status = "failed"
                     stage.error_code = "source_unavailable"
@@ -115,21 +123,33 @@ async def process_uploaded_file(ctx: dict[str, object], event_id: str) -> None:
                 "parser": "p02-t2-v1",
             }
             stage.status = "succeeded"
+            stage.result_count = len(drafts)
             stage.lease_expires_at = None
             stage.error_code = None
             run.status = extraction_status if extraction_status == "needs_ocr" else "succeeded"
             run.error_code = None
             event.status = "delivered"
+            source.last_success_at = datetime.now(UTC)
+            source.last_error_code = None
+            source.processing_error_code = None
             await session.commit()
     except Exception as exc:
         async with factory() as session:
-            await session.scalar(select(Source).where(Source.id == source_id).with_for_update())
+            source = await session.scalar(select(Source).where(Source.id == source_id).with_for_update())
             run = await session.scalar(
                 select(IngestionRun).where(IngestionRun.id == run_id, IngestionRun.source_id == source_id).with_for_update()
             )
             stage = await session.scalar(select(IngestionStage).where(IngestionStage.id == stage_id).with_for_update())
             document = await session.scalar(select(Document).where(Document.id == document_id).with_for_update())
             event = await session.get(EventOutbox, identifier, with_for_update=True)
+            if (
+                event is None or source is None or source.status != "active"
+                or source.generation != int(event.payload.get("source_generation", -1))
+            ):
+                if event is not None:
+                    event.status = "failed"
+                await session.commit()
+                return
             if stage is not None:
                 stage.status = "failed"
                 stage.error_code = "parser_timeout" if isinstance(exc, TimeoutError) else "parse_failed"
@@ -139,6 +159,10 @@ async def process_uploaded_file(ctx: dict[str, object], event_id: str) -> None:
                 run.error_code = "parser_timeout" if isinstance(exc, TimeoutError) else "parse_failed"
             if document is not None:
                 document.extraction_status = "failed"
+            if source is not None:
+                source.processing_error_code = "parser_timeout" if isinstance(exc, TimeoutError) else "parse_failed"
+                source.last_error_code = source.processing_error_code
+                source.last_error_at = datetime.now(UTC)
             if event is not None:
                 event.status = "failed"
             await session.commit()

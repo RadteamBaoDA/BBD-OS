@@ -95,7 +95,7 @@ Concrete contract/configuration shape (illustrative IDs/timestamps are test data
 
 **Interfaces — consumes/produces:** Source health exposes collected_at,indexed_at and distinct collection/processing errors; data removal may return 202 with operation_id, completed synchronous removals remain 204. GET /system/operations/{id} tracks deletions; SourceRead includes retirement state.
 
-- [ ] **P02-T4.1 - Implement production behavior.** Show received/parsed/chunked separately from embedded/indexed—Phase 2 never claims semantic readiness. Guide credential setup to n8n and return validation; allow Sync now, pause/resume, retries and raw provenance inspection. Implement durable purge tombstones before deleting files/chunks/outbox work; workers check current source/document generation before writes. Prevent in-flight jobs recreating deleted content. Empty search/AI states remain explicit.
+- [x] **P02-T4.1 - Implement production behavior.** Show received/parsed/chunked separately from embedded/indexed—Phase 2 never claims semantic readiness. Guide credential setup to n8n and return validation; allow Sync now, pause/resume, retries and raw provenance inspection. Implement durable purge tombstones before deleting files/chunks/outbox work; workers check current source/document generation before writes. Prevent in-flight jobs recreating deleted content. Empty search/AI states remain explicit.
 
 Concrete contract/configuration shape (illustrative IDs/timestamps are test data, not production defaults):
 
@@ -103,16 +103,16 @@ Concrete contract/configuration shape (illustrative IDs/timestamps are test data
 {"collection":"succeeded","processing":"chunked","embedding":"not_configured","last_error":null}
 ```
 
-- [ ] **P02-T4.2 - Build the affected deliverable.** Run `./scripts/dev.ps1 build` (or `make build`) and fix production build failures before proceeding.
+- [x] **P02-T4.2 - Build the affected deliverable.** Run `./scripts/dev.ps1 build` (or `make build`) and fix production build failures before proceeding.
 
-- [ ] **P02-T4.3 - Record build evidence, commit and continue.** Record changed files, the exact production build command/result, review findings and unresolved gates in `EXECUTION.md`; commit the completed task and continue to the next ready task.
+- [x] **P02-T4.3 - Record build evidence, commit and continue.** Record changed files, the exact production build command/result, review findings and unresolved gates in `EXECUTION.md`; commit the completed task and continue to the next ready task.
 
 ## Phase Acceptance and Handoff
 
-- [ ] Build the phase deliverables with `./scripts/dev.ps1 build` (or `make build`).
-- [ ] Confirm packaging, Alembic metadata, API routes and module descriptors are included in affected production builds.
-- [ ] Complete independent source review and fix actionable findings, then repeat affected production builds.
-- [ ] Update `docs/IMPLEMENTATION_STATUS.md`, this checklist and `EXECUTION.md`; advance to the next ready task.
+- [x] Build the phase deliverables with `./scripts/dev.ps1 build` (or `make build`).
+- [x] Confirm packaging, Alembic metadata, API routes and module descriptors are included in affected production builds.
+- [x] Complete independent source review and fix actionable findings, then repeat affected production builds.
+- [x] Update `docs/IMPLEMENTATION_STATUS.md`, this checklist and `EXECUTION.md`; advance to the next ready task.
 
 Production-code completion for all Phases 1-12 is the gate to begin the separate deferred test stage.
 

@@ -37,6 +37,13 @@ class SourceRead(BaseModel):
     last_sync_at: datetime | None
     last_success_at: datetime | None
     last_error_at: datetime | None
+    last_error_code: str | None
+    collected_at: datetime | None
+    indexed_at: datetime | None
+    collection_error_code: str | None
+    processing_error_code: str | None
+    generation: int
+    retired_at: datetime | None
     created_at: datetime
     updated_at: datetime
 
@@ -44,3 +51,12 @@ class SourceRead(BaseModel):
 class SourceList(BaseModel):
     items: list[SourceRead]
     next_cursor: str | None
+
+
+class OperationRead(BaseModel):
+    operation_id: UUID
+    source_id: UUID
+    status: Literal["queued", "running", "succeeded", "failed"]
+    error_code: str | None
+    created_at: datetime
+    updated_at: datetime

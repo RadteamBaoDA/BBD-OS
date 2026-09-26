@@ -20,10 +20,10 @@ from modules.ingestion.models import (
     SourceIngestionState,
     SourceObservation,
 )
-from modules.sources.models import Source
+from modules.sources.models import Source, SourcePurgeOperation
 
 _auth_models = (AuthSession, Owner)
-_library_models = (Source, Document, DocumentVersion, DocumentChunk)
+_library_models = (Source, SourcePurgeOperation, Document, DocumentVersion, DocumentChunk)
 _ingestion_models = (
     CollectorCredential,
     EventOutbox,

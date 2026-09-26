@@ -56,6 +56,7 @@ class StageRead(BaseModel):
     status: Literal["pending", "queued", "running", "retrying", "succeeded", "failed"]
     attempts: int
     error_code: str | None
+    result_count: int | None = None
     updated_at: datetime
 
 

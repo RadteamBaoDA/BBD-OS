@@ -38,6 +38,7 @@ from modules.ingestion.models import (
     SourceObservation,
 )
 from modules.ingestion.worker import cleanup_storage_orphans, process_uploaded_file
+from modules.sources.worker import process_source_purge
 from modules.sources.models import Source
 
 logger = logging.getLogger("bbd.worker")
@@ -133,7 +134,9 @@ async def _collect_web_job(
         state = await session.get(SourceIngestionState, source_id, with_for_update=True)
         batch = await session.scalar(select(IngestionBatch).where(IngestionBatch.id == run.batch_id)) if run else None
         if (
-            source is None or source.status != "active" or run is None or stage is None or batch is None
+            source is None or source.status != "active"
+            or source.generation != int(event.payload.get("source_generation", -1))
+            or run is None or stage is None or batch is None
             or state is None or state.lease_run_id != run.id
         ):
             raise ValueError("Crawl job is no longer active")
@@ -191,7 +194,7 @@ async def _fail_ingestion_stage(
                 event.status = "failed"
                 await session.commit()
             return
-        await session.scalar(select(Source).where(Source.id == run_hint.source_id).with_for_update())
+        source = await session.scalar(select(Source).where(Source.id == run_hint.source_id).with_for_update())
         run = await session.scalar(select(IngestionRun).where(IngestionRun.id == run_id).with_for_update())
         stage = await session.scalar(
             select(IngestionStage).where(IngestionStage.id == stage_id).with_for_update()
@@ -205,6 +208,10 @@ async def _fail_ingestion_stage(
         run.status = "failed"
         run.error_code = error_code
         event.status = "failed"
+        if source is not None:
+            source.collection_error_code = error_code
+            source.last_error_code = error_code
+            source.last_error_at = datetime.now(UTC)
         state = await session.get(SourceIngestionState, run.source_id, with_for_update=True)
         if state is not None and state.lease_run_id == run.id:
             state.lease_run_id = None
@@ -250,7 +257,10 @@ async def process_ingestion_event(ctx: dict[str, object], event_id: str) -> None
             event.status = "failed"
             await session.commit()
             return
-        if source is None or source.status != "active":
+        if (
+            source is None or source.status != "active"
+            or source.generation != int(event.payload.get("source_generation", source.generation))
+        ):
             stage.status = "failed"
             stage.error_code = "source_unavailable"
             run.status = "failed"
@@ -324,7 +334,10 @@ async def process_ingestion_event(ctx: dict[str, object], event_id: str) -> None
                 select(IngestionStage).where(IngestionStage.id == stage_id).with_for_update()
             )
             event = await session.get(EventOutbox, identifier, with_for_update=True)
-            if source is None or source.status != "active":
+            if (
+                source is None or source.status != "active" or event is None
+                or source.generation != int(event.payload.get("source_generation", -1))
+            ):
                 if stage is not None:
                     stage.status = "failed"
                     stage.error_code = "source_unavailable"
@@ -384,7 +397,7 @@ async def process_ingestion_event(ctx: dict[str, object], event_id: str) -> None
         )
         if stage is None or run is None:
             return
-        if source is None or source.status != "active":
+        if source is None or source.status != "active" or source.generation != int(event.payload.get("source_generation", -1)):
             stage.status = "failed"
             stage.error_code = "source_unavailable"
             run.status = "failed"
@@ -400,6 +413,9 @@ async def process_ingestion_event(ctx: dict[str, object], event_id: str) -> None
         stage.lease_expires_at = None
         run.status = "succeeded"
         run.error_code = None
+        source.last_success_at = datetime.now(UTC)
+        source.last_error_code = None
+        source.collection_error_code = None
         state = await session.get(SourceIngestionState, run.source_id, with_for_update=True)
         if state is not None and state.lease_run_id == run.id:
             state.lease_run_id = None
@@ -427,7 +443,9 @@ async def purge_expired_sessions(ctx: dict[str, object]) -> int:
 
 
 class WorkerSettings:
-    functions: ClassVar[list[object]] = [purge_expired_sessions, process_ingestion_event, process_uploaded_file]
+    functions: ClassVar[list[object]] = [
+        purge_expired_sessions, process_ingestion_event, process_uploaded_file, process_source_purge
+    ]
     cron_jobs: ClassVar[list[object]] = [
         cron(purge_expired_sessions, minute=0),
         cron(cleanup_storage_orphans, minute=set(range(0, 60, 5))),

@@ -37,8 +37,12 @@ async def dispatch_pending_work(ctx: dict[str, object]) -> int:
         )
         enqueued = 0
         for event in events:
+            job = {
+                "document.file.uploaded": "process_uploaded_file",
+                "source.purge.requested": "process_source_purge",
+            }.get(event.type, "process_ingestion_event")
             await redis.enqueue_job(
-                "process_uploaded_file" if event.type == "document.file.uploaded" else "process_ingestion_event",
+                job,
                 str(event.id),
                 _job_id=f"ingestion:{event.id}",
                 _defer_until=now,

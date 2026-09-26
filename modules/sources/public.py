@@ -1,11 +1,14 @@
-from uuid import UUID
+from datetime import UTC, datetime
+from uuid import UUID, uuid4
 
-from sqlalchemy import desc, select, tuple_
+from sqlalchemy import desc, select, tuple_, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.pagination import decode_cursor, encode_cursor
-from modules.knowledge.documents import public as documents
-from modules.sources.models import Source
+from core.events import DomainEvent
+from modules.ingestion.models import CollectorCredential, EventOutbox
+from modules.knowledge.documents.models import Document
+from modules.sources.models import Source, SourcePurgeOperation
 from modules.sources.schemas import SourceCreate, SourcePatch
 
 
@@ -40,8 +43,8 @@ async def lock_source_for_document(session: AsyncSession, source_id: UUID) -> No
     source = await lock_source(session, source_id)
     if source is None:
         raise LookupError("Source not found")
-    if source.status == "archived":
-        raise ValueError("Cannot add documents to an archived source")
+    if source.status != "active":
+        raise ValueError("Cannot add documents to an inactive source")
 
 
 async def list_sources(
@@ -69,24 +72,79 @@ async def update_source(
     )
     if source is None:
         return None
+    if source.status == "archived" and payload.status not in (None, "archived"):
+        raise ValueError("Archived sources cannot be reactivated")
     if "name" in payload.model_fields_set:
         source.name = payload.name or ""
     if "status" in payload.model_fields_set:
-        source.status = payload.status or ""
+        next_status = payload.status or ""
+        if next_status != source.status:
+            source.generation += 1
+            source.status = next_status
+            source.retired_at = datetime.now(UTC) if next_status == "archived" else None
     await session.commit()
     await session.refresh(source)
     return source
 
 
 async def archive_source(
-    session: AsyncSession, source_id: UUID, with_data: bool
+    session: AsyncSession, source_id: UUID
 ) -> Source | None:
     source = await session.scalar(select(Source).where(Source.id == source_id).with_for_update())
     if source is None:
         return None
-    if with_data:
-        await documents.delete_source_documents(session, source_id)
-    source.status = "archived"
+    if source.status != "archived":
+        source.generation += 1
+        source.status = "archived"
+        source.retired_at = datetime.now(UTC)
+    await session.execute(
+        update(CollectorCredential).where(CollectorCredential.source_id == source_id,
+                                         CollectorCredential.revoked_at.is_(None))
+        .values(revoked_at=datetime.now(UTC))
+    )
     await session.commit()
     await session.refresh(source)
     return source
+
+
+async def start_source_purge(
+    session: AsyncSession, source_id: UUID
+) -> SourcePurgeOperation | None:
+    source = await session.scalar(select(Source).where(Source.id == source_id).with_for_update())
+    if source is None:
+        return None
+    current = await session.scalar(
+        select(SourcePurgeOperation).where(
+            SourcePurgeOperation.source_id == source_id,
+        ).order_by(SourcePurgeOperation.created_at.desc()).limit(1)
+    )
+    if current is not None and (source.status == "archived" or current.status in {"queued", "running"}):
+        return current
+
+    if source.status != "archived":
+        source.generation += 1
+        source.status = "archived"
+        source.retired_at = datetime.now(UTC)
+    operation = SourcePurgeOperation(source_id=source_id, generation=source.generation, raw_uris=[])
+    session.add(operation)
+    await session.flush()
+    raw_uris = list((await session.scalars(
+        select(Document.raw_uri).where(Document.source_id == source_id, Document.raw_uri.is_not(None))
+    )).all())
+    operation.raw_uris = [uri for uri in raw_uris if uri]
+    await session.execute(
+        update(CollectorCredential).where(CollectorCredential.source_id == source_id)
+        .values(revoked_at=datetime.now(UTC))
+    )
+    now = datetime.now(UTC)
+    event = DomainEvent(
+        id=uuid4(), type="source.purge.requested", version=1, occurred_at=now,
+        producer="modules.sources", payload={"operation_id": str(operation.id)},
+    )
+    session.add(EventOutbox(
+        id=event.id, type=event.type, version=event.version, occurred_at=event.occurred_at,
+        producer=event.producer, payload=event.payload, status="pending",
+    ))
+    await session.commit()
+    await session.refresh(operation)
+    return operation

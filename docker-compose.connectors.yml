@@ -46,6 +46,10 @@ services:
       - browser_egress
 
   api:
+    environment:
+      N8N_SERVICE_URL: ${N8N_SERVICE_URL:-http://n8n:5678}
+      BBD_SOURCE_ID: ${BBD_SOURCE_ID:-}
+      N8N_WEBHOOK_TOKEN: ${N8N_WEBHOOK_TOKEN:-}
     networks:
       default: {}
       connectors_internal:

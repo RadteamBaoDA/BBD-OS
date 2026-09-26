@@ -106,6 +106,8 @@ async def receive_batch(session: AsyncSession, payload: ReceiveBatch) -> tuple[I
         session.add(state)
         await session.flush()
     now = datetime.now(UTC)
+    source.last_sync_at = now
+    source.collected_at = now
     if state.lease_expires_at is not None and state.lease_expires_at > now:
         raise HTTPException(status_code=409, detail="Source already has an active collection run")
     if state.cursor != payload.cursor_before:
@@ -126,7 +128,7 @@ async def receive_batch(session: AsyncSession, payload: ReceiveBatch) -> tuple[I
         version=1,
         occurred_at=now,
         producer="modules.ingestion",
-        payload={"run_id": str(run.id), "stage_id": str(stage.id)},
+        payload={"run_id": str(run.id), "stage_id": str(stage.id), "source_generation": source.generation},
     )
     session.add(
         EventOutbox(
@@ -194,6 +196,8 @@ async def queue_connector_crawl(
         raise HTTPException(status_code=409, detail="Collection cursor is stale")
 
     now = datetime.now(UTC)
+    source.last_sync_at = now
+    source.collected_at = now
     minute = now.replace(second=0, microsecond=0).isoformat()
     key = "crawl:" + _digest({"source_id": str(source_id), "cursor": cursor_before, "config": configuration, "minute": minute})
     existing = await session.scalar(
@@ -224,6 +228,7 @@ async def queue_connector_crawl(
         producer="modules.connectors",
         payload={
             "source_id": str(source_id),
+            "source_generation": source.generation,
             "run_id": str(run.id),
             "stage_id": str(stage.id),
             "cursor_before": cursor_before,
@@ -278,6 +283,8 @@ async def receive_file(
         return run, False
 
     now = datetime.now(UTC)
+    source.last_sync_at = now
+    source.collected_at = now
     batch = IngestionBatch(source_id=source_id, batch_key=batch_key, payload_hash=digest)
     session.add(batch)
     await session.flush()
@@ -297,7 +304,7 @@ async def receive_file(
         version=1,
         occurred_at=now,
         producer="modules.ingestion",
-        payload={"run_id": str(run.id), "stage_id": str(stage.id), "document_id": str(document.id), "raw_uri": raw_uri, "mime_type": mime_type},
+        payload={"run_id": str(run.id), "stage_id": str(stage.id), "document_id": str(document.id), "raw_uri": raw_uri, "mime_type": mime_type, "source_generation": source.generation},
     )
     session.add(EventOutbox(
         id=event.id,
@@ -368,7 +375,10 @@ async def retry_run(session: AsyncSession, run_id: UUID) -> IngestionRun | None:
         version=1,
         occurred_at=datetime.now(UTC),
         producer="modules.ingestion",
-        payload=prior_event.payload if prior_event is not None else {"run_id": str(run.id), "stage_id": str(stage.id)},
+        payload={
+            **(prior_event.payload if prior_event is not None else {"run_id": str(run.id), "stage_id": str(stage.id)}),
+            "source_generation": source.generation,
+        },
     )
     session.add(
         EventOutbox(

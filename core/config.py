@@ -17,6 +17,9 @@ class Settings(BaseSettings):
     storage_orphan_grace_seconds: int = Field(default=3600, gt=0)
     browser_service_url: AnyHttpUrl = AnyHttpUrl("http://browser:8001")
     browser_shared_token: SecretStr = SecretStr("")
+    n8n_service_url: AnyHttpUrl = Field(default=AnyHttpUrl("http://n8n:5678"), validation_alias="N8N_SERVICE_URL")
+    n8n_source_id: str = Field(default="", validation_alias="BBD_SOURCE_ID")
+    n8n_webhook_token: SecretStr = Field(default=SecretStr(""), validation_alias="N8N_WEBHOOK_TOKEN")
     public_origin: AnyHttpUrl = AnyHttpUrl("http://localhost:3000")
     secure_cookies: bool = False
     setup_token: SecretStr = SecretStr("")
