@@ -73,6 +73,15 @@ body[data-theme='dark'] .button { color: #102117; }
 .text-button { background: none; border: 0; color: var(--accent); cursor: pointer; padding: 0; text-align: left; }
 .version-preview pre, .saved-content pre { white-space: pre-wrap; overflow-wrap: anywhere; font: inherit; }
 .secondary { background: transparent; color: var(--text); border: 1px solid var(--line); }
+.search-filters { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 14px; }
+.search-excerpt { line-height: 1.6; white-space: pre-wrap; overflow-wrap: anywhere; }
+.command-dialog { width: min(90vw, 520px); max-height: 80vh; padding: 24px; border: 1px solid var(--line); border-radius: 16px; background: var(--surface); color: var(--text); box-shadow: 0 18px 50px #0004; }
+.command-dialog::backdrop { background: #0009; }
+.command-dialog h2 { margin: 0 0 16px; }
+.command-actions { list-style: none; padding: 0; margin: 14px 0 0; }
+.command-actions li { border-top: 1px solid var(--line); }
+.command-actions button { display: block; width: 100%; padding: 14px 4px; }
+.record-content { min-width: 0; overflow-wrap: anywhere; }
 .status-panel { width: min(100%, 1000px); margin: 0 auto; }
 .status-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; margin-top: 25px; }
 .status-item { padding: 16px; border: 1px solid var(--line); border-radius: 12px; }

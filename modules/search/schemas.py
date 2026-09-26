@@ -44,6 +44,7 @@ class SearchSource(BaseModel):
 class SearchHit(BaseModel):
     document_id: UUID
     document_version_id: UUID
+    version_number: int
     chunk_id: UUID
     title: str
     excerpt: str

@@ -1,7 +1,9 @@
 import { WorkspaceShell } from '@/core/app-shell/workspace-shell';
 import { DocumentDetail } from '@/modules/knowledge/document-detail';
 
-export default async function DocumentPage({ params }: { params: Promise<{ documentId: string }> }) {
+export default async function DocumentPage({ params, searchParams }: { params: Promise<{ documentId: string }>; searchParams: Promise<{ version?: string }> }) {
   const { documentId } = await params;
-  return <WorkspaceShell><DocumentDetail id={documentId} /></WorkspaceShell>;
+  const { version } = await searchParams;
+  const revision = Number(version);
+  return <WorkspaceShell><DocumentDetail id={documentId} citedVersion={Number.isSafeInteger(revision) && revision > 0 ? revision : null} /></WorkspaceShell>;
 }

@@ -76,7 +76,7 @@ Concrete contract/configuration shape (illustrative IDs/timestamps are test data
 
 **Interfaces — consumes/produces:** Search UI consumes the response contract without inventing normalized confidence. Ctrl/Cmd+K opens available actions; '/' focuses search except in inputs/editors. Citation links navigate to protected document revision views.
 
-- [ ] **P03-T3.1 - Implement production behavior.** Add query, source/date/type filters and stable pagination; show lexical fallback and indexing progress. Use accessible list results with date/source/excerpt, no fabricated scores or snippets. Register command-palette actions from enabled modules as they appear. Preserve typed search/filter state in URL; never put auth or raw private text in unrelated telemetry.
+- [x] **P03-T3.1 - Implement production behavior.** Add query, source/date/type filters and stable pagination; show lexical fallback and indexing progress. Use accessible list results with date/source/excerpt, no fabricated scores or snippets. Register command-palette actions from enabled modules as they appear. Preserve typed search/filter state in URL; never put auth or raw private text in unrelated telemetry.
 
 Concrete contract/configuration shape (illustrative IDs/timestamps are test data, not production defaults):
 
@@ -84,7 +84,7 @@ Concrete contract/configuration shape (illustrative IDs/timestamps are test data
 {"query":"project","filters":{"source_ids":[],"date_from":null,"date_to":null,"content_types":[]}}
 ```
 
-- [ ] **P03-T3.2 - Build the affected deliverable.** Run `./scripts/dev.ps1 build` (or `make build`) and fix production build failures before proceeding.
+- [x] **P03-T3.2 - Build the affected deliverable.** Run `./scripts/dev.ps1 build` (or `make build`) and fix production build failures before proceeding.
 
 - [ ] **P03-T3.3 - Record build evidence, commit and continue.** Record changed files, the exact production build command/result, review findings and unresolved gates in `EXECUTION.md`; commit the completed task and continue to the next ready task.
 

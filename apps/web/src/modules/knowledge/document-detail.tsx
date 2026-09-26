@@ -12,7 +12,7 @@ import { useWorkspaceSession } from '@/core/app-shell/workspace-shell';
 import { getSource } from '@/modules/sources/api';
 import { deleteDocument, documentKeys, getDocument, getVersion, listVersions, updateContent, updateDocument } from './api';
 
-export function DocumentDetail({ id }: { id: string }) {
+export function DocumentDetail({ id, citedVersion }: { id: string; citedVersion: number | null }) {
   const { csrfToken } = useWorkspaceSession();
   const queryClient = useQueryClient();
   const router = useRouter();
@@ -20,7 +20,8 @@ export function DocumentDetail({ id }: { id: string }) {
   const source = useQuery({ queryKey: ['sources', document.data?.source_id], queryFn: () => getSource(document.data!.source_id), enabled: !!document.data });
   const current = useQuery({ queryKey: [...documentKeys.versions(id), document.data?.current_version], queryFn: () => getVersion(id, document.data!.current_version), enabled: !!document.data });
   const versions = useInfiniteQuery({ queryKey: documentKeys.versions(id), initialPageParam: undefined as string | undefined, queryFn: ({ pageParam }) => listVersions(id, pageParam), getNextPageParam: (last) => last.next_cursor ?? undefined, enabled: !!document.data });
-  const [selectedVersion, setSelectedVersion] = useState<number | null>(null);
+  const [selectedVersion, setSelectedVersion] = useState<number | null>(citedVersion);
+  useEffect(() => { setSelectedVersion(citedVersion); }, [citedVersion]);
   const selected = useQuery({ queryKey: [...documentKeys.versions(id), selectedVersion], queryFn: () => getVersion(id, selectedVersion!), enabled: selectedVersion !== null });
   const [title, setTitle] = useState<string | null>(null);
   const [metadata, setMetadata] = useState<string | null>(null);
@@ -77,7 +78,7 @@ export function DocumentDetail({ id }: { id: string }) {
     </div><aside className="sub-panel"><h2>Version history</h2>{versions.isPending && <p className="muted">Loading versions…</p>}{versions.isError && <p className="error" role="alert">Could not load versions. <Button className="secondary" onClick={() => versions.refetch()}>Retry</Button></p>}
       {versions.data && <ul className="version-list">{versions.data.pages.flatMap((page) => page.items).map((version) => <li key={version.id}><button type="button" className="text-button" onClick={() => setSelectedVersion(version.version_number)}>Version {version.version_number}</button><span className="muted">{new Date(version.created_at).toLocaleString()}</span></li>)}</ul>}
       {versions.hasNextPage && <Button className="secondary" disabled={versions.isFetchingNextPage} onClick={() => versions.fetchNextPage()}>Load more versions</Button>}
-      {selectedVersion !== null && <div className="version-preview"><h3>Version {selectedVersion}</h3>{selected.isPending && <p className="muted">Loading version…</p>}{selected.isError && <p className="error" role="alert">Could not load version.</p>}{selected.data && <pre>{selected.data.content}</pre>}</div>}
+      {selectedVersion !== null && <div className="version-preview" id="cited-revision"><h3>Version {selectedVersion}</h3>{selected.isPending && <p className="muted">Loading version…</p>}{selected.isError && <p className="error" role="alert">Could not load version.</p>}{selected.data && <pre>{selected.data.content}</pre>}</div>}
     </aside></div>
   </section>;
 }

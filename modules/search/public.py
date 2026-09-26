@@ -152,18 +152,18 @@ async def search(session: AsyncSession, redis: Redis, settings: Settings, reques
     selected = ordered[offset:offset + request.limit + 1]
     # Recheck all source, revision and deletion fences after the provider call.
     rows = (await session.execute(_filters(
-        _visible_rows(DocumentChunk, DocumentVersion.id, DocumentVersion.observed_at, Document, Source), request,
+        _visible_rows(DocumentChunk, DocumentVersion.id, DocumentVersion.version_number, DocumentVersion.observed_at, Document, Source), request,
     ).where(DocumentChunk.id.in_(selected)))).all() if selected else []
-    visible = {chunk.id: (chunk, version_id, version_observed, document, source)
-               for chunk, version_id, version_observed, document, source in rows}
+    visible = {chunk.id: (chunk, version_id, version_number, version_observed, document, source)
+               for chunk, version_id, version_number, version_observed, document, source in rows}
     items = []
     for chunk_id in selected[:request.limit]:
         if chunk_id not in visible:
             continue
-        chunk, version_id, version_observed, document, source = visible[chunk_id]
+        chunk, version_id, version_number, version_observed, document, source = visible[chunk_id]
         excerpt = chunk.content[:500]
         items.append(SearchHit(
-            document_id=document.id, document_version_id=version_id, chunk_id=chunk.id,
+            document_id=document.id, document_version_id=version_id, version_number=version_number, chunk_id=chunk.id,
             title=document.title, excerpt=excerpt, score=ranked[chunk_id],
             source=SearchSource(id=source.id, name=source.name, type=source.type),
             observed_at=document.observed_at or version_observed,
