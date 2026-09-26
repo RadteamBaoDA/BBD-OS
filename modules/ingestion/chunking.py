@@ -1,5 +1,5 @@
 import codecs
-from bisect import bisect_left, bisect_right
+from bisect import bisect_right
 from dataclasses import dataclass
 
 import tiktoken
@@ -28,7 +28,6 @@ def chunk_text(text: str, target_tokens: int = 750, overlap_ratio: float = 0.12)
         if not decoder.getstate()[0]:
             boundaries.append(index)
     overlap = min(target_tokens - 1, int(target_tokens * overlap_ratio))
-    step = max(1, target_tokens - overlap)
     chunks = []
     start = 0
     while start < len(tokens):

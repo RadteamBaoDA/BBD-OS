@@ -82,7 +82,6 @@ class DocumentChunk(Base):
     __tablename__ = "document_chunks"
     __table_args__ = (
         UniqueConstraint("document_version_id", "chunk_index", name="uq_document_chunks_version_index"),
-        Index("ix_document_chunks_version", "document_version_id", "chunk_index"),
     )
 
     id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid4)

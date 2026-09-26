@@ -38,14 +38,12 @@ def upgrade() -> None:
         sa.PrimaryKeyConstraint("id"),
         sa.UniqueConstraint("document_version_id", "chunk_index", name="uq_document_chunks_version_index"),
     )
-    op.create_index("ix_document_chunks_version", "document_chunks", ["document_version_id", "chunk_index"])
-
 
 def downgrade() -> None:
-    op.drop_index("ix_document_chunks_version", table_name="document_chunks")
     op.drop_table("document_chunks")
     op.drop_constraint("ck_documents_extraction_status", "documents", type_="check")
     op.drop_column("documents", "extraction_status")
+    op.execute("UPDATE ingestion_runs SET status = 'failed' WHERE status = 'needs_ocr'")
     op.drop_constraint("ck_ingestion_runs_status", "ingestion_runs", type_="check")
     op.create_check_constraint(
         "ck_ingestion_runs_status",
