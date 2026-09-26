@@ -49,6 +49,7 @@ DATA_DIR=/data
 WEB_PORT=3000
 OMNIROUTE_BASE_URL=
 OMNIROUTE_API_KEY=
+OMNIROUTE_MODELS={}
 "@
         [System.IO.File]::WriteAllText((Join-Path $repo '.env'), $config, [System.Text.UTF8Encoding]::new($false))
         Write-Output 'Created local .env with generated secrets. Keep it private.'

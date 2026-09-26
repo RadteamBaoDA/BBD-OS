@@ -4,10 +4,10 @@
 
 - Approved scope: master specification plus the approved Phase 1–12 breakdown and chat drawer clarification.
 - Execution method: Subagent-driven as previously requested; continuous progression through ready tasks and phases. Implementation stage is code plus builds only; tests begin after all Phase 1-12 code is complete.
-- Current action: Phase 1 is merged into main as `d425057`; P02-T1 through P02-T3 code/build/review are complete in `codex/bbd-os-phase-2`. P02-T2 commits are `cfe481b`, `e57ea74`, and `14b0f41`; P02-T3 follow-up commit is `9114775`. P02-T4 code/build and independent review are complete; four review findings were fixed and scoped re-review approved. Phase 2 is ready to merge to main. Tests remain deferred until all Phase 1-12 production code is complete.
-- Current implementation phase: 2.
-- Active implementation task: **P02-T4 complete; commit/merge to main, then begin P03-T1**.
-- Next task: merge Phase 2 into main, report completion immediately, then begin P03-T1.
+- Current action: Phase 1 is merged into main as `d425057`; P02-T1 through P02-T3 code/build/review are complete in `codex/bbd-os-phase-2`. P02-T2 commits are `cfe481b`, `e57ea74`, and `14b0f41`; P02-T3 follow-up commit is `9114775`. P02-T4 code/build and independent review are complete; four review findings were fixed and scoped re-review approved. Phase 2 merged to `main` as `2f7c409`. P03-T1 has started in `codex/bbd-os-phase-3`. Tests remain deferred until all Phase 1-12 production code is complete.
+- Current implementation phase: 3.
+- Active implementation task: **P03-T1 - Gateway configuration, capability probes and privacy policy**.
+- Next task: finish P03-T1 code/build/review/commit, then continue to P03-T2.
 - Read [master plan](2026-09-25-bbd-os-master-plan.md) before implementation.
 - Preserve Phase 0 and user changes. Commit each completed phase; merge Phase 1 into main after implementation and review. Do not push or deploy.
 
@@ -17,8 +17,8 @@
 | --- | --- | --- | --- | --- |
 | 0 | Existing | Complete | None | See ../../IMPLEMENTATION_STATUS.md |
 | 1 | [Ready](2026-09-25-bbd-os-phase-1-core-data-platform.md) | Code/build and review complete; merged to main | P02-T1 | Build and whole-branch review passed; commit `da2baee`, merge `d425057`; deferred behavioral acceptance remains |
-| 2 | [Ready](2026-09-25-bbd-os-phase-2-ingestion-connectors.md) | Code/build/review complete; ready to merge | P03-T1 | P02-T1 through P02-T4 complete; T4 build passed and independent review approved; acceptance deferred |
-| 3 | [Ready](2026-09-25-bbd-os-phase-3-search-model-gateway.md) | Not started | P03-T1 | Not executed |
+| 2 | [Ready](2026-09-25-bbd-os-phase-2-ingestion-connectors.md) | Complete; merged to main | P03-T1 | Commit `2f7c409`; T4 build passed and independent review approved; acceptance deferred |
+| 3 | [Ready](2026-09-25-bbd-os-phase-3-search-model-gateway.md) | In progress | P03-T1 | Started on `codex/bbd-os-phase-3` from `2f7c409`; code/build stage only |
 | 4 | [Ready](2026-09-25-bbd-os-phase-4-entity-knowledge.md) | Not started | P04-T1 | Not executed |
 | 5 | [Ready](2026-09-25-bbd-os-phase-5-temporal-knowledge.md) | Not started | P05-T1 | Not executed |
 | 6 | [Ready](2026-09-25-bbd-os-phase-6-ask-chat-drawer-memory.md) | Not started | P06-T1 | Not executed |
@@ -146,3 +146,33 @@ P02-T4 independent-review fix wave completed 2026-09-26; awaiting scoped re-revi
 P02-T4 complete for the production-code/build stage on 2026-09-26; independent review and scoped re-review approved after four fixes. Connector setup now creates and validates RSS/web/REST sources while exposing a one-time scoped collector token for n8n; Sync now, no-change acknowledgement, pause/resume, run retry/status, upload processing progress, raw provenance and durable source purge are wired. Source health distinguishes collection and processing state; indexing/embedding remain explicitly unavailable. Purge commits an archive/generation fence and operation/outbox record before worker deletion; collection/upload workers reject stale generations. Archived sources retain a purge action, RSS no-change runs update diagnostics, stale collector retries are fenced, and document/upload writes reject paused sources.
 
 Exact final build: `./scripts/dev.ps1 build` from `D:\Project\BBD-OS-phase-2`, with process-only `POSTGRES_PASSWORD=build-only-placeholder`; exit 0. Next.js 16.3.6 build (including integrated TypeScript) generated 9 static pages; Docker web, api, worker, and migrate images built. First build exposed two TypeScript issues (`result_count` type and a status comparison); both were fixed before the passing build. No tests, fixtures, lint, standalone typecheck, migration execution, or runtime acceptance ran. GitNexus staged change detection reported HIGH across 33 staged files and 8 affected flows, primarily expected source lifecycle/delete and document/source UI flows; stale/new symbols have incomplete index coverage. No high/critical symbol impact was found for the scoped review fixes; source tracing was used where index coverage was missing. Review gates: initial review findings all addressed; re-review found no new Important/Critical issue. Tests remain deferred until all Phase 1-12 production code is complete. Next: merge Phase 2 to `main`, then P03-T1.
+
+
+## P03-T1 start
+
+Started 2026-09-26 in isolated worktree `codex/bbd-os-phase-3` at Phase 2 merge `2f7c409`. Scope: fail-closed model send policy, configured alias/settings APIs and UI, redacted capability probes, bounded model requests, and a shared two-request concurrency cap with expiring leases. Production code and affected builds only; do not create, modify, or run tests, lint, or standalone typecheck until all Phase 1-12 production code is complete.
+
+### Phase 3 plan pre-flight scan
+
+| Tasks | Shared files/interface | Scan result |
+| --- | --- | --- |
+| P03-T1 / P03-T2 | `ModelGateway.embed`, alias/capability results, shared API/worker concurrency lease | T1 must define stable embed/policy contracts before indexing consumes them; T2 owns search migration and worker job wiring. No same-file conflict listed. |
+| P03-T1 / P03-T3 | Settings model/privacy APIs and frontend settings route/navigation | Search UI may link to settings; T1 owns settings navigation and API types, T3 consumes them. No same-file conflict listed. |
+| P03-T1 / P03-T4 | Model alias/version/capability identity and compatibility record | T4 records configured compatibility evidence; unknown live endpoint guarantees must stay unknown. No same-file conflict listed. |
+| P03-T2 / P03-T3 | Search request/response, effective mode, citation, indexing run status | T2 produces search/reindex contracts; T3 consumes them. Keep ranking and fallback state server-authored. |
+| P03-T2 / P03-T4 | Ranking IDs, generation model identity/dimensions | T4 evaluation and compatibility record consume T2's generation and result contracts; no direct source overlap listed. |
+| P03-T3 / P03-T4 | Search UI route and quality report outputs | T4 writes offline evaluation/compatibility artifacts; T3 reads only API contracts. No same-file conflict listed. |
+| P03-T1 self-check | Settings + gateway files, outbound request policy, capability probes | Internally consistent if probes pass the same privacy gate and do not persist owner payloads/secrets. Deferred tests remain post-code. |
+| P03-T2 self-check | Search models/indexer/routes, migration, worker/deletion hook | Plan revision was stale (`0004_search`) after Phase 2 migration `0005`; corrected to `0006_search` with down revision `0005_source_purge_operations`. Ruling: preserve sequential Alembic history; using `0004` would duplicate an existing migration. |
+| P03-T3 self-check | Search route/API, command palette and frontend route | UI depends on T2 contracts; shortcut exclusions and URL-state details remain within this task. Deferred tests stay post-code. |
+| P03-T4 self-check | Evaluation helper and compatibility document | `recall_at_k` follows the specified empty expected-set behavior; compatibility unknowns stay explicitly unknown. This task does not substitute a stub for live-provider evidence. |
+
+No other plan conflict found. The task sequence is retained; plan corrected before P03-T1 dispatch.
+
+### P03-T1 implementation checkpoint - 2026-09-26
+
+Production code now includes a fail-closed model policy/client, alias and privacy settings APIs backed by Redis, protected synthetic per-capability probes, model/privacy settings pages, and a Redis two-lease request cap shared by API/worker gateway clients. Remote reasoning and embeddings require separate opt-ins; unconfigured/unknown destinations deny sends; local mappings require an explicit isolation attestation and `local-private` cannot route remotely. Probe evidence is scoped by alias/model/configured version/capability and expires after 24 hours; mapping edits delete prior evidence. Secrets remain server-side. No local model was installed.
+
+GitNexus pre-edit impact: `Settings`, `create_app`, and `WorkerSettings` each returned risk `UNKNOWN` with zero resolved upstream callers and a lower-bound/partial-index warning; the search tool reported FTS degraded. The module-registry symbol lookup did not resolve. Source `rg` checks confirmed Settings call sites in API, worker, connector crawler and seed; `create_app` is the Docker uvicorn factory; `WorkerSettings` is ARQ's configured entry point. No HIGH/CRITICAL risk was returned. The new API routes have no previous callers.
+
+The initial production build attempt exited 1 because `next` was not installed in the worktree. After `npm.cmd ci` installed the lockfile dependencies, the exact build command `./scripts/dev.ps1 build`, with process-only `POSTGRES_PASSWORD=build-only-placeholder`, exited 0. Next.js 16.3.6 generated all 11 routes, and Docker built web, api, worker, and migrate images. Pre-commit GitNexus staged detection was LOW across 22 files, with 3 indexed changed symbols and 0 affected flows; newly added modules are not represented in the index. No tests, fixtures, lint, or standalone typecheck were created or run. P03-T1 build is complete; independent review remains open. Phase 2 is merged to `main` as `2f7c409`. Next: complete independent review before advancing to P03-T2.

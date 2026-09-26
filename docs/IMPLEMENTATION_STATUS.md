@@ -12,8 +12,8 @@ Markers: `[ ]` not started; `[~]` in progress; `[x]` complete; `[!]` blocked.
 - [x] Recorded the approved chat drawer and day-context/history UX in the canonical spec and Phase 6/8/12 plans.
 - [x] Created [execution ledger](superpowers/plans/EXECUTION.md) for evidence, external gates and continuous task progression. Phase 1-12 implementation uses a production-code/build stage first; tests begin only after all phase code is complete.
 - [x] Phase 1: core data platform code/build and whole-branch review complete; merged to `main` (`d425057`). Behavioral acceptance remains deferred.
-- [~] Phase 2: ingestion and packaged collection workflows (P02-T1 through P02-T3 code/build/review complete; P02-T4 in progress).
-- [ ] Phase 3: search and embeddings.
+- [x] Phase 2: ingestion and packaged collection workflows (code/build and independent review complete; merged to `main` as `2f7c409`; behavioral acceptance deferred).
+- [~] Phase 3: search and embeddings (P03-T1 production code/build complete; independent review pending; behavior tests deferred).
 - [ ] Phase 4: entity knowledge.
 - [ ] Phase 5: temporal knowledge and Graphiti.
 - [ ] Phase 6: Ask/RAG and citations.

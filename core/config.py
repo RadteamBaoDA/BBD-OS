@@ -27,6 +27,7 @@ class Settings(BaseSettings):
     session_lifetime_hours: int = Field(default=24, gt=0, le=720)
     omniroute_base_url: AnyHttpUrl | None = Field(default=None, repr=False)
     omniroute_api_key: SecretStr = SecretStr("")
+    omniroute_models: dict[str, str] = Field(default_factory=dict, repr=False)
 
     @field_validator("omniroute_base_url", mode="before")
     @classmethod

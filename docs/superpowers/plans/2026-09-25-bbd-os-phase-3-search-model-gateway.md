@@ -38,7 +38,7 @@ Module ownership: **search, model_gateway, settings**. Backend domain models/ser
 
 **Interfaces — consumes/produces:** ModelGateway.chat, stream, embed, structured, tools, rerank accept an explicit RequestPolicy with reasoning_allowed,embeddings_allowed,local_only, permitted_destinations. POST /settings/models/{alias}/test; GET/PATCH /settings/privacy; secret values are write-only and represented as configured flags. Aliases: reasoning-large,reasoning-small,fast,embedding,reranker,vision,local-private.
 
-- [ ] **P03-T1.1 - Implement production behavior.** Implement may_send as a fail-closed predicate and apply it before all outgoing requests, including probes containing owner data. Store secrets in server configuration initially; settings UI edits alias mappings, not provider secrets. Separate capability results per alias/model/version and expire results when mapping changes. Cache no evidence of privacy guarantees from gateway hostname alone; unknown destination denies local-only sends. Add synthetic capability probes, explicit request deadlines, bounded retry only on transient errors, shared two-request concurrency cap with expiring leases across API/worker. Do not install a local LLM by default.
+- [x] **P03-T1.1 - Implement production behavior.** Implement may_send as a fail-closed predicate and apply it before all outgoing requests, including probes containing owner data. Store secrets in server configuration initially; settings UI edits alias mappings, not provider secrets. Separate capability results per alias/model/version and expire results when mapping changes. Cache no evidence of privacy guarantees from gateway hostname alone; unknown destination denies local-only sends. Add synthetic capability probes, explicit request deadlines, bounded retry only on transient errors, shared two-request concurrency cap with expiring leases across API/worker. Do not install a local LLM by default.
 
 Concrete contract/configuration shape (illustrative IDs/timestamps are test data, not production defaults):
 
@@ -46,14 +46,14 @@ Concrete contract/configuration shape (illustrative IDs/timestamps are test data
 {"alias":"embedding","capabilities":{"embeddings":"untested","streaming":"unsupported"},"credential_configured":false}
 ```
 
-- [ ] **P03-T1.2 - Build the affected deliverable.** Run `./scripts/dev.ps1 build` (or `make build`) and fix production build failures before proceeding.
+- [x] **P03-T1.2 - Build the affected deliverable.** `./scripts/dev.ps1 build` passed on 2026-09-26 after lockfile-pinned npm dependencies were installed. Next.js production build and Docker web/API/worker/migrate image builds succeeded.
 
-- [ ] **P03-T1.3 - Record build evidence, commit and continue.** Record changed files, the exact production build command/result, review findings and unresolved gates in `EXECUTION.md`; commit the completed task and continue to the next ready task.
+- [ ] **P03-T1.3 - Record build evidence, commit and continue.** Build evidence is recorded in `EXECUTION.md`; independent review remains open. The implementer must not stage or commit this task.
 
 ## Task P03-T2: Lexical index and embedding generations
 
 
-**Production files and responsibilities:** Create modules/search/models.py, modules/search/indexing.py, modules/search/public.py, modules/search/schemas.py and modules/search/routes.py; infrastructure/postgres/migrations/versions/0004_search.py; extend worker and deletion hooks.
+**Production files and responsibilities:** Create modules/search/models.py, modules/search/indexing.py, modules/search/public.py, modules/search/schemas.py and modules/search/routes.py; infrastructure/postgres/migrations/versions/0006_search.py (down_revision: 0005_source_purge_operations); extend worker and deletion hooks.
 
 **Interfaces — consumes/produces:** POST /search {query,filters,mode,limit,cursor}; SearchHit includes title,excerpt,score,source,observed_at,published_at,document_version_id,chunk_id,citation. IndexGeneration(model_id,dimensions,status); POST /search/reindex -> run_id. Modes lexical|hybrid, with effective_mode and warnings.
 
