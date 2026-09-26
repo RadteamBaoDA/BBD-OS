@@ -46,10 +46,18 @@ async def _fail_ingestion_stage(
     error_code: str,
 ) -> None:
     async with factory() as session:
+        run_hint = await session.get(IngestionRun, run_id)
+        if run_hint is None:
+            event = await session.get(EventOutbox, event_id, with_for_update=True)
+            if event is not None:
+                event.status = "failed"
+                await session.commit()
+            return
+        await session.scalar(select(Source).where(Source.id == run_hint.source_id).with_for_update())
+        run = await session.scalar(select(IngestionRun).where(IngestionRun.id == run_id).with_for_update())
         stage = await session.scalar(
             select(IngestionStage).where(IngestionStage.id == stage_id).with_for_update()
         )
-        run = await session.scalar(select(IngestionRun).where(IngestionRun.id == run_id).with_for_update())
         event = await session.get(EventOutbox, event_id, with_for_update=True)
         if stage is None or run is None or event is None:
             return
@@ -90,15 +98,20 @@ async def process_ingestion_event(ctx: dict[str, object], event_id: str) -> None
             return
         run_id = UUID(str(event.payload["run_id"]))
         stage_id = UUID(str(event.payload["stage_id"]))
+        run_hint = await session.get(IngestionRun, run_id)
+        if run_hint is None:
+            event.status = "failed"
+            await session.commit()
+            return
+        source = await session.scalar(select(Source).where(Source.id == run_hint.source_id).with_for_update())
+        run = await session.scalar(select(IngestionRun).where(IngestionRun.id == run_id).with_for_update())
         stage = await session.scalar(
             select(IngestionStage).where(IngestionStage.id == stage_id).with_for_update()
         )
-        run = await session.scalar(select(IngestionRun).where(IngestionRun.id == run_id).with_for_update())
         if stage is None or run is None:
             event.status = "failed"
             await session.commit()
             return
-        source = await session.scalar(select(Source).where(Source.id == run.source_id).with_for_update())
         if source is None or source.status != "active":
             stage.status = "failed"
             stage.error_code = "source_unavailable"
@@ -160,13 +173,32 @@ async def process_ingestion_event(ctx: dict[str, object], event_id: str) -> None
                     raise RuntimeError("Accepted ingestion batch has no observations")
     except (TimeoutError, OSError, OperationalError) as exc:
         async with factory() as session:
+            run_hint = await session.get(IngestionRun, run_id)
+            if run_hint is None:
+                return
+            source = await session.scalar(
+                select(Source).where(Source.id == run_hint.source_id).with_for_update()
+            )
+            run = await session.scalar(select(IngestionRun).where(IngestionRun.id == run_id).with_for_update())
             stage = await session.scalar(
                 select(IngestionStage).where(IngestionStage.id == stage_id).with_for_update()
             )
-            run = await session.scalar(
-                select(IngestionRun).where(IngestionRun.id == run_id).with_for_update()
-            )
             event = await session.get(EventOutbox, identifier, with_for_update=True)
+            if source is None or source.status != "active":
+                if stage is not None:
+                    stage.status = "failed"
+                    stage.error_code = "source_unavailable"
+                if run is not None:
+                    run.status = "failed"
+                    run.error_code = "source_unavailable"
+                if event is not None:
+                    event.status = "failed"
+                state = await session.get(SourceIngestionState, run_hint.source_id, with_for_update())
+                if state is not None and state.lease_run_id == run_id:
+                    state.lease_run_id = None
+                    state.lease_expires_at = None
+                await session.commit()
+                return
             if stage is None or run is None or event is None:
                 return
             attempt = stage.attempts
@@ -198,11 +230,26 @@ async def process_ingestion_event(ctx: dict[str, object], event_id: str) -> None
         return
 
     async with factory() as session:
+        run_hint = await session.get(IngestionRun, run_id)
+        if run_hint is None:
+            return
+        source = await session.scalar(select(Source).where(Source.id == run_hint.source_id).with_for_update())
+        run = await session.scalar(select(IngestionRun).where(IngestionRun.id == run_id).with_for_update())
         stage = await session.scalar(
             select(IngestionStage).where(IngestionStage.id == stage_id).with_for_update()
         )
-        run = await session.scalar(select(IngestionRun).where(IngestionRun.id == run_id).with_for_update())
         if stage is None or run is None:
+            return
+        if source is None or source.status != "active":
+            stage.status = "failed"
+            stage.error_code = "source_unavailable"
+            run.status = "failed"
+            run.error_code = "source_unavailable"
+            state = await session.get(SourceIngestionState, run.source_id, with_for_update=True)
+            if state is not None and state.lease_run_id == run.id:
+                state.lease_run_id = None
+                state.lease_expires_at = None
+            await session.commit()
             return
         stage.status = "succeeded"
         stage.error_code = None

@@ -22,16 +22,25 @@ async def process_uploaded_file(ctx: dict[str, object], event_id: str) -> None:
     settings = cast(Settings, ctx["settings"])
     identifier = UUID(event_id)
     async with factory() as session:
-        event = await session.get(EventOutbox, identifier, with_for_update=True)
+        event = await session.get(EventOutbox, identifier)
         if event is None or event.status == "delivered":
             return
         run_id = UUID(str(event.payload["run_id"]))
         stage_id = UUID(str(event.payload["stage_id"]))
         document_id = UUID(str(event.payload["document_id"]))
+        run_hint = await session.get(IngestionRun, run_id)
+        if run_hint is None:
+            event.status = "failed"
+            await session.commit()
+            return
+        source_id = run_hint.source_id
+        # Match source archive/retry order: source, run, stage, then document.
+        source = await session.scalar(select(Source).where(Source.id == source_id).with_for_update())
+        run = await session.scalar(
+            select(IngestionRun).where(IngestionRun.id == run_id, IngestionRun.source_id == source_id).with_for_update()
+        )
         stage = await session.scalar(select(IngestionStage).where(IngestionStage.id == stage_id).with_for_update())
-        run = await session.scalar(select(IngestionRun).where(IngestionRun.id == run_id).with_for_update())
         document = await session.scalar(select(Document).where(Document.id == document_id).with_for_update())
-        source = await session.scalar(select(Source).where(Source.id == run.source_id).with_for_update()) if run else None
         if stage is None or run is None or document is None or source is None or source.status != "active":
             if stage is not None:
                 stage.status = "failed"
@@ -69,6 +78,23 @@ async def process_uploaded_file(ctx: dict[str, object], event_id: str) -> None:
         drafts = chunk_text(parsed.text)
         extraction_status = "needs_ocr" if parsed.warnings and not parsed.text else "succeeded"
         async with factory() as session:
+            source = await session.scalar(select(Source).where(Source.id == source_id).with_for_update())
+            run = await session.scalar(
+                select(IngestionRun).where(IngestionRun.id == run_id, IngestionRun.source_id == source_id).with_for_update()
+            )
+            stage = await session.scalar(select(IngestionStage).where(IngestionStage.id == stage_id).with_for_update())
+            if source is None or source.status != "active" or run is None or stage is None:
+                if stage is not None:
+                    stage.status = "failed"
+                    stage.error_code = "source_unavailable"
+                if run is not None:
+                    run.status = "failed"
+                    run.error_code = "source_unavailable"
+                event = await session.get(EventOutbox, identifier, with_for_update=True)
+                if event is not None:
+                    event.status = "failed"
+                await session.commit()
+                return
             document = await documents.save_extraction(
                 session,
                 document_id,
@@ -79,8 +105,6 @@ async def process_uploaded_file(ctx: dict[str, object], event_id: str) -> None:
                 ],
                 extraction_status,
             )
-            stage = await session.scalar(select(IngestionStage).where(IngestionStage.id == stage_id).with_for_update())
-            run = await session.scalar(select(IngestionRun).where(IngestionRun.id == run_id).with_for_update())
             event = await session.get(EventOutbox, identifier, with_for_update=True)
             if document is None or stage is None or run is None or event is None:
                 return
@@ -99,10 +123,13 @@ async def process_uploaded_file(ctx: dict[str, object], event_id: str) -> None:
             await session.commit()
     except Exception as exc:
         async with factory() as session:
+            await session.scalar(select(Source).where(Source.id == source_id).with_for_update())
+            run = await session.scalar(
+                select(IngestionRun).where(IngestionRun.id == run_id, IngestionRun.source_id == source_id).with_for_update()
+            )
             stage = await session.scalar(select(IngestionStage).where(IngestionStage.id == stage_id).with_for_update())
-            run = await session.scalar(select(IngestionRun).where(IngestionRun.id == run_id).with_for_update())
-            event = await session.get(EventOutbox, identifier, with_for_update=True)
             document = await session.scalar(select(Document).where(Document.id == document_id).with_for_update())
+            event = await session.get(EventOutbox, identifier, with_for_update=True)
             if stage is not None:
                 stage.status = "failed"
                 stage.error_code = "parser_timeout" if isinstance(exc, TimeoutError) else "parse_failed"

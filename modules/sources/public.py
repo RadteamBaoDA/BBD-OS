@@ -26,14 +26,21 @@ async def get_source(session: AsyncSession, source_id: UUID) -> Source | None:
     return await session.get(Source, source_id)
 
 
+async def lock_source(session: AsyncSession, source_id: UUID) -> Source | None:
+    return await session.scalar(
+        select(Source)
+        .where(Source.id == source_id)
+        .with_for_update()
+        .execution_options(populate_existing=True)
+    )
+
+
 async def lock_source_for_document(session: AsyncSession, source_id: UUID) -> None:
     """Validate the source and hold its lock until the caller's transaction ends."""
-    status = await session.scalar(
-        select(Source.status).where(Source.id == source_id).with_for_update()
-    )
-    if status is None:
+    source = await lock_source(session, source_id)
+    if source is None:
         raise LookupError("Source not found")
-    if status == "archived":
+    if source.status == "archived":
         raise ValueError("Cannot add documents to an archived source")
 
 

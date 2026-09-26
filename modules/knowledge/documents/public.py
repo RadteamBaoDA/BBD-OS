@@ -52,6 +52,14 @@ async def get_document(session: AsyncSession, document_id: UUID) -> Document | N
     return await session.get(Document, document_id)
 
 
+async def has_document_identity(session: AsyncSession, source_id: UUID, external_id: str) -> bool:
+    return bool(
+        await session.scalar(
+            select(Document.id).where(Document.source_id == source_id, Document.external_id == external_id)
+        )
+    )
+
+
 async def add_uploaded_document(
     session: AsyncSession,
     source_id: UUID,
@@ -165,8 +173,15 @@ async def update_document(
 
 
 async def delete_document(session: AsyncSession, document_id: UUID) -> bool:
+    identity = await session.execute(select(Document.source_id).where(Document.id == document_id))
+    source_id = identity.scalar_one_or_none()
+    if source_id is None:
+        return False
+    await sources.lock_source(session, source_id)
     result = await session.scalars(
-        delete(Document).where(Document.id == document_id).returning(Document.id)
+        delete(Document)
+        .where(Document.id == document_id, Document.source_id == source_id)
+        .returning(Document.id)
     )
     await session.commit()
     return result.first() is not None

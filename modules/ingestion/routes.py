@@ -100,13 +100,9 @@ async def upload_document(
         for character in PurePosixPath(PureWindowsPath(original_name).name).name
         if ord(character) >= 32 and ord(character) != 127
     )[:255] or "upload"
-    try:
-        run, created = await public.receive_file(
-            session, source_id, document_id, filename, mime_type, raw_uri, size, digest
-        )
-    except BaseException:
-        storage_path(settings.data_dir, raw_uri).unlink(missing_ok=True)
-        raise
+    run, created = await public.receive_file(
+        session, source_id, document_id, filename, mime_type, raw_uri, size, digest
+    )
     if not created:
         storage_path(settings.data_dir, raw_uri).unlink(missing_ok=True)
     return Receipt(batch_id=run.batch_id, run_id=run.id, status=run.status)

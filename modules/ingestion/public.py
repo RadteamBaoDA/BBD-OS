@@ -195,6 +195,8 @@ async def receive_file(
     if existing is not None:
         if existing.payload_hash != digest:
             raise HTTPException(status_code=409, detail="Upload identity conflicts with stored content")
+        if not await documents.has_document_identity(session, source_id, f"file:{digest}"):
+            raise HTTPException(status_code=409, detail="This file was previously ingested and its document was deleted")
         run = await session.scalar(select(IngestionRun).where(IngestionRun.batch_id == existing.id))
         if run is None:
             raise RuntimeError("Ingestion batch has no run")
@@ -252,7 +254,16 @@ async def get_run(session: AsyncSession, run_id: UUID) -> tuple[IngestionRun, li
 
 
 async def retry_run(session: AsyncSession, run_id: UUID) -> IngestionRun | None:
-    run = await session.scalar(select(IngestionRun).where(IngestionRun.id == run_id).with_for_update())
+    run_hint = await session.get(IngestionRun, run_id)
+    if run_hint is None:
+        return None
+    # Match source archive and workers: source, run, then stage.
+    source = await session.scalar(select(Source).where(Source.id == run_hint.source_id).with_for_update())
+    if source is None or source.status != "active":
+        raise HTTPException(status_code=409, detail="Source is not active")
+    run = await session.scalar(
+        select(IngestionRun).where(IngestionRun.id == run_id, IngestionRun.source_id == source.id).with_for_update()
+    )
     if run is None:
         return None
     stage = await session.scalar(
@@ -264,9 +275,6 @@ async def retry_run(session: AsyncSession, run_id: UUID) -> IngestionRun | None:
         return run
     if stage.status == "succeeded":
         return run
-    source = await session.scalar(select(Source).where(Source.id == run.source_id).with_for_update())
-    if source is None or source.status != "active":
-        raise HTTPException(status_code=409, detail="Source is not active")
     stage.status = "pending"
     stage.attempts = 0
     stage.error_code = None
