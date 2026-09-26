@@ -40,6 +40,7 @@ from modules.ingestion.models import (
 from modules.ingestion.worker import cleanup_storage_orphans, process_uploaded_file
 from modules.sources.worker import process_source_purge
 from modules.sources.models import Source
+from modules.search.indexing import index_pending_chunks
 
 logger = logging.getLogger("bbd.worker")
 STAGE_TIMEOUT_SECONDS = 120
@@ -450,6 +451,7 @@ class WorkerSettings:
         cron(purge_expired_sessions, minute=0),
         cron(cleanup_storage_orphans, minute=set(range(0, 60, 5))),
         cron(dispatch_pending_work, second=set(range(0, 60, 5)), run_at_start=True),
+        cron(index_pending_chunks, minute=set(range(0, 60, 1))),
     ]
     redis_settings = RedisSettings.from_dsn(Settings().redis_url)
     max_jobs = 1

@@ -3,9 +3,10 @@ from typing import Any
 
 from modules.knowledge.documents.descriptor import descriptor as documents
 from modules.sources.descriptor import descriptor as sources
+from modules.search.descriptor import descriptor as search
 
 
-def register_modules(descriptors: Iterable[Any] = (sources, documents)) -> dict[str, Any]:
+def register_modules(descriptors: Iterable[Any] = (sources, documents, search)) -> dict[str, Any]:
     registry: dict[str, Any] = {}
     for descriptor in descriptors:
         if descriptor.id in registry:

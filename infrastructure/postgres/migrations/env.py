@@ -21,6 +21,7 @@ from modules.ingestion.models import (
     SourceObservation,
 )
 from modules.sources.models import Source, SourcePurgeOperation
+from modules.search.models import IndexGeneration, SearchIndexItem
 
 _auth_models = (AuthSession, Owner)
 _library_models = (Source, SourcePurgeOperation, Document, DocumentVersion, DocumentChunk)
@@ -33,6 +34,7 @@ _ingestion_models = (
     SourceIngestionState,
     SourceObservation,
 )
+_search_models = (IndexGeneration, SearchIndexItem)
 config = context.config
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)

@@ -14,7 +14,7 @@ from modules.ingestion.parsers import parse_file_bounded
 from modules.knowledge.documents import public as documents
 from modules.knowledge.documents.models import Document
 from modules.sources.models import Source
-from modules.ingestion.chunking import chunk_text
+from core.chunking import chunk_text
 
 
 async def process_uploaded_file(ctx: dict[str, object], event_id: str) -> None:

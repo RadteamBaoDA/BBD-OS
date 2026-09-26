@@ -9,13 +9,47 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.pagination import decode_cursor, encode_cursor
+from core.chunking import chunk_text
 from modules.knowledge.documents.models import Document, DocumentChunk, DocumentVersion
 from modules.knowledge.documents.schemas import DocumentCreate, DocumentPatch
 from modules.sources import public as sources
+from modules.sources.models import Source
 
 
 def content_hash(content: str) -> str:
     return hashlib.sha256(content.encode("utf-8")).hexdigest()
+
+
+async def add_content_chunks(session: AsyncSession, version: DocumentVersion) -> None:
+    await session.flush()
+    for index, draft in enumerate(chunk_text(version.content)):
+        session.add(DocumentChunk(
+            document_version_id=version.id, chunk_index=index, content=draft.content,
+            content_hash=content_hash(draft.content), token_count=draft.token_count,
+            metadata_json=draft.metadata,
+        ))
+
+
+async def backfill_current_chunks(session: AsyncSession, limit: int = 2) -> int:
+    """Fill legacy manual revisions created before chunking was enabled."""
+    versions = list((await session.scalars(
+        select(DocumentVersion)
+        .join(Document, Document.id == DocumentVersion.document_id)
+        .join(Source, Source.id == Document.source_id)
+        .where(
+            Document.current_version == DocumentVersion.version_number,
+            Document.extraction_status.in_(("ready", "succeeded")),
+            Source.status == "active",
+            DocumentVersion.content != "",
+            ~select(DocumentChunk.id).where(DocumentChunk.document_version_id == DocumentVersion.id).exists(),
+        )
+        .order_by(DocumentVersion.id).limit(limit)
+    )).all())
+    for version in versions:
+        await add_content_chunks(session, version)
+    if versions:
+        await session.commit()
+    return len(versions)
 
 
 async def create_document(session: AsyncSession, payload: DocumentCreate) -> Document:
@@ -32,14 +66,14 @@ async def create_document(session: AsyncSession, payload: DocumentCreate) -> Doc
     session.add(document)
     try:
         await session.flush()
-        session.add(
-            DocumentVersion(
+        version = DocumentVersion(
                 document_id=document.id,
                 version_number=1,
                 content=payload.content,
                 content_hash=digest,
             )
-        )
+        session.add(version)
+        await add_content_chunks(session, version)
         await session.commit()
     except IntegrityError:
         await session.rollback()
@@ -214,14 +248,14 @@ async def append_content(
         raise ValueError("Document revision is stale")
     next_version = document.current_version + 1
     digest = content_hash(content)
-    session.add(
-        DocumentVersion(
+    version = DocumentVersion(
             document_id=document_id,
             version_number=next_version,
             content=content,
             content_hash=digest,
         )
-    )
+    session.add(version)
+    await add_content_chunks(session, version)
     document.current_version = next_version
     document.content_hash = digest
     await session.commit()
