@@ -174,6 +174,80 @@ async def receive_batch(session: AsyncSession, payload: ReceiveBatch) -> tuple[I
     return batch, run
 
 
+async def queue_connector_crawl(
+    session: AsyncSession,
+    source_id: UUID,
+    cursor_before: str | None,
+    configuration: dict[str, object],
+) -> IngestionRun:
+    source = await session.scalar(select(Source).where(Source.id == source_id).with_for_update())
+    if source is None:
+        raise HTTPException(status_code=404, detail="Source not found")
+    if source.status != "active":
+        raise HTTPException(status_code=409, detail="Source is not active")
+    state = await session.get(SourceIngestionState, source_id, with_for_update=True)
+    if state is None:
+        state = SourceIngestionState(source_id=source_id, cursor=None)
+        session.add(state)
+        await session.flush()
+    if state.cursor != cursor_before:
+        raise HTTPException(status_code=409, detail="Collection cursor is stale")
+
+    now = datetime.now(UTC)
+    minute = now.replace(second=0, microsecond=0).isoformat()
+    key = "crawl:" + _digest({"source_id": str(source_id), "cursor": cursor_before, "config": configuration, "minute": minute})
+    existing = await session.scalar(
+        select(IngestionBatch).where(IngestionBatch.source_id == source_id, IngestionBatch.batch_key == key)
+    )
+    if existing is not None:
+        run = await session.scalar(select(IngestionRun).where(IngestionRun.batch_id == existing.id))
+        if run is None:
+            raise RuntimeError("Crawl batch has no run")
+        return run
+    if state.lease_expires_at is not None and state.lease_expires_at > now:
+        raise HTTPException(status_code=409, detail="Source already has an active collection run")
+
+    batch = IngestionBatch(source_id=source_id, batch_key=key, payload_hash=_digest(configuration))
+    session.add(batch)
+    await session.flush()
+    run = IngestionRun(batch_id=batch.id, source_id=source_id, status="queued")
+    session.add(run)
+    await session.flush()
+    stage = IngestionStage(run_id=run.id, stage_key="collect_web", status="pending")
+    session.add(stage)
+    await session.flush()
+    event = DomainEvent(
+        id=uuid4(),
+        type="connector.crawl.requested",
+        version=1,
+        occurred_at=now,
+        producer="modules.connectors",
+        payload={
+            "source_id": str(source_id),
+            "run_id": str(run.id),
+            "stage_id": str(stage.id),
+            "cursor_before": cursor_before,
+            "configuration": configuration,
+        },
+    )
+    session.add(
+        EventOutbox(
+            id=event.id,
+            type=event.type,
+            version=event.version,
+            occurred_at=event.occurred_at,
+            producer=event.producer,
+            payload=event.payload,
+            status="pending",
+        )
+    )
+    state.lease_run_id = run.id
+    state.lease_expires_at = now + COLLECTION_LEASE
+    await session.commit()
+    await session.refresh(run)
+    return run
+
+
 async def receive_file(
     session: AsyncSession,
     source_id: UUID,

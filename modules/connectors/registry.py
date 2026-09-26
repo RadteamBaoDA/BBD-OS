@@ -1,4 +1,5 @@
 from typing import Any
+from urllib.parse import urlsplit
 
 from modules.connectors.public import ConnectorConfig, DEFAULT_TIMEZONE, overlap_floor
 from modules.sources.models import Source
@@ -21,6 +22,11 @@ def validate(source: Source) -> dict[str, Any]:
         raise ValueError("Source connector URL is not configured")
     if source.type == "api" and not config.items_path:
         raise ValueError("REST connector requires items_path")
+    if source.type == "api":
+        parsed_url = urlsplit(str(required_url))
+        expected_port = 443 if parsed_url.scheme == "https" else 80
+        if parsed_url.port not in (None, expected_port):
+            raise ValueError("REST connector URLs must use the default HTTP(S) port")
     return {
         "source_id": str(source.id),
         "type": source.type,

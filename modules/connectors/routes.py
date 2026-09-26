@@ -13,7 +13,6 @@ from core.database import get_session
 from modules.connectors.public import (
     ConnectorConfig,
     ConnectorPreview,
-    ConnectorRecord,
     ConnectorReceipt,
     CrawlRequest,
     CrawlResult,
@@ -190,37 +189,18 @@ async def submit_crawl(
         raise HTTPException(status_code=422, detail="Crawl request exceeds the configured source budget")
     if not settings.browser_shared_token.get_secret_value():
         raise HTTPException(status_code=503, detail="Browser collector is not configured")
-    try:
-        async with httpx.AsyncClient(timeout=payload.timeout_seconds + 5) as client:
-            response = await client.post(
-                f"{str(settings.browser_service_url).rstrip('/')}/crawl",
-                json=payload.model_dump(mode="json"),
-                headers={"Authorization": f"Bearer {settings.browser_shared_token.get_secret_value()}"},
-            )
-            response.raise_for_status()
-            records = response.json()
-    except (httpx.HTTPError, ValueError) as exc:
-        raise HTTPException(status_code=502, detail="Browser collection failed") from exc
     state = await session.get(SourceIngestionState, source_id)
     cursor = state.cursor if state else None
-    try:
-        normalized = [ConnectorRecord.model_validate(record) for record in records]
-    except (TypeError, ValueError) as exc:
-        raise HTTPException(status_code=502, detail="Browser collector returned invalid records") from exc
-    if not normalized:
-        raise HTTPException(status_code=422, detail="Browser job returned no pages")
-    cursor_after = max(
-        (record.observed_at.isoformat() for record in normalized), default=cursor or ""
+    run = await ingestion.queue_connector_crawl(
+        session,
+        source_id,
+        cursor,
+        {
+            "url": url,
+            "mode": payload.mode,
+            "max_pages": payload.max_pages,
+            "max_depth": payload.max_depth,
+            "timeout_seconds": payload.timeout_seconds,
+        },
     )
-    payload_json = "|".join(
-        f"{record.provider_id}:{record.observed_at.isoformat()}:{record.content}" for record in normalized
-    )
-    receipt = ReceiveBatch(
-        source_id=source_id,
-        batch_key="crawl:" + hashlib.sha256(payload_json.encode()).hexdigest(),
-        cursor_before=cursor,
-        cursor_after=cursor_after or None,
-        records=[record.model_dump() for record in normalized],
-    )
-    _, run = await ingestion.receive_batch(session, receipt)
     return CrawlResult(run_id=run.id)
