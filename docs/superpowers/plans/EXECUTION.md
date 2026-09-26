@@ -4,10 +4,10 @@
 
 - Approved scope: master specification plus the approved Phase 1–12 breakdown and chat drawer clarification.
 - Execution method: Subagent-driven as previously requested; continuous progression through ready tasks and phases. Implementation stage is code plus builds only; tests begin after all Phase 1-12 code is complete.
-- Current action: Phase 1 production code/build and whole-branch review are complete; commit/merge Phase 1, then start P02-T1. Tests remain deferred until all Phase 1-12 code is complete.
-- Current implementation phase: 1.
-- Active implementation task: Phase 1 handoff.
-- Next task: **P02-T1 - Ingestion durable contracts and worker boundary** after Phase 1 commit/merge.
+- Current action: Phase 1 production code/build and whole-branch review are complete and merged into main as `d425057`; P02-T1 is active in `codex/bbd-os-phase-2`. Tests remain deferred until all Phase 1-12 production code is complete.
+- Current implementation phase: 2.
+- Active implementation task: **P02-T1 - Ingestion durable contracts and worker boundary**.
+- Next task: P02-T2 after P02-T1 implementation, build and review.
 - Read [master plan](2026-09-25-bbd-os-master-plan.md) before implementation.
 - Preserve Phase 0 and user changes. Commit each completed phase; merge Phase 1 into main after implementation and review. Do not push or deploy.
 
@@ -16,8 +16,8 @@
 | Phase | Plan | Implementation | Next task | Evidence |
 | --- | --- | --- | --- | --- |
 | 0 | Existing | Complete | None | See ../../IMPLEMENTATION_STATUS.md |
-| 1 | [Ready](2026-09-25-bbd-os-phase-1-core-data-platform.md) | Code/build and review complete | Commit/merge, then P02-T1 | P01-T1 through T4 and six review fixes built; deferred behavioral acceptance remains |
-| 2 | [Ready](2026-09-25-bbd-os-phase-2-ingestion-connectors.md) | Not started | P02-T1 | Not executed |
+| 1 | [Ready](2026-09-25-bbd-os-phase-1-core-data-platform.md) | Code/build and review complete; merged to main | P02-T1 | Build and whole-branch review passed; commit `da2baee`, merge `d425057`; deferred behavioral acceptance remains |
+| 2 | [Ready](2026-09-25-bbd-os-phase-2-ingestion-connectors.md) | In progress | P02-T1 | Started in isolated worktree `D:\Project\BBD-OS-phase-2`; build pending |
 | 3 | [Ready](2026-09-25-bbd-os-phase-3-search-model-gateway.md) | Not started | P03-T1 | Not executed |
 | 4 | [Ready](2026-09-25-bbd-os-phase-4-entity-knowledge.md) | Not started | P04-T1 | Not executed |
 | 5 | [Ready](2026-09-25-bbd-os-phase-5-temporal-knowledge.md) | Not started | P05-T1 | Not executed |
@@ -101,3 +101,17 @@ Impact evidence: upstream checks for the modified existing symbols returned UNKN
 Exact validation: `./scripts/dev.ps1 build` from `D:\Project\BBD-OS-phase-1` exited 0. Next.js 16.3.6 production build (including its integrated TypeScript compilation) succeeded, and Docker web/api/worker/migrate images built. No tests were created, modified or run in this wave; no lint, standalone typecheck, migration, seed, or behavioral checks were run.
 
 Deferred acceptance remains explicit: expired-CSRF recovery and one-retry behavior, Origin/401 denial, draft preservation, malformed and oversized cursor/path cases, concurrent source archive/document creation and transaction rollback, Windows port collisions, module import/runtime behavior, and all existing Phase 1 browser/database/seed/upgrade gates must be exercised in the separate test stage after Phase 1-12 production code is complete. Build success is not behavioral acceptance. Next: commit/merge the reviewed Phase 1 branch, then start P02-T1.
+
+## P02-T1 start
+
+Started 2026-09-26 in isolated worktree `codex/bbd-os-phase-2` at merged Phase 1 commit `d425057`. Scope: durable ingestion receipt/batch/run/stage and source-observation/cursor state, scoped collector authentication, PostgreSQL pending-work/outbox reconciliation into the existing ARQ worker, retry/status APIs, migration 0003, and event contract. No tests, test fixtures, lint or typecheck during code stage; build only.
+
+Pre-edit GitNexus impact was requested for `WorkerSettings`, `startup`, `create_app`, and the migration environment. The MCP index continued to report 5 commits behind after CLI re-index; all results were UNKNOWN/lower-bound with no resolved callers and no HIGH/CRITICAL warning. Current-source inspection confirmed `WorkerSettings` is consumed by docker-compose, `startup` by ARQ configuration, `create_app` in apps/api/main.py, and Alembic imports model modules directly; full `rg` caller search remains necessary.
+
+P02-T1 production implementation and build completed 2026-09-26; independent review and behavioral acceptance remain pending. Added `core/events.py`, `modules/ingestion/{__init__,models,schemas,public,routes,dispatcher}.py`, migration `0003_ingestion.py`, API route registration, Alembic model imports, and ARQ worker dispatch/stage execution. One transaction persists source-scoped batch identity, run/stage, distinct record observations, cursor CAS, five-minute source lease, collector grant hash and PostgreSQL outbox event before returning 202. Owner endpoints issue/rotate source collector grants, read redacted run/stage status, and retry failed runs. The dispatcher recovers pending/stale outbox rows from PostgreSQL into the existing ARQ Redis queue using deterministic job IDs; worker execution uses a 120-second timeout, one initial attempt plus four bounded jittered retries, and terminal status reporting. Payload content and credentials are not returned in status responses or logged.
+
+GitNexus upstream impact for `startup`, `WorkerSettings`, and `create_app` returned UNKNOWN/lower-bound with zero resolved callers because the index was stale; no HIGH/CRITICAL warning. Manual wiring review confirmed ARQ dotted-path loading, FastAPI factory wiring, and Alembic metadata imports. New ingestion symbols were not indexed. No commit was made.
+
+Exact final build: `./scripts/dev.ps1 build` from `D:\Project\BBD-OS-phase-2`, with process-only `POSTGRES_PASSWORD=build-only-placeholder` for Compose interpolation; exit 0. Next.js 16.3.6 production build (including its integrated TypeScript compilation) and Docker web, api, worker, and migrate images built. The first build attempt lacked `node_modules`; `npm.cmd ci` installed from the existing lockfile without changing it. A second build reached Compose but lacked `POSTGRES_PASSWORD`; the final build used the temporary process environment only. No tests, fixtures, lint, standalone typecheck, migration execution, or runtime acceptance were run.
+
+Deferred acceptance: duplicate batches and changed-key conflicts, transaction rollback/commit-before-202, cursor CAS, source lease concurrency/expiry, Redis loss/recovery, ARQ at-least-once behavior and retry timing, grant rotation/denial/source isolation, pause during worker execution, migration upgrade/downgrade, and run retry/status behavior. The current `receive` worker stage verifies accepted observations and marks the durable receipt stage complete; document parsing/indexing belongs to P02-T2 and is not claimed here. Next ready task: P02-T2 after independent P02-T1 review.

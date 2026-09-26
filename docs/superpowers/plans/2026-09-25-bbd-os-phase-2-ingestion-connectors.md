@@ -12,7 +12,7 @@
 
 **Entry gate:** Phase 1 sources/documents public contracts.
 
-**Implementation status:** Not started. This file is an implementation plan, not evidence of working code.
+**Implementation status:** P02-T1 is in progress in the code/build stage. No behavioral acceptance is claimed; tests remain deferred until all Phase 1-12 production code is complete.
 
 Test execution is deferred until all Phase 1-12 production code is complete. Acceptance examples and test file paths below are specifications; do not create, modify or run test files during this implementation stage.
 
