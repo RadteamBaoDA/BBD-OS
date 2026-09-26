@@ -4,10 +4,10 @@
 
 - Approved scope: master specification plus the approved Phase 1–12 breakdown and chat drawer clarification.
 - Execution method: Subagent-driven as previously requested; continuous progression through ready tasks and phases. Implementation stage is code plus builds only; tests begin after all Phase 1-12 code is complete.
-- Current action: Phase 1 is merged into main as `d425057`; P02-T1 code/build/review is complete in `codex/bbd-os-phase-2`. P02-T2 is active. Tests remain deferred until all Phase 1-12 production code is complete.
+- Current action: Phase 1 is merged into main as `d425057`; P02-T1 through P02-T3 code/build/review are complete in `codex/bbd-os-phase-2`. P02-T2 commits are `cfe481b`, `e57ea74`, and `14b0f41`; P02-T3 follow-up commit is `9114775`. P02-T4 is in progress. Tests remain deferred until all Phase 1-12 production code is complete.
 - Current implementation phase: 2.
-- Active implementation task: **P02-T2 - File storage, parsers and chunking**.
-- Next task: P02-T2 production code, build and independent review.
+- Active implementation task: **P02-T4 - Collection UI, deletion lifecycle and diagnostics**.
+- Next task: implement production behavior, build, independent review, and continue to Phase 3 after P02-T4 completes.
 - Read [master plan](2026-09-25-bbd-os-master-plan.md) before implementation.
 - Preserve Phase 0 and user changes. Commit each completed phase; merge Phase 1 into main after implementation and review. Do not push or deploy.
 
@@ -17,7 +17,7 @@
 | --- | --- | --- | --- | --- |
 | 0 | Existing | Complete | None | See ../../IMPLEMENTATION_STATUS.md |
 | 1 | [Ready](2026-09-25-bbd-os-phase-1-core-data-platform.md) | Code/build and review complete; merged to main | P02-T1 | Build and whole-branch review passed; commit `da2baee`, merge `d425057`; deferred behavioral acceptance remains |
-| 2 | [Ready](2026-09-25-bbd-os-phase-2-ingestion-connectors.md) | In progress | P02-T2 | P02-T1 code/build/review complete; commits `8aa1ec7`, `3738ef7`; acceptance deferred |
+| 2 | [Ready](2026-09-25-bbd-os-phase-2-ingestion-connectors.md) | In progress | P02-T4 | P02-T1 through P02-T3 code/build/reviews complete; T3 commit `9114775`; acceptance deferred |
 | 3 | [Ready](2026-09-25-bbd-os-phase-3-search-model-gateway.md) | Not started | P03-T1 | Not executed |
 | 4 | [Ready](2026-09-25-bbd-os-phase-4-entity-knowledge.md) | Not started | P04-T1 | Not executed |
 | 5 | [Ready](2026-09-25-bbd-os-phase-5-temporal-knowledge.md) | Not started | P05-T1 | Not executed |
@@ -48,7 +48,7 @@ Append one real execution entry when work starts. During Phases 1-12 coding, inc
 
 The owner asked to save every phase plan locally and use an on-demand drawer for chat to preserve screen space. This ledger tracks implementation readiness, not a background scheduler. Closing a chat drawer does not cancel a run; the UI Stop action does. Today day-context and saved-brief/current-records semantics are defined by P06 and P08.
 
-Planning verification on 2026-09-25: all 12 phase files present; 49 unique task IDs with five step checkboxes each; 76 local links resolve; 36 Python examples parse, 49 JSON examples parse, and 13 TypeScript examples have no syntax diagnostics. Placeholder scan and git diff --check passed. These checks validate the documents and example syntax only, not application behavior or live integrations. No application code, dependency installation, commit or deployment was performed in this planning delivery.
+Plan rewrite on 2026-09-26: all 12 phase files now keep implementation task checklists to production code, affected builds, and recording/committing results. Behavioral acceptance is prose-only under deferred test-stage sections and starts only after all Phase 1-12 production code is complete. The Phase 1-12 files preserve 49 task IDs and current historical statuses. `git diff --check` passed after the rewrite. Phase 0's completed plan is unchanged.
 
 
 ## P01-T1 start
@@ -133,3 +133,9 @@ Changed production files: `.env.example`, `apps/api/main.py`, `apps/worker/main.
 GitNexus upstream impact for `process_ingestion_event`, `append_content`, and `dispatch_pending_work` was UNKNOWN/lower-bound with zero resolved callers. `create_document` was ambiguous between route/service candidates; both results were UNKNOWN with zero resolved callers. `DocumentVersion` was UNKNOWN/lower-bound with dispatch boundary 12. No HIGH/CRITICAL result appeared. Manual source tracing covered API/public contracts, source locking, migration metadata, outbox dispatch, and ARQ registration; the stale index does not establish zero blast radius.
 
 Exact build: `./scripts/dev.ps1 build` from `D:\Project\BBD-OS-phase-2`, with process-only `POSTGRES_PASSWORD=build-only-placeholder`; exit 0. Next.js 16.3.6 production build and Docker web/API/worker/migrate image builds succeeded with locked dependencies. No tests, fixtures, lint, standalone typecheck, migration execution, or runtime acceptance ran. Tests remain deferred until all Phase 1-12 production code is complete. Next: independent P02-T2 review, then P02-T3 after review findings are resolved.
+
+P02-T2 review fix wave committed as `14b0f41` on 2026-09-26. The upload route leaves finalized files for grace-period orphan cleanup when a database outcome may be ambiguous; repeated upload after its document was deleted returns explicit 409; archive, retry and worker lifecycle transactions now follow consistent source→run→stage→document lock ordering where applicable. `./scripts/dev.ps1 build` passed (Next.js and all four Docker images). GitNexus staged detection was LOW, 7 indexed symbols and 0 affected processes; index coverage is limited. No tests, lint, or standalone typecheck ran. Scoped re-review approved: all three prior Important findings addressed, no new Critical/Important finding.
+
+P02-T2 complete (commits `cfe481b..14b0f41`, review clean). Next: P02-T3 - packaged n8n workflows and bounded browser collection.
+
+P02-T3 complete for the production-code/build stage on 2026-09-26; commit `9114775` contains the scoped review fixes and report. URL crawl submission now returns a durable run ID before collection; the worker persists observations and advances the cursor after successful collection. HTTP and Playwright collectors enforce the aggregate 25 MiB response budget while streaming. REST pagination is same-origin with redirects disabled, and REST source URLs are restricted to default HTTP(S) ports. n8n is isolated from PostgreSQL/Redis behind an API-only `/32` firewall exception; transient sidecar 408/425/429/5xx responses use bounded retries. Independent review approved after three scoped fix rounds. GitNexus impact: `crawl` LOW (one caller/flow); `_collect_web_job` LOW (one caller); `registry.validate` CRITICAL (6 callers/10 flows), with the new check limited to API sources; shared `validate_public_url` CRITICAL (12 callers/14 flows) was not changed. `./scripts/dev.ps1 build` passed; merged Compose `build browser n8n` passed. No tests, fixtures, lint, or standalone typecheck ran. Workflow import, credential mapping, live network filtering and provider pagination remain deferred runtime acceptance gates. Next: P02-T4.
