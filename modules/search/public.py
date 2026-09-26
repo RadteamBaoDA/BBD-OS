@@ -20,6 +20,7 @@ from modules.search.schemas import Citation, SearchHit, SearchIndexStatus, Searc
 from modules.sources.models import Source
 
 MAX_CANDIDATES = 500
+MAX_RANKED_CANDIDATES = MAX_CANDIDATES * 2
 FALLBACK_WARNING = "Semantic search unavailable"
 
 
@@ -35,7 +36,7 @@ def _offset(request: SearchRequest) -> int:
         raw = base64.urlsafe_b64decode(request.cursor + "=" * (-len(request.cursor) % 4)).decode()
         scope, position = raw.split(":", 1)
         offset = int(position)
-        if scope != _cursor_scope(request) or offset < 0 or offset > MAX_CANDIDATES or _encode_cursor(request, offset) != request.cursor:
+        if scope != _cursor_scope(request) or offset < 0 or offset > MAX_RANKED_CANDIDATES or _encode_cursor(request, offset) != request.cursor:
             raise ValueError
         return offset
     except (ValueError, UnicodeDecodeError, IndexError, binascii.Error) as exc:
@@ -53,9 +54,9 @@ def _filters(statement, request: SearchRequest):
     if filters.content_types:
         statement = statement.where(Document.content_type.in_(filters.content_types))
     if filters.date_from is not None:
-        statement = statement.where(func.coalesce(Document.published_at, Document.observed_at) >= filters.date_from)
+        statement = statement.where(func.coalesce(Document.published_at, Document.observed_at, DocumentVersion.observed_at) >= filters.date_from)
     if filters.date_to is not None:
-        statement = statement.where(func.coalesce(Document.published_at, Document.observed_at) <= filters.date_to)
+        statement = statement.where(func.coalesce(Document.published_at, Document.observed_at, DocumentVersion.observed_at) <= filters.date_to)
     return statement
 
 
@@ -99,10 +100,10 @@ async def _vector_ids(session: AsyncSession, request: SearchRequest, generation:
         clauses.append("d.content_type = ANY(CAST(:content_types AS text[]))")
         params["content_types"] = request.filters.content_types
     if request.filters.date_from is not None:
-        clauses.append("coalesce(d.published_at, d.observed_at) >= :date_from")
+        clauses.append("coalesce(d.published_at, d.observed_at, v.observed_at) >= :date_from")
         params["date_from"] = request.filters.date_from
     if request.filters.date_to is not None:
-        clauses.append("coalesce(d.published_at, d.observed_at) <= :date_to")
+        clauses.append("coalesce(d.published_at, d.observed_at, v.observed_at) <= :date_to")
         params["date_to"] = request.filters.date_to
     statement = text(
         "SELECT i.chunk_id FROM search_index_items i "

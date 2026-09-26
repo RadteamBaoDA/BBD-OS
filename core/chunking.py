@@ -17,7 +17,7 @@ class ChunkDraft:
 def chunk_text(text: str, target_tokens: int = 750, overlap_ratio: float = 0.12) -> list[ChunkDraft]:
     if target_tokens < 1 or not 0 <= overlap_ratio < 1:
         raise ValueError("Invalid chunking settings")
-    tokens = ENCODING.encode(text)
+    tokens = ENCODING.encode(text, disallowed_special=())
     if not tokens:
         return []
     token_bytes = [ENCODING.decode_single_token_bytes(token) for token in tokens]

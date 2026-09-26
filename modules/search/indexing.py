@@ -105,12 +105,11 @@ async def index_pending_chunks(ctx: dict[str, object]) -> int:
 
     try:
         mapping, policy = await configured_embedding(redis, settings)
+        if not policy.embeddings_allowed:
+            return 0
         if mapping is None or mapping.model != generation.model_id or mapping.version != generation.model_version:
             raise ValueError("Embedding model mapping changed")
         client = gateway(settings, redis)
-        # Probe state and consent are checked by ModelGateway before transport.
-        if not policy.embeddings_allowed:
-            raise ValueError("Remote embeddings are not permitted")
     except Exception:
         async with factory() as session:
             generation = await session.get(IndexGeneration, generation_id, with_for_update=True)
@@ -189,6 +188,14 @@ async def index_pending_chunks(ctx: dict[str, object]) -> int:
                         await session.delete(item)
                         await session.commit()
                     continue
+                mapping, policy = await configured_embedding(redis, settings)
+                if not policy.embeddings_allowed:
+                    break
+                if (
+                    mapping is None or mapping.model != generation.model_id
+                    or mapping.version != generation.model_version
+                ):
+                    raise ValueError("Embedding model mapping changed")
                 response = await client.embed("embedding", mapping, policy, [content])
                 values, returned_model = embedding_values(response, dimensions)
                 generation = await session.get(IndexGeneration, generation_id, with_for_update=True)
