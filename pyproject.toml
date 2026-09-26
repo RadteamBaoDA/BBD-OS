@@ -22,6 +22,10 @@ dependencies = [
 ]
 
 [dependency-groups]
+browser = [
+    "beautifulsoup4>=4.13,<5",
+    "crawlee[beautifulsoup,playwright]>=1,<2",
+]
 dev = [
     "mypy>=1.17,<2",
     "pytest>=8.4,<9",

@@ -15,6 +15,8 @@ class Settings(BaseSettings):
     docx_expanded_max_bytes: int = Field(default=100 * 1024 * 1024, gt=0)
     pdf_page_max: int = Field(default=500, gt=0)
     storage_orphan_grace_seconds: int = Field(default=3600, gt=0)
+    browser_service_url: AnyHttpUrl = AnyHttpUrl("http://browser:8001")
+    browser_shared_token: SecretStr = SecretStr("")
     public_origin: AnyHttpUrl = AnyHttpUrl("http://localhost:3000")
     secure_cookies: bool = False
     setup_token: SecretStr = SecretStr("")

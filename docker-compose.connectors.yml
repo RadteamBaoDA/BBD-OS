@@ -1,0 +1,36 @@
+services:
+  n8n:
+    image: n8nio/n8n:2.5.2
+    environment:
+      GENERIC_TIMEZONE: Asia/Ho_Chi_Minh
+      TZ: Asia/Ho_Chi_Minh
+      N8N_ENCRYPTION_KEY: ${N8N_ENCRYPTION_KEY:-}
+      N8N_DIAGNOSTICS_ENABLED: "false"
+      N8N_PERSONALIZATION_ENABLED: "false"
+      BBD_SOURCE_ID: ${BBD_SOURCE_ID:-}
+    ports:
+      - "127.0.0.1:${N8N_PORT:-5678}:5678"
+    volumes:
+      - n8n-data:/home/node/.n8n
+    restart: unless-stopped
+
+  browser:
+    build:
+      context: .
+      dockerfile: infrastructure/docker/browser.Dockerfile
+    environment:
+      BROWSER_SHARED_TOKEN: ${BROWSER_SHARED_TOKEN:-}
+    expose: ["8001"]
+    cap_add: ["NET_ADMIN"]
+    mem_limit: 1536m
+    cpus: 1.5
+    pids_limit: 128
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8001/docs', timeout=2)"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    restart: unless-stopped
+
+volumes:
+  n8n-data:
