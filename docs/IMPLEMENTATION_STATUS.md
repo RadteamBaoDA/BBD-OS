@@ -13,7 +13,7 @@ Markers: `[ ]` not started; `[~]` in progress; `[x]` complete; `[!]` blocked.
 - [x] Created [execution ledger](superpowers/plans/EXECUTION.md) for evidence, external gates and continuous task progression. Phase 1-12 implementation uses a production-code/build stage first; tests begin only after all phase code is complete.
 - [x] Phase 1: core data platform code/build and whole-branch review complete; merged to `main` (`d425057`). Behavioral acceptance remains deferred.
 - [x] Phase 2: ingestion and packaged collection workflows (code/build and independent review complete; merged to `main` as `2f7c409`; behavioral acceptance deferred).
-- [~] Phase 3: search and embeddings (P03-T1 production code/build/review complete; P03-T2 in progress; behavior tests deferred).
+- [~] Phase 3: search and embeddings (P03-T1 and P03-T2 production code/build/review complete; P03-T3 in progress; behavior tests deferred).
 - [ ] Phase 4: entity knowledge.
 - [ ] Phase 5: temporal knowledge and Graphiti.
 - [ ] Phase 6: Ask/RAG and citations.

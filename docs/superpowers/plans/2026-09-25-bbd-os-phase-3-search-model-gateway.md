@@ -12,7 +12,7 @@
 
 **Entry gate:** Phase 2 chunks/provenance; live model acceptance needs configured endpoint and permitted aliases.
 
-**Implementation status:** In progress. P03-T1 production code, affected build, and independent review are complete; P03-T2 is next.
+**Implementation status:** In progress. P03-T1 and P03-T2 production code, affected builds, and independent reviews are complete; P03-T3 is next.
 
 Code stage: implement production code and run affected production builds only. Do not create, modify or run tests, lint, or standalone typecheck until production code for all Phase 1-12 is complete. Behavioral acceptance is listed separately in the deferred test-stage section.
 
@@ -57,7 +57,7 @@ Concrete contract/configuration shape (illustrative IDs/timestamps are test data
 
 **Interfaces — consumes/produces:** POST /search {query,filters,mode,limit,cursor}; SearchHit includes title,excerpt,score,source,observed_at,published_at,document_version_id,chunk_id,citation. IndexGeneration(model_id,dimensions,status); POST /search/reindex -> run_id. Modes lexical|hybrid, with effective_mode and warnings.
 
-- [ ] **P03-T2.1 - Implement production behavior.** Use PostgreSQL simple text-search configuration for Unicode lexical baseline; parameterize query construction. Pin vector dimensions per generation; create a new physical index for new generations, then switch active generation atomically after verification. Keep per-item indexing status so partial failures are visible. Use reciprocal-rank fusion for hybrid results. If query embeddings are unavailable return lexical results with effective_mode=lexical and a warning; never report hybrid success. Gate deleted/private references at retrieval time as well as indexing.
+- [x] **P03-T2.1 - Implement production behavior.** Use PostgreSQL simple text-search configuration for Unicode lexical baseline; parameterize query construction. Pin vector dimensions per generation; create a new physical index for new generations, then switch active generation atomically after verification. Keep per-item indexing status so partial failures are visible. Use reciprocal-rank fusion for hybrid results. If query embeddings are unavailable return lexical results with effective_mode=lexical and a warning; never report hybrid success. Gate deleted/private references at retrieval time as well as indexing.
 
 Concrete contract/configuration shape (illustrative IDs/timestamps are test data, not production defaults):
 
@@ -65,9 +65,9 @@ Concrete contract/configuration shape (illustrative IDs/timestamps are test data
 {"items":[],"next_cursor":null,"effective_mode":"lexical","warnings":["Semantic search unavailable"]}
 ```
 
-- [ ] **P03-T2.2 - Build the affected deliverable.** Run `./scripts/dev.ps1 build` (or `make build`) and fix production build failures before proceeding.
+- [x] **P03-T2.2 - Build the affected deliverable.** `./scripts/dev.ps1 build` passed on 2026-09-26 after the final fix wave; Next.js and Docker web/API/worker/migrate images built.
 
-- [ ] **P03-T2.3 - Record build evidence, commit and continue.** Record changed files, the exact production build command/result, review findings and unresolved gates in `EXECUTION.md`; commit the completed task and continue to the next ready task.
+- [x] **P03-T2.3 - Record build evidence, commit and continue.** Build evidence and review findings are recorded in `EXECUTION.md`; commits `006f053`, `8b68563`, and `3783b11` contain the implementation and review fixes. Independent review approved after two scoped fix rounds. Continue to P03-T3.
 
 ## Task P03-T3: Search UI and command palette
 
