@@ -12,7 +12,7 @@
 
 **Entry gate:** Phase 2 chunks/provenance; live model acceptance needs configured endpoint and permitted aliases.
 
-**Implementation status:** Not started. This file is an implementation plan, not evidence of working code.
+**Implementation status:** In progress. P03-T1 production code, affected build, and independent review are complete; P03-T2 is next.
 
 Code stage: implement production code and run affected production builds only. Do not create, modify or run tests, lint, or standalone typecheck until production code for all Phase 1-12 is complete. Behavioral acceptance is listed separately in the deferred test-stage section.
 
@@ -48,7 +48,7 @@ Concrete contract/configuration shape (illustrative IDs/timestamps are test data
 
 - [x] **P03-T1.2 - Build the affected deliverable.** `./scripts/dev.ps1 build` passed on 2026-09-26 after lockfile-pinned npm dependencies were installed. Next.js production build and Docker web/API/worker/migrate image builds succeeded.
 
-- [ ] **P03-T1.3 - Record build evidence, commit and continue.** Build evidence is recorded in `EXECUTION.md`; independent review remains open. The implementer must not stage or commit this task.
+- [x] **P03-T1.3 - Record build evidence, commit and continue.** Build evidence and review findings are recorded in `EXECUTION.md`; commits `4d1af2e`, `efac142`, and `3bbfb91` contain the implementation and review fixes. Independent review approved after two scoped fix rounds. Continue to P03-T2.
 
 ## Task P03-T2: Lexical index and embedding generations
 
