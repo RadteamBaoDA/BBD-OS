@@ -4,10 +4,10 @@
 
 - Product scope: canonical sections 165–166; original phase plans plus [R01–R16](2026-09-30-bbd-os-spec-reconciliation.md).
 - Method: subagent-driven; code/build first, test stage only after all original and supplemental code/build/review completes.
-- Current action: revised plans prepared for owner review 2026-09-30. No production execution started in this planning turn.
+- Current action: owner approved continuous subagent-driven execution on 2026-09-30; each agent uses its own worktree and completed reviewed tasks merge locally into develop.
 - Baseline: original Phases 1–3 code/build/review complete; Phase 3 commit 4d0f774 is present in local main history. Runtime acceptance deferred.
 - Preserved unfinished work: P04-T1 in D:/Project/BBD-OS-phase-4 on codex/bbd-os-phase-4; uncommitted entity/relationship code and 0007_entities.py. Inspect diff/reports before resuming; no completion claimed.
-- Active production task: none during plan review. Next production task: **R01 — Repository instructions, boundaries and build-stage CI**, then supplementary execution order.
+- Active production task: **R01 — Repository instructions, boundaries and build-stage CI**. Next: R02 after R01 code/build/review and merge into develop.
 - Report completion immediately and commit/merge scoped completed work per owner authorization. No push/deploy/destructive owner-data operations.
 
 ## Phase checkpoints
@@ -223,3 +223,7 @@ Phase 3 whole-branch review is clean after the scoped fixes. P03-T1 through P03-
 ## Planning reconciliation — 2026-09-30
 
 Master/Phase 1–12 plans and navigation now reference sections 165–166 and [R01–R16](2026-09-30-bbd-os-spec-reconciliation.md). Historical task entries remain evidence, not current checkpoint. Google-only choice, graph backend, n8n provisioning, provider access/license, CII and host/restore gates remain open. No tests/lint/typecheck/build/provider calls ran during this planning turn.
+
+## Continuous develop integration — 2026-09-30
+
+Owner authorized full plan execution, separate worktree per agent and local automatic merges into develop. Current implementer: R01, base 3979ab2, isolated worktree C:/Users/doana/.codex/worktrees/bbd-r01-implementer/BBD-OS. Controller records each task completion, build/review evidence and merge SHA here. Detailed plan-scoped recovery ledger: .superpowers/sdd/2026-09-30-bbd-os-spec-reconciliation/progress.md. Production tests/lint/typecheck remain deferred.

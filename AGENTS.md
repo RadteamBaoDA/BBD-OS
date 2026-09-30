@@ -43,7 +43,7 @@ Never commit secrets or personal data. Provide placeholder configuration in `.en
 <!-- gitnexus:start -->
 # GitNexus — Code Intelligence
 
-This project is indexed by GitNexus as **BBD-OS** (1207 symbols, 2440 relationships, 68 execution flows). Use the GitNexus MCP tools to understand code, assess impact, and navigate safely.
+This project is indexed by GitNexus as **BBD-OS** (1529 symbols, 3240 relationships, 112 execution flows). Use the GitNexus MCP tools to understand code, assess impact, and navigate safely.
 
 > If any GitNexus tool warns the index is stale, run `npx gitnexus analyze` in terminal first.
 
