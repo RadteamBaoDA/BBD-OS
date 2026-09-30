@@ -48,7 +48,10 @@ export default function LoginPage() {
     {login.error && <p className="error" role="alert">{login.error instanceof ApiError ? login.error.message : 'Sign in could not be completed.'}</p>}
     <Button type="submit" disabled={login.isPending}>{login.isPending ? 'Signing in…' : 'Sign in'}</Button>
   </form>
-  {googleStatus.data?.configured && <div className="form"><p className="muted">Or sign in with Google.</p>
+  {googleStatus.isPending && <p className="muted" role="status">Checking Google sign-in availability…</p>}
+  {googleStatus.isError && <p className="error" role="alert">Google sign-in availability is unknown.</p>}
+  {googleStatus.isSuccess && !googleStatus.data.configured && <p className="muted">Google sign-in is not configured.</p>}
+  {googleStatus.isSuccess && googleStatus.data.configured && <div className="form"><p className="muted">Or sign in with Google.</p>
     {googleError && <p className="error" role="alert">Google sign-in could not be completed.</p>}
     <Button className="secondary" type="button" disabled={googleLogin.isPending} onClick={() => googleLogin.mutate()}>{googleLogin.isPending ? 'Opening Google…' : 'Continue with Google'}</Button>
     {googleLogin.error && <p className="error" role="alert">{googleLogin.error instanceof ApiError ? googleLogin.error.message : 'Google sign-in could not be started.'}</p>}

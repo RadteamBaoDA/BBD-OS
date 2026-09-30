@@ -49,9 +49,11 @@ export function GoogleLink() {
   const error = link.error ?? unlink.error;
 
   return <section className="status-panel">
-    <h1>Google sign-in</h1>
-    {!status.data?.configured && <p className="muted">Google sign-in is not configured by the administrator.</p>}
-    {status.data?.configured && <>
+    <h2>Google sign-in</h2>
+    {status.isPending && <p className="muted" role="status">Checking Google sign-in status…</p>}
+    {status.isError && <p className="error" role="alert">Google sign-in status is unavailable.</p>}
+    {status.isSuccess && !status.data.configured && <p className="muted">Google sign-in is not configured by the administrator.</p>}
+    {status.isSuccess && status.data.configured && <>
       <p className="muted">{status.data.linked ? 'A Google account is linked.' : 'No Google account is linked.'}</p>
       {providerError && <p className="error" role="alert">Google account linking could not be completed.</p>}
       <p className="muted">Sign-in requests only basic profile and email access. Gmail access is requested separately when a mail source is configured.</p>
@@ -61,6 +63,5 @@ export function GoogleLink() {
         : <Button type="button" disabled={!password || link.isPending} onClick={() => link.mutate()}>{link.isPending ? 'Opening Google…' : 'Link Google account'}</Button>}
       {error && <p className="error" role="alert">{error instanceof ApiError ? error.message : 'The Google account change could not be completed.'}</p>}
     </>}
-    {status.error && <p className="error" role="alert">Google sign-in status is unavailable.</p>}
   </section>;
 }

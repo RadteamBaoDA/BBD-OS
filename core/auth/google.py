@@ -1,4 +1,5 @@
 from authlib.integrations.starlette_client import OAuth
+import httpx
 
 from core.config import Settings
 
@@ -14,6 +15,10 @@ def google_client(settings: Settings) -> OAuth:
         client_id=settings.google_client_id,
         client_secret=settings.google_client_secret.get_secret_value(),
         server_metadata_url=GOOGLE_METADATA_URL,
-        client_kwargs={"scope": "openid email profile", "code_challenge_method": "S256"},
+        client_kwargs={
+            "scope": "openid email profile",
+            "code_challenge_method": "S256",
+            "timeout": httpx.Timeout(4, connect=2),
+        },
     )
     return oauth

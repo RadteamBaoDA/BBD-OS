@@ -1,5 +1,21 @@
 @import 'tailwindcss';
 
+@theme inline {
+  --color-background: var(--surface);
+  --color-foreground: var(--text);
+  --color-popover: var(--surface);
+  --color-popover-foreground: var(--text);
+  --color-border: var(--line);
+  --color-ring: var(--accent);
+  --color-accent: var(--bg);
+  --color-accent-foreground: var(--text);
+  --color-muted-foreground: var(--muted);
+  --color-destructive: var(--danger);
+  --radius-lg: 12px;
+  --radius-md: 9px;
+  --radius-sm: 6px;
+}
+
 :root {
   color-scheme: light;
   --bg: #f4f5f2;
