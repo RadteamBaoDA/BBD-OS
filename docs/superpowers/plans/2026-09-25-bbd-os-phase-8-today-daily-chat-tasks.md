@@ -16,6 +16,12 @@
 
 Implementation stage: production code and affected production builds only. Do not create, modify, or run tests, fixtures, lint, or standalone typecheck. Begin the deferred test stage only after production code for Phases 1-12 is complete.
 
+## Spec reconciliation — 2026-09-30
+
+Read [R01–R16 supplemental plan](2026-09-30-bbd-os-spec-reconciliation.md) and canonical sections **165–166** before execution. Assigned scope: **R09–R12**. Preserve original task IDs and historical evidence. Production code/build only until all original and supplemental code/build/review is complete; no tests/fixtures, lint, standalone typecheck or runtime acceptance in this stage.
+
+Main navigation is Dashboard/Chat/Settings; Settings has three groups; account/appearance/language live in the user menu. Detail routes do not become main-navigation items. Migration names below are historical planning examples: inspect current head and active worktrees, including unfinished Phase 4 0007_entities.py, and allocate a unique linked revision without rewriting shipped migrations.
+
 ## Global Constraints
 
 - "Never hardcode secrets."
@@ -42,7 +48,7 @@ Module ownership: **dashboard, tasks, goals, news, notifications**. Backend doma
 
 ## Task P08-T1: Tasks, goals, topics and approved planning
 
-**Files and responsibilities:** Create modules/tasks/models.py, modules/tasks/schemas.py, modules/tasks/public.py, modules/tasks/routes.py, modules/tasks/tools.py; modules/goals/models.py, modules/goals/schemas.py, modules/goals/public.py, modules/goals/routes.py, modules/goals/tools.py; modules/news/topics.py; infrastructure/postgres/migrations/versions/0009_daily_work.py; frontend task/goal/topic modules
+**Files and responsibilities:** Create modules/tasks/models.py, modules/tasks/schemas.py, modules/tasks/public.py, modules/tasks/routes.py, modules/tasks/tools.py; modules/goals/models.py, modules/goals/schemas.py, modules/goals/public.py, modules/goals/routes.py, modules/goals/tools.py; modules/news/topics.py; an owning generated Alembic revision under infrastructure/postgres/migrations/versions/ after checking current and worktree heads; frontend task/goal/topic modules
 
 **Interfaces — consumes/produces:** CRUD /tasks,/goals,/topics; goals own milestones and linked task/entity references. Task statuses inbox,todo,in_progress,blocked,done,cancelled. POST /goals/{id}/accept-plan atomically materializes an owner-accepted proposal once.
 
@@ -115,14 +121,14 @@ Concrete contract/configuration shape (illustrative values, not production defau
 - Planned coverage artifacts: `tests/integration/test_daily_context.py`.
 - Acceptance behavior: Regenerating a daily brief creates a new revision while preserving the earlier saved revision. Cover concurrent generation, model outage preserving the last brief, notification deduplication, date-only tasks, timezone changes, missed schedules, and source deletion invalidating citations/marking briefs stale.
 
-## Task P08-T4: Today dashboard and contextual drawer UX
+## Task P08-T4: Configurable gadget dashboard and contextual chat UX
 
-**Files and responsibilities:** Create apps/web/src/modules/dashboard/today-page.tsx, apps/web/src/modules/dashboard/date-selector.tsx, apps/web/src/modules/dashboard/widget-registry.tsx, apps/web/src/modules/dashboard/daily-brief.tsx; notifications frontend; modify authenticated root routing and chat drawer controller; docs/ux/today-chat.md.
+**Files and responsibilities:** Create apps/web/src/modules/dashboard/dashboard-page.tsx, apps/web/src/modules/dashboard/date-selector.tsx, apps/web/src/modules/dashboard/widget-registry.tsx, apps/web/src/modules/dashboard/daily-brief.tsx; notifications frontend; modify authenticated root routing and chat drawer controller; docs/ux-proposals/2026-09-26-life-dashboard-proposal.md.
 
 **Interfaces — consumes/produces:** GET /context/daily drives widgets. ChatContext {kind:'day',date,timezone}; a chosen day conversation stores that immutable context. Drawer inherits the Phase 6 component; no permanent chat column. Widgets register id,module,title,priority,provider,refresh_policy,permissions.
 
 
-- [ ] **P08-T4.1 — Implement production behavior.** Today becomes authenticated root with previous/next/today/date picker, Daily Brief, Upcoming, Tasks/Goals, important events, stories/trends, knowledge changes and recent activity. No calendar connector means only available manual/imported events, with explicit source status. Desktop chat is right overlay; mobile full-screen Sheet; default closed. History, citations and approvals stay inside the drawer. Selecting another day switches the drawer's selected conversation to that day without modifying an old conversation or cancelling its background run; in-flight output remains associated with its original response. Opening full Ask preserves conversation ID and date badge. Closing restores focus/draft and the main viewport remains full-width.
+- [ ] **P08-T4.1 — Implement production behavior.** Dashboard becomes authenticated root with multiple named dashboards/groups/presets. Implement R10–R12: every brief/task/goal/event/story/trend/map/highlight/activity is a movable and resizable gadget. Date navigation belongs to relevant gadgets/context, not a fixed Today layout. No calendar connector means only available manual/imported events, with explicit source status. Desktop chat is right overlay; mobile full-screen Sheet; default closed. History, citations and approvals belong to full Chat; drawer contains only New chat, messages, composer/send-stop and close. Selecting another day switches the drawer's selected conversation to that day without modifying an old conversation or cancelling its background run; in-flight output remains associated with its original response. Opening full Chat preserves conversation ID and date badge. Closing restores focus/draft and the main viewport remains full-width.
 
 Concrete contract/configuration shape (illustrative values, not production defaults):
 

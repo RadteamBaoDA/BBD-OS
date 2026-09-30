@@ -14,7 +14,7 @@ Status: UI technology and experience decisions selected by the owner. This docum
 
 ## 2. Product navigation and component mapping
 
-Main navigation contains exactly **Dashboard / Chat / Settings**. Configuration belongs to Settings → User settings. Reading a story, entity or feed can open a detail view without adding a main navigation entry.
+Main navigation contains exactly **Dashboard / Chat / Settings**. Settings has exactly three local groups: **Data sources**, **AI & Ommi Router**, **Dashboard & Gadget**. Account, theme and language belong only in the user menu. Reading a story, entity or feed can open a detail view without adding a main navigation entry. Canonical approved requirements are specification section 165.
 
 | Product element | shadcn component/composition | Required behavior |
 | --- | --- | --- |
@@ -95,7 +95,7 @@ The owner requested two choices. Keep these app preference identifiers and norma
 
 ## 6. User settings dialog
 
-Entry points: user/account action in the app header and Settings → User settings → Appearance & language. This does not add a fourth main navigation item.
+Entry point: user/account menu in the app header; the login screen may expose appearance/language before authentication. Do not duplicate account/appearance in Settings or add a fourth main navigation item.
 
 ```text
 User settings                                      [Close]

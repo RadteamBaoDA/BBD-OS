@@ -16,6 +16,12 @@
 
 Implementation stage: production code and affected production builds only. Do not create, modify, or run tests, fixtures, lint, or standalone typecheck. Begin the deferred test stage only after production code for Phases 1-12 is complete.
 
+## Spec reconciliation — 2026-09-30
+
+Read [R01–R16 supplemental plan](2026-09-30-bbd-os-spec-reconciliation.md) and canonical sections **165–166** before execution. Assigned scope: **R06 events and R15 consumers**. Preserve original task IDs and historical evidence. Production code/build only until all original and supplemental code/build/review is complete; no tests/fixtures, lint, standalone typecheck or runtime acceptance in this stage.
+
+Main navigation is Dashboard/Chat/Settings; Settings has three groups; account/appearance/language live in the user menu. Detail routes do not become main-navigation items. Migration names below are historical planning examples: inspect current head and active worktrees, including unfinished Phase 4 0007_entities.py, and allocate a unique linked revision without rewriting shipped migrations.
+
 ## Global Constraints
 
 - "Never hardcode secrets."
@@ -67,7 +73,7 @@ Concrete contract/configuration shape (illustrative values, not production defau
 
 ## Task P05-T2: Events, participants and time semantics
 
-**Files and responsibilities:** Create modules/timeline/models.py, modules/timeline/schemas.py, modules/timeline/public.py, modules/timeline/routes.py, modules/timeline/extraction.py; infrastructure/postgres/migrations/versions/0006_temporal.py
+**Files and responsibilities:** Create modules/timeline/models.py, modules/timeline/schemas.py, modules/timeline/public.py, modules/timeline/routes.py, modules/timeline/extraction.py; an owning generated Alembic revision under infrastructure/postgres/migrations/versions/ after checking current and worktree heads
 
 **Interfaces — consumes/produces:** CRUD /events; GET /timeline?date_from=&date_to=&timezone=&source_id=&entity_id=&cursor=; timeline uses occurred time, preserving observed_at and optional valid_from/valid_to. day_window(date,timezone) -> (UTC start,UTC end) with half-open intervals.
 

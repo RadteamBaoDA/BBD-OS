@@ -1,6 +1,6 @@
 # BBD-OS implementation status
 
-Updated: 2026-09-26.
+Updated: 2026-09-30 (planning reconciliation; no new implementation acceptance).
 
 Markers: `[ ]` not started; `[~]` in progress; `[x]` complete; `[!]` blocked.
 
@@ -14,7 +14,7 @@ Markers: `[ ]` not started; `[~]` in progress; `[x]` complete; `[!]` blocked.
 - [x] Phase 1: core data platform code/build and whole-branch review complete; merged to `main` (`d425057`). Behavioral acceptance remains deferred.
 - [x] Phase 2: ingestion and packaged collection workflows (code/build and independent review complete; merged to `main` as `2f7c409`; behavioral acceptance deferred).
 - [x] Phase 3: search and embeddings production code/build/whole-branch review complete; behavioral acceptance deferred to the post-code test stage.
-- [ ] Phase 4: entity knowledge.
+- [~] Phase 4: uncommitted P04-T1 entities/relationships in D:/Project/BBD-OS-phase-4; preserve/reconcile before resuming. No completion claimed.
 - [ ] Phase 5: temporal knowledge and Graphiti.
 - [ ] Phase 6: Ask/RAG and citations.
 - [ ] Phase 7: agents, tools, and approvals.
@@ -25,3 +25,9 @@ Markers: `[ ]` not started; `[~]` in progress; `[x]` complete; `[!]` blocked.
 - [ ] Phase 12: security, resource validation, backup/restore, and E2E hardening.
 
 Phase 0 verified on 2026-09-25: Ruff, mypy, pytest (15 passed, 1 integration test skipped in the unit run), a separate real-PostgreSQL owner-setup race test (1 passed), ESLint, TypeScript, Next.js production build, production Docker image builds, repeated Alembic migration, and disposable Compose/Playwright acceptance (2 passed). The Compose test project was removed with its own volumes after the run. The test host has 14 CPUs and 31 GiB RAM, so this does not validate capacity on the target 2-core/8-GB mini PC. No AI prompts or source data were sent. OmniRoute connectivity/model mappings, target deployment OS/architecture, mini-host resource measurements, Graphiti backend compatibility, and phases 1–12 remain to be validated in their owning phases.
+
+## Spec 165–166 supplemental delivery
+
+- [x] Updated master and Phase 1–12 plans; added [R01–R16](superpowers/plans/2026-09-30-bbd-os-spec-reconciliation.md).
+- [ ] R01–R16 production code/build/review and later acceptance.
+- Next production task after revised-plan review: R01. Original Phase 1–3 evidence remains; tests are deferred until all original and supplemental code is complete.

@@ -16,6 +16,12 @@
 
 Code stage: implement production code and run affected production builds only. Do not create or modify test files, or run tests, lint, standalone typecheck, audits, or non-build acceptance checks. Begin deferred behavioral acceptance only after all Phase 1-12 production code is complete.
 
+## Spec reconciliation — 2026-09-30
+
+Read [R01–R16 supplemental plan](2026-09-30-bbd-os-spec-reconciliation.md) and canonical sections **165–166** before execution. Assigned scope: **R13–R15**. Preserve original task IDs and historical evidence. Production code/build only until all original and supplemental code/build/review is complete; no tests/fixtures, lint, standalone typecheck or runtime acceptance in this stage.
+
+Main navigation is Dashboard/Chat/Settings; Settings has three groups; account/appearance/language live in the user menu. Detail routes do not become main-navigation items. Migration names below are historical planning examples: inspect current head and active worktrees, including unfinished Phase 4 0007_entities.py, and allocate a unique linked revision without rewriting shipped migrations.
+
 ## Global Constraints
 
 - "Never hardcode secrets."
@@ -103,7 +109,7 @@ Concrete contract/configuration shape (illustrative IDs/timestamps are test data
 **Interfaces — consumes/produces:** Sources renders GitHub scope, run state, fetched/indexed timestamps and separate errors. Project views and drawer context use existing entity/source IDs.
 
 
-- [ ] **P09-T4.3 — Implement the minimal production behavior.** Guide credentials in n8n and return validation, not an invented credentials editor. Show live run counts/status and links to provider evidence; surface project changes in Today and Timeline via existing providers.
+- [ ] **P09-T4.3 — Implement the minimal production behavior.** Configure credential/repository/scope/schedule inside BBD-OS Settings/Data sources using R03/R04 supported APIs. Do not require n8n administration UI; surface unsupported provisioning. Show live run counts/status and links to provider evidence; surface project changes in configurable dashboard gadgets and Timeline details via existing providers.
 
 Concrete contract/configuration shape (illustrative IDs/timestamps are test data, not production defaults):
 

@@ -16,6 +16,12 @@
 
 Implementation stage: production code and affected production builds only. Do not create, modify, or run tests, fixtures, lint, or standalone typecheck. Begin the deferred test stage only after production code for Phases 1-12 is complete.
 
+## Spec reconciliation — 2026-09-30
+
+Read [R01–R16 supplemental plan](2026-09-30-bbd-os-spec-reconciliation.md) and canonical sections **165–166** before execution. Assigned scope: **R08**. Preserve original task IDs and historical evidence. Production code/build only until all original and supplemental code/build/review is complete; no tests/fixtures, lint, standalone typecheck or runtime acceptance in this stage.
+
+Main navigation is Dashboard/Chat/Settings; Settings has three groups; account/appearance/language live in the user menu. Detail routes do not become main-navigation items. Migration names below are historical planning examples: inspect current head and active worktrees, including unfinished Phase 4 0007_entities.py, and allocate a unique linked revision without rewriting shipped migrations.
+
 ## Global Constraints
 
 - "Never hardcode secrets."
@@ -67,7 +73,7 @@ Concrete contract/configuration shape (illustrative values, not production defau
 
 ## Task P07-T2: LangGraph execution, checkpointing and run limits
 
-**Files and responsibilities:** Create modules/agents/models.py, modules/agents/schemas.py, modules/agents/harness.py, modules/agents/worker.py, modules/agents/public.py, modules/agents/routes.py; infrastructure/postgres/migrations/versions/0008_agents.py; extend chat response/activity events.
+**Files and responsibilities:** Create modules/agents/models.py, modules/agents/schemas.py, modules/agents/harness.py, modules/agents/worker.py, modules/agents/public.py, modules/agents/routes.py; an owning generated Alembic revision under infrastructure/postgres/migrations/versions/ after checking current and worktree heads; extend chat response/activity events.
 
 **Interfaces — consumes/produces:** POST /agents/{id}/runs -> run_id; GET /agent-runs/{id}; POST /agent-runs/{id}/cancel; states queued,running,waiting_approval,succeeded,failed,cancelled. Limits default 20 steps,10 tool calls,300s active execution, configurable token budget when usage exists.
 
@@ -117,12 +123,12 @@ Concrete contract/configuration shape (illustrative values, not production defau
 
 ## Task P07-T4: Specialists, browser-use and management UI
 
-**Files and responsibilities:** Create modules/agents/specialists.py, modules/tools/browser.py; apps/web/src/modules/agents/agent-list.tsx, apps/web/src/modules/agents/agent-settings.tsx, apps/web/src/modules/agents/run-detail.tsx; routes /agents and /agents/[agentId]; docs/agents.md.
+**Files and responsibilities:** Create modules/agents/specialists.py, modules/tools/browser.py; apps/web/src/modules/agents/agent-list.tsx, apps/web/src/modules/agents/agent-settings.tsx, apps/web/src/modules/agents/run-detail.tsx; guarded agent details opened from full Chat/advanced AI settings, not main navigation; docs/agents.md.
 
 **Interfaces — consumes/produces:** Supervisor,Knowledge,Research,Personal,Project,News,Planning share one harness; Automation specialist is activated Phase 10. Browser tool submits bounded jobs to Phase 2 runtime; receives run_id/results through protected API.
 
 
-- [ ] **P07-T4.1 — Implement production behavior.** Configure specialists by prompts, model aliases and allowed tools; start sequentially. Show unavailable dependent capabilities rather than fabricated task/goal actions before Phase 8. Add browser-use only after actual OmniRoute browser/tool capability probes, with per-job page/action/time/download limits and a separate credential-isolated browser worker. Preserve session state only in protected source-specific storage. Model assignment, prompt revision, permissions, recent runs and failures are editable in Agents UI; drawer activity shows concise tool status.
+- [ ] **P07-T4.1 — Implement production behavior.** Configure specialists by prompts, model aliases and allowed tools; start sequentially. Show unavailable dependent capabilities rather than fabricated task/goal actions before Phase 8. Add browser-use only after actual OmniRoute browser/tool capability probes, with per-job page/action/time/download limits and a separate credential-isolated browser worker. Preserve session state only in protected source-specific storage. Model assignment, prompt revision, permissions, recent runs and failures are editable in Agents UI; full Chat activity shows concise tool status.
 
 Concrete contract/configuration shape (illustrative values, not production defaults):
 
@@ -138,7 +144,7 @@ Concrete contract/configuration shape (illustrative values, not production defau
 ### Deferred test-stage acceptance (non-executable)
 
 - Planned coverage artifacts: `tests/e2e/agents.spec.ts`.
-- Acceptance behavior: A run requiring an external action displays an approval request before that action. Cover browser network isolation, collection grant versus external write, exhausted browser budget, provider tool-format compatibility, run history, and drawer approvals.
+- Acceptance behavior: A run requiring an external action displays an approval request before that action. Cover browser network isolation, collection grant versus external write, exhausted browser budget, provider tool-format compatibility, run history, and full Chat approvals.
 
 ## Phase Acceptance and Handoff
 

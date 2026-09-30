@@ -16,6 +16,12 @@
 
 Implementation stage: production code and affected production builds only. Do not create, modify, or run tests, fixtures, lint, or standalone typecheck. Begin the deferred test stage only after production code for Phases 1-12 is complete.
 
+## Spec reconciliation — 2026-09-30
+
+Read [R01–R16 supplemental plan](2026-09-30-bbd-os-spec-reconciliation.md) and canonical sections **165–166** before execution. Assigned scope: **R07; P06-T2 follows R06 recovery**. Preserve original task IDs and historical evidence. Production code/build only until all original and supplemental code/build/review is complete; no tests/fixtures, lint, standalone typecheck or runtime acceptance in this stage.
+
+Main navigation is Dashboard/Chat/Settings; Settings has three groups; account/appearance/language live in the user menu. Detail routes do not become main-navigation items. Migration names below are historical planning examples: inspect current head and active worktrees, including unfinished Phase 4 0007_entities.py, and allocate a unique linked revision without rewriting shipped migrations.
+
 ## Global Constraints
 
 - "Never hardcode secrets."
@@ -67,7 +73,7 @@ Concrete contract/configuration shape (illustrative values, not production defau
 
 ## Task P06-T2: Persistent conversations, responses and replayable stream
 
-**Files and responsibilities:** Create modules/chat/models.py, modules/chat/routes.py, modules/chat/worker.py, modules/chat/stream.py; infrastructure/postgres/migrations/versions/0007_chat_memory.py
+**Files and responsibilities:** Create modules/chat/models.py, modules/chat/routes.py, modules/chat/worker.py, modules/chat/stream.py; an owning generated Alembic revision under infrastructure/postgres/migrations/versions/ after checking current and worktree heads
 
 **Interfaces — consumes/produces:** CRUD /conversations; POST /conversations/{id}/messages accepts client_request_id,content,context; returns message_id,response_id. GET /responses/{id}/events uses SSE event IDs; POST /responses/{id}/cancel. Message metadata holds model identity, usage unknown when absent, and citation references.
 
@@ -90,14 +96,14 @@ Concrete contract/configuration shape (illustrative values, not production defau
 - Planned coverage artifacts: `tests/integration/test_conversations.py`, `tests/test_stream_events.py`.
 - Acceptance behavior: Repeated send with one client request ID returns the same response. Cover disconnect/reconnect by event ID, worker crash, cancellation, token expiry, history opt-out cleanup, deletion while streaming, and no storage or display of raw chain-of-thought.
 
-## Task P06-T3: Reusable accessible chat drawer and full Ask route
+## Task P06-T3: Reusable accessible chat drawer and full Chat route
 
-**Files and responsibilities:** Create apps/web/src/modules/chat/api.ts, apps/web/src/modules/chat/chat-drawer.tsx, apps/web/src/modules/chat/chat-session.tsx, apps/web/src/modules/chat/chat-transcript.tsx, apps/web/src/modules/chat/chat-composer.tsx, apps/web/src/modules/chat/chat-history.tsx, apps/web/src/modules/chat/citation-panel.tsx; apps/web/src/core/app-shell/chat-controller.tsx; route /ask
+**Files and responsibilities:** Create apps/web/src/modules/chat/api.ts, apps/web/src/modules/chat/chat-drawer.tsx, apps/web/src/modules/chat/chat-session.tsx, apps/web/src/modules/chat/chat-transcript.tsx, apps/web/src/modules/chat/chat-composer.tsx, apps/web/src/modules/chat/chat-history.tsx, apps/web/src/modules/chat/citation-panel.tsx; apps/web/src/core/app-shell/chat-controller.tsx; route /chat
 
-**Interfaces — consumes/produces:** ChatDrawer.open({conversationId?,context?}); ChatContext {kind:'general'|'document'|'entity'|'day',resource_id?,date?,timezone?}. Same ChatSession component powers /ask and the drawer; one server conversation per chosen ID, no duplicate transcript store.
+**Interfaces — consumes/produces:** ChatDrawer.open({conversationId?,context?}); ChatContext {kind:'general'|'document'|'entity'|'day'|'selection',resource_id?,date?,timezone?}. Same ChatSession component powers /chat and the drawer; one server conversation per chosen ID, no duplicate transcript store.
 
 
-- [ ] **P06-T3.1 — Implement production behavior.** Use the existing UI ecosystem's accessible Sheet/Dialog primitive, not a custom focus trap. Right-side overlay drawer, closed by default, width min(440px,100vw), full viewport on mobile; underlying page gets full width when closed. Escape/close restores focus and closes presentation only, not the server run. Stop is a separate explicit action. Keep draft in local in-memory UI state, not persistent browser storage of private content; server transcript remains TanStack Query state. Header has title/context, history, expand to /ask and close. Sources/activity/history are tabs or subviews inside the drawer, not additional permanent columns. Show current context and preserve conversation ID when expanding.
+- [ ] **P06-T3.1 — Implement production behavior.** Use the existing UI ecosystem's accessible Sheet/Dialog primitive, not a custom focus trap. Right-side overlay drawer, closed by default, large width responsive to viewport, full viewport on mobile; underlying page gets full width when closed. Escape/close restores focus and closes presentation only, not the server run. Stop is a separate explicit action. Keep draft in local in-memory UI state, not persistent browser storage of private content; server transcript remains TanStack Query state. Drawer contains only New chat, messages, composer/send-stop and close. Full Chat owns history/context/citations/activity/approvals/web search and shares conversation/context/draft. Port AnythingLLM source through R07; a new visual imitation is not completion.
 
 Concrete contract/configuration shape (illustrative values, not production defaults):
 
@@ -113,7 +119,7 @@ Concrete contract/configuration shape (illustrative values, not production defau
 ### Deferred test-stage acceptance (non-executable)
 
 - Planned coverage artifacts: `tests/e2e/chat-drawer.spec.ts`.
-- Acceptance behavior: Closing and reopening the drawer returns focus and retains the draft. Cover keyboard access, focus handling, mobile viewport, overflow, closing during a stream, transcript/citation views, and expanding to Ask with the same conversation.
+- Acceptance behavior: Closing and reopening the drawer returns focus and retains the draft. Cover keyboard access, focus handling, mobile viewport, overflow, closing during a stream, transcript/citation views, and opening full Chat with the same conversation.
 
 ## Task P06-T4: Selective memory and privacy management
 

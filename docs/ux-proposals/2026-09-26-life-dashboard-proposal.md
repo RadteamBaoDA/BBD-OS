@@ -1,6 +1,6 @@
 # Life Dashboard — đề xuất sản phẩm và UI/UX
 
-Ngày: 2026-09-26. Trạng thái: **bản đề xuất để review**, chưa thay thế spec được phê duyệt, chưa phải kế hoạch thực thi. Bản minh họa: `life-dashboard-preview.html`; dữ liệu, chat và cập nhật trong đó đều là mô phỏng.
+Ngày: 2026-09-26. Trạng thái: **các quyết định sản phẩm/UI đã được người dùng chốt và đưa vào mục 165 của spec hiện tại**; chưa phải bằng chứng hoàn thành production. Bản minh họa duy nhất: `life-dashboard-preview.html`; dữ liệu, chat và cập nhật trong đó đều là mô phỏng.
 
 **Design system được chọn:** [shadcn/ui + Recharts, theme và i18n](../DESIGN_SYSTEM.md). Toàn bộ UI production theo shadcn; chart cổ phiếu/coin dùng Recharts. Skill áp dụng: `.agents/skills/bbd-os-ui-system/SKILL.md`. Bản HTML cũ là minh họa luồng, chưa phải source shadcn/Recharts được tích hợp.
 
@@ -36,12 +36,12 @@ flowchart TD
     H[Main navigation] --> W[Dashboard]
     H --> A[Chat]
     H --> C[Settings]
-    C --> U[User settings]
-    U --> GM[Gadget management]
-    U --> S[Connectors và MCP]
-    U --> F[Highlight và notifications]
-    U --> AI[AI models và web search]
-    U --> V[Variants, map layers và quyền dữ liệu]
+    C --> S[Nguồn dữ liệu: server collectors]
+    C --> AI[AI và Ommi Router]
+    C --> GM[Dashboard và Gadget]
+    S --> M[MCP và quyền nguồn: Nâng cao]
+    GM --> F[Highlight và rule notifications]
+    UM[User menu] --> P[Tài khoản, giao diện, ngôn ngữ]
     GM --> T[Template dữ liệu + template hiển thị]
     T --> L[Thư viện gadget đã tạo]
     L --> W
@@ -51,11 +51,11 @@ flowchart TD
     R --> E[Nguồn và bằng chứng]
 ```
 
-**Main navigation chỉ có Dashboard / Chat / Settings.** Toàn bộ cấu hình nằm trong **Settings → User settings**. Dòng tin, tri thức, timeline, dữ liệu cá nhân và chi tiết nguồn được mở từ gadget/kết quả chat khi cần; không có mục main navigation riêng. Dashboard giữ điều khiển vận hành như thời gian, chọn view và Edit/Save/Cancel. Cấu hình nguồn, template, model, rule được mở ở Settings. Chat có drawer và trang đầy đủ dùng chung thread/history.
+**Main navigation chỉ có Dashboard / Chat / Settings.** Settings có đúng ba nhóm: **Nguồn dữ liệu**, **AI & Ommi Router**, **Dashboard & Gadget**, cùng một workspace cấu hình; tài khoản, theme và ngôn ngữ chỉ ở **user menu**. Dòng tin, tri thức, timeline, dữ liệu cá nhân và chi tiết nguồn mở từ gadget/kết quả chat. Dashboard giữ selector, preset và Edit/Save/Cancel. Chat có drawer và trang đầy đủ dùng chung thread/history.
 
 ## 4. Toàn bộ màn hình và hành vi
 
-### 4.0. Settings → User settings → Gadget management
+### 4.0. Settings → Dashboard & Gadget → Gadget management
 
 Đây là nơi **tạo và quản lý định nghĩa gadget**. Dashboard Edit chỉ thêm một gadget đã tạo vào nhóm, điều chỉnh vị trí/kích thước hoặc gỡ khỏi layout. Gỡ khỏi dashboard không xóa định nghĩa gadget hay dữ liệu. Sửa định nghĩa trong Settings có preview, liệt kê các dashboard sử dụng và lưu version; layout đang mở không bị đổi tọa độ. Xóa định nghĩa đang được sử dụng phải nêu rõ ảnh hưởng.
 
@@ -68,17 +68,15 @@ Luồng tạo: chọn template dữ liệu → chọn connector/MCP instance đ�
 
 Không tự gọi tool MCP có tác dụng ghi để refresh gadget. Chỉ tool/resource đọc được cấp quyền, có schema đầu ra phù hợp mới được dùng; có timeout, quota và cache. Không lưu secrets trong gadget config hoặc cho chạy JavaScript tùy ý từ template. Video/embed có allowlist và xử lý URL an toàn; nội dung news/text/chat cần sanitize.
 
-Các mục User settings:
+Ba nhóm Settings:
 
-- Gadget management: thư viện đã tạo, template catalog, preview, sửa/nhân bản/xóa và nơi sử dụng.
-- Data connectors: World Data và nguồn cá nhân, credential/scope, lịch sync, quota, health.
-- MCP: server, transport/auth, tool/resource được phép, chế độ đọc và giới hạn.
-- Topics/highlights/notifications: watchlists, exclusions, rule, digest và giờ yên lặng.
-- Map layers & country intelligence: shared layer catalog, nguồn/công thức/version của từng chỉ số.
-- AI & Chat: kết nối OpenAI SDK qua Ommi Router theo cấu hình hệ thống hiện có; web search, budget và retention history. Cấu hình routing/provider/model do Ommi Router quản lý; không dựng bộ quản lý provider thứ hai trong BBD-OS.
-- Appearance & variants: ngôn ngữ, timezone, đơn vị, layout mobile, preset world/tech/finance/commodity/happy/energy.
-- Appearance & language mở **shadcn Dialog**: Light / Dark / System và English (US) / Tiếng Việt. Lựa chọn locale của app là `en-us` / `vi-vi`, map sang `en-US` / `vi-VN` cho Intl/HTML. Preview ngay; Save lưu cả hai, Cancel/close khôi phục; áp dụng cho toàn bộ UI và portal, không tự dịch tin hoặc đổi tiền tệ/timezone.
-- Privacy & storage: quyền cá nhân, egress, retention, xuất/xóa, backup và nhật ký truy cập.
+- **Nguồn dữ liệu:** danh sách nguồn và trạng thái; editor Kết nối → Chọn dữ liệu → Thu thập trên server. Có kiểm tra, lịch/timezone, lịch sử ban đầu, Lưu & bật, Thu thập ngay, Pause/Resume và lỗi. Retry/quota/retention/log, MCP và quyền nguồn cá nhân ở Nâng cao. Collector chạy tiếp khi đóng browser; dùng API/adapter và scheduler hiện có.
+- **AI & Ommi Router:** endpoint, credential dạng che, kiểm tra kết nối, lấy danh sách model hoặc nhập ID, chọn model chat/tóm tắt, web search/provider. Embedding/budget/privacy ở Nâng cao. BBD-OS gọi OpenAI SDK phía server qua gateway hiện có; không tạo provider manager thứ hai hoặc local AI. Credential được bảo vệ phía server; không trả key đã lưu về browser.
+- **Dashboard & Gadget:** dashboard/preset, thư viện định nghĩa gadget và template, rule highlight/thông báo. Map layers nằm trong cấu hình gadget bản đồ. Preset không ghi đè layout hiện tại im lặng.
+
+**User menu:** tài khoản và Appearance & language mở shadcn Dialog: Light/Dark/System, English (US)/Tiếng Việt; không lặp lại trong Settings. Locale app `en-us`/`vi-vi` map sang `en-US`/`vi-VN`; Save lưu, Cancel/close khôi phục. Không tự dịch tin hay đổi tiền tệ/timezone. Cấu hình lịch/timezone riêng của nguồn vẫn nằm tại nguồn đó.
+
+Form có mặc định hợp lý, một hành động Save chính, báo dirty/saved/error và giữ bản nháp khi lỗi. Kiểm tra kết nối không tự lưu; rời form có thay đổi chưa lưu phải cho người dùng quyết định. Toàn bộ luồng thông thường nằm trong UI BBD-OS, không yêu cầu mở n8n hoặc Ommi Router để cấu hình căn bản.
 
 #### Panel inventory và feature catalog phải có
 
@@ -128,7 +126,7 @@ flowchart LR
 - **Viewport:** html/body/app root rộng 100%, không margin mặc định, không max-width đóng khung ứng dụng; chiều cao tối thiểu phủ viewport (`min-height: 100dvh` có fallback). Dashboard dài thì document cuộn dọc, không khóa body bằng `height: 100vh; overflow: hidden`. Mobile hỗ trợ safe-area, bàn phím ảo, menu thu gọn và thao tác vị trí/kích thước thay thế kéo thả. Chat toàn trang có shell phủ viewport với vùng hội thoại cuộn riêng, composer không bị bàn phím che.
 - Bộ lọc mặc định theo thứ tự dashboard → group → gadget; gadget ghi đè có badge giải thích phạm vi khác nhau. Không âm thầm áp bộ lọc địa lý vào dữ liệu không hỗ trợ.
 
-**Luồng tạo gadget:** Settings → User settings → Gadget management → template dữ liệu → nguồn đã cấu hình → template UI → scope/filter/highlight → preview → lưu thư viện. **Luồng thêm vào dashboard:** Edit → Thêm gadget → chọn trong thư viện → nhóm/vị trí/kích thước → Save. Trong Edit chỉ sửa layout; sửa nguồn/rule/template trở về User settings.
+**Luồng tạo gadget:** Settings → Dashboard & Gadget → Gadget management → template dữ liệu → nguồn đã cấu hình → template UI → scope/filter/highlight → preview → lưu thư viện. **Luồng thêm vào dashboard:** Edit → Thêm gadget → chọn trong thư viện → nhóm/vị trí/kích thước → Save. Trong Edit chỉ sửa layout; sửa nguồn/rule/template trở về Settings → Dashboard & Gadget.
 
 | Cấu hình gadget | Lựa chọn |
 | --- | --- |
@@ -296,7 +294,7 @@ flowchart LR
 - Timeline và event correlation hỗ trợ câu hỏi “đã thay đổi gì?” và “có những liên hệ nào?”. Correlation không tự chứng minh quan hệ nhân quả.
 - Memory của trợ lý có UI để xem/sửa/xóa, tách khỏi bằng chứng nguồn.
 
-### 4.7. Cá nhân hôm nay — gadget và cấu hình trong User settings
+### 4.7. Cá nhân hôm nay — gadget và cấu hình trong Settings → Nguồn dữ liệu
 
 - Lịch sắp tới, việc/ghi chú cần chú ý, thông tin thế giới liên quan công việc/chuyến đi/repo/tài sản đã theo dõi.
 - Inbox riêng và tìm kiếm trong Gmail, Drive, Notes, Browser, GitHub theo scope được cấp.
@@ -305,7 +303,7 @@ flowchart LR
 - Có chức năng chọn phạm vi account/folder/calendar/repo, tạm ngừng, thu hồi quyền, xuất dữ liệu, xóa dữ liệu đã nhập. Xóa phải lan tới index/vector/graph/cache theo chính sách.
 - Nội dung riêng mặc định không xuất hiện trong public/share view, không bị gửi vào web search, không trở thành dữ liệu World Data.
 
-### 4.8. User settings → Data connectors
+### 4.8. Settings → Nguồn dữ liệu
 
 Catalog → chọn nguồn → xem điều kiện truy cập → cấp quyền/cấu hình → chọn scope và lịch → xem preview → kích hoạt → theo dõi đồng bộ.
 
@@ -322,14 +320,13 @@ Mỗi connector: trạng thái, last success, next run, freshness lag, số bả
 
 Toàn bộ catalog trên thuộc phạm vi sản phẩm đề xuất. Thứ tự triển khai theo nhóm không loại bỏ nguồn khỏi phạm vi. Trạng thái phải phân biệt “chưa có adapter”, “cần cấu hình”, “thiếu quyền”, “đang đồng bộ”, “sẵn sàng”, “lỗi”; có thẻ trong catalog không có nghĩa connector đã được triển khai.
 
-### 4.9. Các mục User settings còn lại
+### 4.9. Phân bổ cấu hình nâng cao
 
-- Trang mặc định, dark/light/system, mật độ, ngôn ngữ dịch, timezone, đơn vị, vùng mặc định, widgets và saved views.
-- Thông báo, digest, giờ yên lặng; model/search provider và ngân sách nghiên cứu.
-- Quản lý dashboard/group/gadget, template, layout và bộ lọc kế thừa; lưu cấu hình có version, xử lý được khi loại gadget không còn hỗ trợ.
-- Chính sách giữ raw content, metadata, lịch sử; dung lượng, backup/restore và xuất/xóa dữ liệu.
-- Consent theo source/tool, egress policy, nhật ký truy cập và hành động của agent; giới hạn tài nguyên cho collector và enrichment.
-- Có trạng thái cấu hình thiếu và hướng dẫn xử lý; không hiển thị lựa chọn chưa có backend như thể đã hoạt động.
+- User menu: tài khoản, theme, ngôn ngữ, timezone mặc định và tùy chọn thông báo cá nhân.
+- Nguồn dữ liệu: schedule/timezone riêng của nguồn, quota, retry, retention, credential, MCP, consent/egress và log.
+- AI & Ommi Router: models/search provider, capability checks, embedding, ngân sách và timeout.
+- Dashboard & Gadget: dashboard/group/gadget, preset, layout và filter/rule highlight; map layers nằm ở gadget bản đồ.
+- Cấu hình thiếu có hướng dẫn xử lý; lựa chọn chưa có backend không được hiển thị như đã hoạt động. Nâng cao được thu gọn mặc định.
 
 ## 5. Onboarding và các trạng thái UX bắt buộc
 
@@ -418,7 +415,7 @@ Khi hoàn tất code, repo phải có **`OSS_USED.md`** tổng hợp mọi OSS t
 
 ## 9. Phạm vi bản minh họa và quyết định cần review
 
-Bản mẫu UI/UX duy nhất là **`life-dashboard-preview.html`**, gộp dashboard, Telegram gadget và mẫu giao diện/ngôn ngữ trước đây. Có đúng ba mục chính Dashboard/Chat/Settings, với User settings chứa Gadget management và cấu hình. Luồng minh họa: tạo gadget trong thư viện → Dashboard/Edit → chọn gadget → Save. Có View/Edit/Save/Cancel và History/New chat/trang Chat AI dùng chung hội thoại trong phiên. Save lưu layout, thư viện gadget và tùy chọn vào state minh họa khi host hỗ trợ; chưa có backend/database history. Khung xem inline không đại diện kích thước viewport ứng dụng production.
+Bản mẫu UI/UX duy nhất là **`life-dashboard-preview.html`**, gộp dashboard, Telegram gadget và mẫu giao diện/ngôn ngữ trước đây. Có đúng ba mục chính Dashboard/Chat/Settings, với ba nhóm Settings: Nguồn dữ liệu, AI & Ommi Router, Dashboard & Gadget. Luồng minh họa: tạo gadget trong thư viện → Dashboard/Edit → chọn gadget → Save. Có View/Edit/Save/Cancel và History/New chat/trang Chat AI dùng chung hội thoại trong phiên. Save lưu layout, thư viện gadget và tùy chọn vào state minh họa khi host hỗ trợ; chưa có backend/database history. Khung xem inline không đại diện kích thước viewport ứng dụng production.
 
 Dialog User settings có Light/Dark/System và EN/VI, xem trước và Save/Cancel. Theme dùng chung toàn bộ mẫu; dialog, Telegram gadget và bảng giá minh họa dùng cùng locale/định dạng số. Một số nội dung UI cũ trong các màn hình cấu hình vẫn là tiếng Việt; đây chưa phải bản dịch production hoàn chỉnh. Bảng giá BTC/ETH đã được đưa vào Finance radar, không còn màn hình mẫu thiết kế riêng.
 
@@ -436,12 +433,12 @@ Cần review trên ba nhóm: (1) template khởi tạo cho dashboard động, (2
 
 ### 9.1. Sample Telegram message tracking
 
-Telegram là **một loại gadget trong `life-dashboard-preview.html`**, không phải màn hình hay file UI riêng. Mỗi gadget chọn **một hoặc nhiều channel cùng lúc** bằng checkbox trong Settings → User settings → Gadget management, chỉ từ channel đã được cấp quyền; cần ít nhất một channel. Lưu định nghĩa cập nhật các ô dashboard đang dùng gadget đó, giữ nguyên vị trí/kích thước. Có thể tạo nhiều gadget Telegram với các nhóm channel khác nhau rồi thêm vào dashboard khi Edit.
+Telegram là **một loại gadget trong `life-dashboard-preview.html`**, không phải màn hình hay file UI riêng. Mỗi gadget chọn **một hoặc nhiều channel cùng lúc** bằng checkbox trong Settings → Dashboard & Gadget → Gadget management, chỉ từ channel đã được cấp quyền; cần ít nhất một channel. Lưu định nghĩa cập nhật các ô dashboard đang dùng gadget đó, giữ nguyên vị trí/kích thước. Có thể tạo nhiều gadget Telegram với các nhóm channel khác nhau rồi thêm vào dashboard khi Edit.
 
 Trong ô Telegram: feed gộp channel đã chọn, lọc nhanh toàn bộ/một channel, lọc tin chưa đọc/highlight/đã lưu, tô từ khóa và nêu lý do, đánh dấu đã đọc, lưu tin, xem provenance và mở quick-chat drawer dùng chung theo tin. Hội thoại và citation Telegram giữ nguyên khi mở trang Chat/history. Tin mới vào hàng đợi có nút hiển thị; không tự chèn làm nhảy vị trí đọc. Channel/tin/attachment/phản hồi AI đều là dữ liệu hư cấu có nhãn mẫu; không có kết nối Telegram hoặc AI thật, chưa phải component shadcn đã tích hợp.
 
 - Identity production dùng connector instance + channel/chat ID + message ID; hiển thị thời gian đăng, thu thập và sửa riêng biệt. Đã đọc là trạng thái người dùng trong BBD-OS, không phải delivery/read receipt Telegram.
-- Highlight theo rule từ User settings → Gadget management; lọc tại gadget chỉ đổi chế độ xem. Một connector phục vụ nhiều gadget; không tạo collector riêng cho từng ô.
+- Highlight theo rule từ Settings → Dashboard & Gadget; lọc tại gadget chỉ đổi chế độ xem. Một connector phục vụ nhiều gadget; không tạo collector riêng cho từng ô.
 - Edit cập nhật đúng tin có version/provenance. Chỉ hiển thị deleted khi connector thực sự nhận tín hiệu xóa; mất quyền hoặc mất mạng không suy diễn thành xóa tin. Khả năng lịch sử, reply, forward, edit/delete phụ thuộc API/provider và quyền đã cấu hình.
 - Chỉ thu thập channel được cấp quyền; bot không tự đọc được mọi channel hoặc toàn bộ lịch sử. Liên kết nguồn production chỉ xuất hiện khi có URL hợp lệ và quyền truy cập; mockup không tạo link Telegram giả.
 - Media có metadata/placeholder; không tự tải hoặc autoplay. Nội dung nguồn là dữ liệu không tin cậy, cần sanitize; gửi sang AI phải qua quyền/context/citation của hệ thống.
@@ -457,6 +454,21 @@ Cùng file `life-dashboard-preview.html` mở bằng màn hình đăng nhập. H
 - Các trạng thái minh họa: đã kết nối, đang kết nối, đang kết nối lại, client mất mạng, không tới được server và phiên hết hạn. Dùng cả chữ và màu; trạng thái thay đổi có thông báo accessible. Không tới được server không khẳng định server đã ngừng hoạt động.
 - API có thể còn phản hồi trong khi realtime đang kết nối lại. Client mất mạng/server unreachable ngăn đăng nhập; nút thử kết nối lại mô phỏng vòng connecting → connected. Phiên hết hạn đưa về login, dừng hiển thị dữ liệu riêng; kết nối lại không tự đăng nhập.
 - Dropdown “Trạng thái mẫu” trong footer chỉ phục vụ review UI; production lấy tín hiệu từ request/heartbeat, transport và phiên đăng nhập thật. Không dùng `navigator.onLine` đơn lẻ để khẳng định server hoặc realtime hoạt động. Trạng thái và tài khoản trong mẫu không phải dữ liệu vận hành thật.
+
+### 9.3. Tổng hợp thay đổi được duyệt và mẫu đã cập nhật
+
+| Thay đổi | Quyết định / mẫu hiện tại |
+| --- | --- |
+| Settings gọn | Chính xác 3 nhóm cùng workspace: Nguồn dữ liệu, AI & Ommi Router, Dashboard & Gadget. Không có tài khoản/giao diện trong Settings |
+| Collector | Editor 3 bước; lịch, scope, history, kiểm tra, Lưu & bật, thu thập ngay và pause; chỉ mô phỏng, chưa gọi server/provider |
+| Ommi Router | Endpoint/key, kiểm tra/lấy model mẫu, nhập model ID, chat/brief và web search ngay trong app; chưa gọi gateway thật |
+| Dashboard/preset | Tạo dashboard mới Trống/Công nghệ/Tài chính/Cá nhân và chuyển qua selector, không ghi đè dashboard cũ; hiện trong phiên mẫu |
+| Gadget | Chrome thống nhất hơn, nhãn độ mới mẫu, mở rộng/thu gọn cùng instance; giữ filter, dữ liệu và layout |
+| Edit | Kéo vị trí/kích thước, Undo/Redo, Save/Cancel và cảnh báo rời layout bẩn |
+| Tin mới và contextual AI | Giữ hàng đợi tin mới; phân biệt unread/highlight; mẫu Telegram cho chọn nhiều tin và hỏi AI với citation từng tin |
+| Spec | Mục 165 trong `specs/personal-intelligence-os-spec-v2.md` là yêu cầu đã duyệt, cập nhật ưu tiên điều hướng và embedded configuration |
+
+Các dashboard bổ sung và form cấu hình server/router trong mẫu giữ trạng thái trong phiên; đây không phải persistence backend. Multi-select minh họa trên Telegram; production áp dụng cho các feed tương thích. Bản mẫu chưa bao phủ toàn bộ translation, capability/error matrix, guard rời mọi form cấu hình hay vận hành thật. Giữ các mục này trong acceptance production, không coi mockup là bằng chứng hoàn thành.
 
 ## 10. Tài liệu tham khảo
 

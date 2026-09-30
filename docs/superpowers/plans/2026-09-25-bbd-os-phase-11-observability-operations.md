@@ -16,6 +16,12 @@
 
 Code stage: implement production code and run affected production builds only. Do not create or modify test files, or run tests, lint, standalone typecheck, audits, or non-build acceptance checks. Begin deferred behavioral acceptance only after all Phase 1-12 production code is complete.
 
+## Spec reconciliation — 2026-09-30
+
+Read [R01–R16 supplemental plan](2026-09-30-bbd-os-spec-reconciliation.md) and canonical sections **165–166** before execution. Assigned scope: **R06 health and R16**. Preserve original task IDs and historical evidence. Production code/build only until all original and supplemental code/build/review is complete; no tests/fixtures, lint, standalone typecheck or runtime acceptance in this stage.
+
+Main navigation is Dashboard/Chat/Settings; Settings has three groups; account/appearance/language live in the user menu. Detail routes do not become main-navigation items. Migration names below are historical planning examples: inspect current head and active worktrees, including unfinished Phase 4 0007_entities.py, and allocate a unique linked revision without rewriting shipped migrations.
+
 ## Global Constraints
 
 - "Never hardcode secrets."
@@ -60,7 +66,7 @@ Concrete contract/configuration shape (illustrative IDs/timestamps are test data
 
 ## Task P11-T2: Operations and data-quality screens
 
-**Files and responsibilities:** Create apps/web/src/modules/observability/operations-page.tsx, apps/web/src/modules/observability/run-table.tsx, apps/web/src/modules/observability/quality-panel.tsx, apps/web/src/modules/observability/usage-panel.tsx; extend /settings/system and /settings/storage
+**Files and responsibilities:** Create apps/web/src/modules/observability/operations-page.tsx, apps/web/src/modules/observability/run-table.tsx, apps/web/src/modules/observability/quality-panel.tsx, apps/web/src/modules/observability/usage-panel.tsx; integrate operations into advanced Data sources/AI settings, without new top-level groups
 
 **Interfaces — consumes/produces:** GET /system/quality returns document counts,duplicate rate,unresolved entities,failed ingestion/extraction,stale sources,orphan chunks,graph lag; GET /system/queue returns bounded job summaries, not raw payloads.
 

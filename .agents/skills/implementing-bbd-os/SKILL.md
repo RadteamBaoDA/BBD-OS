@@ -13,8 +13,8 @@ Paths below are relative to the repository root unless linked. Locate the checko
 
 1. Read `AGENTS.md` and run `git status --short`. Preserve existing edits.
 2. Read `docs/IMPLEMENTATION_STATUS.md`, `docs/ARCHITECTURE_DECISIONS.md`, and `docs/superpowers/plans/EXECUTION.md`.
-3. Read the [master plan](../../../docs/superpowers/plans/2026-09-25-bbd-os-master-plan.md), then use [plan-map.md](plan-map.md) to select the phase and specification sections. Read the selected plan completely, including its entry gate, interfaces, fixtures and failure cases; inspect current code before editing.
-4. Resolve requirements against the canonical [specification](../../../specs/personal-intelligence-os-spec-v2.md), especially revisions 156â€“164. Later explicit clarifications govern earlier examples. Report unresolved material contradictions rather than silently changing architecture.
+3. Read [R01–R16](../../../docs/superpowers/plans/2026-09-30-bbd-os-spec-reconciliation.md) and preserve existing Phase 4 work before reading the [master plan](../../../docs/superpowers/plans/2026-09-25-bbd-os-master-plan.md), then use [plan-map.md](plan-map.md) to select the phase and specification sections. Read the selected plan completely, including its entry gate, interfaces, fixtures and failure cases; inspect current code before editing.
+4. Resolve requirements against the canonical [specification](../../../specs/personal-intelligence-os-spec-v2.md), especially revisions 156–166. Later explicit clarifications govern earlier examples. Report unresolved material contradictions rather than silently changing architecture.
 
 When implementation is requested, use **superpowers:subagent-driven-development** with the approved scope. The owner requires a code/build stage across Phases 1-12 followed by a separate test stage after all production code is complete. This skill does not start background execution.
 
@@ -34,7 +34,7 @@ For frontend work, also load [bbd-os-ui-system](../bbd-os-ui-system/SKILL.md) an
 
 Record task ID, prerequisite evidence, affected contracts/files, build commands/results, review findings, unresolved gates, and next task in `EXECUTION.md`. Keep one task active. During the Phase 1–12 implementation stage, implement production code and run builds only: do not create, modify or run tests, lint, or typecheck. Start the test stage after all phase code is complete. Follow the master plan and continue authorized ready work without repeated scope approval.
 
-During implementation, run `./scripts/dev.ps1 build` on Windows or `make build` on Linux/macOS. Do not create, modify or run tests, lint or typecheck until all Phase 1-12 production code is complete; then follow the deferred test stage in the master plan.
+During implementation, run `./scripts/dev.ps1 build` on Windows or `make build` on Linux/macOS. Do not create, modify or run tests, lint or typecheck until all original Phase 1-12 and reconciliation production code is complete; then follow the deferred test stage in the master plan.
 
 
 ## Common mistakes

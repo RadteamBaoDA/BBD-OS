@@ -16,6 +16,12 @@
 
 Code stage: implement production code and run affected production builds only. Do not create or modify test files, or run tests, lint, standalone typecheck, audits, or non-build acceptance checks. Begin deferred behavioral acceptance only after all Phase 1-12 production code is complete.
 
+## Spec reconciliation — 2026-09-30
+
+Read [R01–R16 supplemental plan](2026-09-30-bbd-os-spec-reconciliation.md) and canonical sections **165–166** before execution. Assigned scope: **R04/R09 Settings placement**. Preserve original task IDs and historical evidence. Production code/build only until all original and supplemental code/build/review is complete; no tests/fixtures, lint, standalone typecheck or runtime acceptance in this stage.
+
+Main navigation is Dashboard/Chat/Settings; Settings has three groups; account/appearance/language live in the user menu. Detail routes do not become main-navigation items. Migration names below are historical planning examples: inspect current head and active worktrees, including unfinished Phase 4 0007_entities.py, and allocate a unique linked revision without rewriting shipped migrations.
+
 ## Global Constraints
 
 - "Never hardcode secrets."
@@ -41,7 +47,7 @@ Module ownership: **automations**. Backend domain models/services stay in their 
 
 ## Task P10-T1: Rule schema, deterministic conditions and dry preview
 
-**Files and responsibilities:** Create modules/automations/models.py, modules/automations/schemas.py, modules/automations/conditions.py, modules/automations/public.py, modules/automations/routes.py; infrastructure/postgres/migrations/versions/0010_automations.py
+**Files and responsibilities:** Create modules/automations/models.py, modules/automations/schemas.py, modules/automations/conditions.py, modules/automations/public.py, modules/automations/routes.py; an owning generated Alembic revision under infrastructure/postgres/migrations/versions/ after checking current and worktree heads
 
 **Interfaces — consumes/produces:** CRUD /automations; POST /automations/preview. Automation(trigger,conditions,actions,enabled,revision). Conditions limited to whitelisted field/operator/value comparisons; no eval, scripts or arbitrary expressions. Preview returns matched/reasons/planned_actions only.
 
@@ -79,12 +85,12 @@ Concrete contract/configuration shape (illustrative IDs/timestamps are test data
 
 ## Task P10-T3: Automation Agent and configuration UI
 
-**Files and responsibilities:** Create apps/web/src/modules/automations/api.ts, apps/web/src/modules/automations/rule-editor.tsx, apps/web/src/modules/automations/rule-list.tsx, apps/web/src/modules/automations/run-detail.tsx; route /automations; extend modules/agents/specialists.py
+**Files and responsibilities:** Create apps/web/src/modules/automations/api.ts, apps/web/src/modules/automations/rule-editor.tsx, apps/web/src/modules/automations/rule-list.tsx, apps/web/src/modules/automations/run-detail.tsx; advanced automation UI in the relevant Settings group, not main navigation; extend modules/agents/specialists.py
 
 **Interfaces — consumes/produces:** Automation Agent creates proposals using registered schemas; owner accept creates a disabled draft rule, separate explicit enable starts it. UI offers Trigger/Conditions/Actions with preview, enable/disable, run history and manual Run now.
 
 
-- [ ] **P10-T3.3 — Implement the minimal production behavior.** Use schema-backed ordinary forms rather than a node-canvas or custom DSL. Show estimated scope and exact external targets, validation errors, preview reasons and action outcomes. Allow opening related approval inside chat drawer/run detail. Clear disabled/unavailable actions when their owning module is disabled. Keep source schedule editing in Sources/n8n and link to it.
+- [ ] **P10-T3.3 — Implement the minimal production behavior.** Use schema-backed ordinary forms rather than a node-canvas or custom DSL. Show estimated scope and exact external targets, validation errors, preview reasons and action outcomes. Allow opening related approval on full Chat/run detail. Clear disabled/unavailable actions when their owning module is disabled. Keep source schedule editing in Settings/Data sources through BBD-OS adapters.
 
 Concrete contract/configuration shape (illustrative IDs/timestamps are test data, not production defaults):
 

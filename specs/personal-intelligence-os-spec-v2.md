@@ -10,6 +10,8 @@
 
 **Design revision:** 2026-09-25 — OSS-first Python deployment for a 2-core / 8 GB host, with OmniRoute as the model gateway. Sections 156–163 define the deployment, execution, and connector decisions for this revision. Product acceptance criteria remain in force; a resource-constrained feature is not complete until validated.
 
+**Approved product/UX revision:** 2026-09-26 — section **165** governs the Life Dashboard, all-gadget layout, chat, simplified Settings, server collection UI and direct OmniRoute configuration. It supersedes conflicting earlier navigation/UI examples and section 159's external credential-setup allowance. It records approved requirements, not implemented functionality. During the owner-authorized code stage, implement/build only; defer tests, lint and standalone typecheck until all Phase 1–12 production code is complete, as required by repository guidance.
+
 ---
 
 # 0. IMPLEMENTATION DIRECTIVE FOR CODEX
@@ -4501,7 +4503,7 @@ Support scheduled polling, provider webhooks when available, and Sync now. A tri
 
 BBD-OS owns source IDs, source settings, sync cursor/checkpoint, and run status; n8n owns execution of the external schedule and provider credentials. The connector adapter associates a source with its workflow and implements validate, sync, normalize, and health through supported interfaces. Agent source tools call that adapter, not arbitrary n8n workflows.
 
-Source UI must support setup, validation, pause/resume, Sync now, last fetch, last indexed, and errors. Credential setup may open n8n explicitly in the first release; provide a guided return/validation step. Do not claim credentials are editable inside BBD-OS until implemented.
+Source UI must support setup, validation, pause/resume, Sync now, last fetch, last indexed, and errors. Section 165 now requires the normal collection-configuration flow inside BBD-OS, backed by supported server-side adapter/n8n APIs and protected credential storage. The owner need not open n8n to complete ordinary setup; any unsupported provider operation must be explicit. This requirement does not claim embedded credential setup is already implemented.
 
 Use a protected ingestion endpoint with a credential limited to ingestion and authorized sources. Validate batch schema, source identity, sizes, and provenance. n8n must not write application tables directly.
 
@@ -4583,3 +4585,209 @@ The owner selected a contextual chat next to Today, saved historical briefs plus
 The approved delivery order includes n8n collection workflows in Phase 2, model/privacy capabilities in Phase 3, the reusable chat drawer in Phase 6, day context in Phase 8, and full accessibility/recovery acceptance in Phase 12. Phase 10 adds automation authoring rather than delaying collection schedules until that phase. Models and tables are introduced by their owning capability phase, with canonical Source/Document/DocumentVersion infrastructure in Phase 1.
 
 Execute ready tasks without asking the owner to approve the same scope again. Record missing credentials, live-provider evidence, backend compatibility or target hardware as explicit gates; continue independent work where possible. Never silently change the approved architecture, mark blocked acceptance complete, or automatically commit/push/deploy based on a plan checklist.
+
+# 165. APPROVED LIFE DASHBOARD AND SETTINGS REVISION — 2026-09-26
+
+This section consolidates the owner's approved product and UI decisions. It governs conflicting earlier screen inventories, fixed Today/World layouts, account/preferences placement and external connector setup examples. It preserves the single-owner model, modular monolith, authorization/provenance requirements, durable ingestion, existing OmniRoute gateway and section 158–161 execution ownership. Multiple dashboards are views for one owner, not multi-tenant accounts.
+
+## 165.1. Product purpose and data flow
+
+The primary product automatically collects World Data and explicitly authorized User Data, normalizes it, and presents continuously updated, personalized information in a configurable dashboard. The owner can highlight topics of interest and ask contextual AI questions using collected evidence and permitted web search.
+
+Required social/news source catalog: RSS/Atom, Google News feeds, Reddit, Hacker News, YouTube feeds, Telegram channels/bots where authorized, Mastodon/Bluesky, X/Twitter through an authorized API/provider, permitted Vietnamese press RSS/scraping, arXiv, Hugging Face and GitHub Releases. Finance, weather, disaster/climate, macro/government, cyber/CVE, research and map sources extend the same ingestion contracts. Catalog presence does not mean every provider is implemented or accessible; show capability, credential, quota, coverage and licensing gates.
+
+Collectors publish normalized documents, events, entities and time-series observations to the shared knowledge/API layer. One collector may serve many gadgets. Gadgets never start independent source crawlers or store credentials. Preserve original source identity, version, URL, timestamps and permissions through indexing, correlation and citations. Keep polling freshness distinct from streaming delivery to the browser.
+
+## 165.2. Application shell, login and user menu
+
+- Main navigation contains only **Dashboard / Chat / Settings**. Details, feeds, maps and knowledge views open from gadgets/search/chat rather than adding main-navigation entries.
+- A login screen precedes private application data and reuses the existing owner/session/CSRF implementation. Provide pending, invalid-credentials, unavailable-server and expired-session states without leaking account existence. A visual mock login is not authentication.
+- Header: logo/home at the left, user/login icon at the right. The authenticated user menu contains account actions, **appearance/language**, and sign out.
+- **Account and appearance are not Settings categories.** User preferences use a Dialog with Light/Dark/System, English (US)/Vietnamese and the appropriate account/timezone/notification preferences. Preview is reversible; Save persists and Cancel/close restores. Existing source-specific timezone/schedule controls remain with their source.
+- Footer: client-to-server/API and realtime transport status. Show connected, connecting, reconnecting, client offline, server unreachable and session expired using text as well as color. API reachability does not prove the realtime stream is healthy, and neither proves source freshness. Retry uses bounded recovery/catch-up; never rely on `navigator.onLine` alone. Expired sessions require reauthentication; transport recovery must not authenticate the user automatically.
+- The shell fills viewport width and at least viewport height; the dashboard can grow vertically with document scrolling. Preserve mobile safe areas and keyboard access; no page-level horizontal overflow.
+
+## 165.3. Dashboard and gadget interaction
+
+- Every dashboard content block is a gadget: globe/map, highlights, watch rules, personal context, news, Telegram, finance, weather, research and other panels. Header/footer/navigation, dashboard selector, group headings and layout controls are shell/organization elements. There is no permanently fixed map/highlight region.
+- Support multiple named dashboards for purposes such as Overview, Technology, Finance and Personal. Each owns groups, layout and gadget instances. Share connector collection and reusable gadget definitions.
+- Empty dashboards offer **Choose preset** and **Start empty**. Presets reference existing configured sources; missing access is visible with a setup path, never silently provisioned. Preview a preset before replacing a populated layout; creating a separate dashboard is safe by default.
+- Layout uses square units with at most **20 columns**. Gadget rectangles have integer `x,y,w,h`, valid bounds and renderer-specific minimum sizes. Height grows with rows rather than being capped by the viewport. Desktop and mobile layouts remain separate; mobile defaults to readable full-width stacking.
+- View mode hides the grid, movement handles and resize handles. Edit creates a draft. Drag the title to move; drag an edge/corner to resize **directly on the dashboard**, with live size feedback and grid snapping. Show the proposed drop region and prevent overlap; displaced gadgets move predictably. Incoming data never moves/resizes the user's layout.
+- Provide keyboard equivalents, per-gesture cancel, **Undo/Redo**, **Save/Cancel**, and a dirty-state indicator. Leaving a dirty layout offers Save, Discard or Stay. Save validates/persists atomically; a failed save retains the draft and provides retry. Switching dashboards must not silently discard edits.
+- Standard gadget chrome: title, meaningful source freshness/status, contextual AI and a consistent action menu. Distinguish loading, empty, unavailable, stale, delayed, rate-limited and failed states. Example market-delay labels must be based on actual provider metadata.
+- **Expand** opens a larger reading surface while preserving filters, selection, scroll and layout; closing returns to the original instance. Chart/map renderers respond to container size. Mobile offers accessible alternatives to dragging.
+- New information queues behind an “N new items” action while the user reads. Distinguish unread state, rule highlight and severity; show why a highlight matched. Do not use color alone or treat all highlighted items as urgent.
+- Selecting one or several permitted items supports **Ask AI**. Keep the selected source identities/versions as thread context and return citations that reopen the exact supporting item.
+
+Telegram is a gadget renderer, not a separate application screen. Each definition selects **one or multiple authorized channels**; multiple gadgets may use different scopes. Show channel/message identity, publication/collection time, edited state when received, readable media placeholders, highlight reason and per-owner read/save state. BBD-OS read state is not a Telegram read receipt. History/replies/edits/deletions depend on the configured API/provider; do not infer deletion from an outage or assume bots can access arbitrary channels/history.
+
+## 165.4. Settings: exactly three top-level groups
+
+Use one Settings workspace with a compact local navigation and a content pane; collapse the local navigation on mobile. The normal tasks below stay in BBD-OS rather than redirecting the owner to provider administration products.
+
+| Group | Owned configuration |
+| --- | --- |
+| **Data sources / Nguồn dữ liệu** | Connector instances, credentials/authorization, collection scope, server schedules, health and runs; personal data permissions and MCP under relevant advanced sections |
+| **AI & Ommi Router** | Gateway connection, chat/brief model choices, web-search provider, capability checks, budgets and advanced embedding/privacy controls |
+| **Dashboard & Gadget** | Dashboard/presets, reusable gadget library, data/display templates, highlight rules and rule-specific notifications; map layers belong to map gadget configuration |
+
+Do not add an Account/Appearance group or duplicate user-menu preferences here. Use progressive disclosure: one primary Save for the current form, useful defaults, clear dirty/saved/error feedback and advanced sections for infrequent technical options. Cancel discards the current draft without resetting another form or dashboard layout. Guard unsaved navigation, avoid duplicate submissions, and do not claim a configuration is saved/active before server confirmation.
+
+### Server collection configuration
+
+Source list rows show source name, enabled/paused/error state, schedule, last successful collection, indexing state where relevant and a clear Configure action. Distinguish last collected, last indexed, current run and failure; unknown timestamps remain unknown.
+
+Guided source editor:
+
+1. **Connect:** provider/endpoint, credential or supported OAuth flow, and validation. Keep provider-specific permission requirements visible.
+2. **Choose data:** authorized channels, feeds, repositories, regions, symbols or other provider scope. Validate access on the server.
+3. **Collect:** enable/pause, schedule and explicit timezone, bounded initial history, then **Save & enable collection**.
+
+Expose **Collect now**, Pause/Resume, last run and actionable failures. Advanced controls include rate/concurrency limits, bounded retry/backoff, retention and diagnostic logs. Enforce permissions and scheduling semantics in backend APIs; the UI cannot grant itself collection rights.
+
+Collection runs on the server and continues when the browser closes. Keep n8n the schedule owner for n8n-backed sources, ARQ for internal bounded work, PostgreSQL for durable identities/cursors/run state, and existing adapter contracts. Implement the BBD-OS editor through supported APIs/credential-reference mechanisms; do not add a competing scheduler or direct n8n database writes. Save/configure/enable must be recoverable across partial failures and report actual activation status. Protect credentials in server storage, redact logs and never return plaintext secrets to the browser. Browser-originated endpoint configuration remains subject to SSRF/egress controls.
+
+### Direct Ommi Router configuration
+
+“Ommi Router” is the owner's UI label for the existing **OmniRoute** integration in sections 157–163, not a second gateway or provider-management subsystem.
+
+- In the AI group, configure the base endpoint and gateway credential directly, check connectivity, choose chat and brief/synthesis models, and enable/select an already configured web-search provider.
+- Use the **server-side OpenAI SDK** through the existing gateway/configuration owner. Load available model IDs when the gateway supports discovery; allow validated manual IDs. A model-list response does not prove chat/stream/tool-call/embedding capabilities; display capability-specific results.
+- Use a shared default model where appropriate; advanced controls can override embeddings, budgets/timeouts and history policy. Missing permitted embeddings leaves lexical search usable and semantic search explicitly unavailable.
+- Secret fields are masked; empty unchanged input retains the stored secret, replacement/removal is explicit. Connection validation uses the draft through an authorized backend operation and does not implicitly persist it. Save updates the authoritative server configuration; failure retains a safe draft.
+- Existing source privacy and egress consent apply to chat, briefs, web search and embeddings separately. A locally hosted gateway may route to remote inference. No local-AI/Ollama installation or automatic local-model fallback is required. Do not silently fall back to an unapproved external provider.
+
+## 165.5. Chat, UI libraries and required catalog
+
+Quick chat is a large right-side **shadcn Sheet**, with only New chat, conversation messages, composer/send-stop and close. History, open/manage existing conversations, context and advanced web-search controls live on the full Chat page. Drawer and full page share the same thread, selected source context and draft.
+
+Clone/port the relevant **AnythingLLM** chat source into this repository, with revision/license/provenance tracking, then adapt it to BBD-OS contracts and shadcn components. An iframe, external AnythingLLM app or visual mock is not completion. AI traffic uses the configured backend OpenAI SDK/OmniRoute path.
+
+Use **shadcn/ui**, semantic theme tokens and a consistent Radix-based component family for the UI; use **Recharts through shadcn Chart** for stocks/coins and other financial charts. Use globe.gl for 3D and deck.gl for WebGL flat maps with shared layer identities. Do not introduce Material UI for the drawer. Follow `docs/DESIGN_SYSTEM.md` and `.agents/skills/bbd-os-ui-system/SKILL.md`.
+
+Support light/dark/system and app locale IDs `en-us` / `vi-vi`, normalized to `en-US` / `vi-VN` for rendering/Intl. Translate UI and accessibility labels, not source content automatically; formatting does not convert currencies/timezones.
+
+Retain the requested catalog: global/regional curated feeds and cited AI briefs; concrete panel inventory; military/economic/disaster/escalation cross-stream correlation with evidence and uncertainty; CII **v8**, bands and approximate 24-hour movement for its specified 31 Tier-1 countries, subject to verified method/data/license; finance radar for exchanges, commodities, crypto and composites; variants world/tech/finance/commodity/happy/energy as presets from one codebase. Unknown or missing data must not become invented scores, observations or implementation claims.
+
+## 165.6. Delivery and current evidence
+
+The reviewable UI sample is the single file `docs/ux-proposals/life-dashboard-preview.html`; the supporting UX decision document is `docs/ux-proposals/2026-09-26-life-dashboard-proposal.md`. Mock credentials, statuses, collection, model discovery, AI replies and quotes are explicitly illustrative. The sample is not production shadcn integration, a live collector, authentication, or an AnythingLLM port.
+
+Record actual OSS dependencies and ported code in **OSS_USED.md** with upstream, version/revision, license, notices, purpose, local paths and modifications; update the root README with setup, collection, gateway configuration and dashboard/chat use. Distinguish reference-only projects from code actually used.
+
+Apply the owner-authorized delivery discipline: code/build during Phases 1–12; no tests, lint or standalone typecheck until all production code is complete, then execute the deferred validation stage. Report each completed task and preserve the approved phase commit/merge workflow. The updated requirements require plan reconciliation before resuming paused production work; this spec/UX update does not mark an implementation phase or acceptance gate complete.
+
+# 166. CONSOLIDATED ARCHITECTURE, CONNECTORS, MCP, REALTIME AND GOOGLE LOGIN — 2026-09-30
+
+This revision records the owner's request to consolidate the architecture discussion into the canonical specification. Sections 165–166 govern conflicting older UI, login, transport and connector-administration examples. They extend the existing approved modular monolith; they do not declare production implementation or live integration complete. Section 165 remains the complete dashboard/UI catalog.
+
+## 166.1. Product scope and architecture
+
+Build a single-owner, self-hosted intelligence dashboard: automatically collect World Data and explicitly authorized User Data on the server, normalize and preserve evidence, highlight relevant information, and support contextual AI questions using collected knowledge and permitted web search. Collection continues without an open browser.
+
+```text
+World Data / authorized User Data
+    → connector adapters + packaged n8n workflows
+    → protected ingestion API → durable receipt + raw storage
+    → recoverable dispatch → Redis/ARQ → Python processing worker
+    → PostgreSQL/pgvector + temporal knowledge through Graphiti
+    → FastAPI query APIs + SSE → Next.js Dashboard / Chat / Settings
+
+Chat / research → authorized knowledge and tools
+                → server-side OpenAI SDK → existing OmniRoute
+                → configured web-search provider where permitted
+```
+
+| Component | Responsibility |
+| --- | --- |
+| Next.js / React / TypeScript | shadcn UI, gadget layouts, preferences, drawer and full Chat; no provider credentials or direct provider administration |
+| FastAPI | Owner authentication, authorization, public `/api/v1` contracts, connector management, knowledge access and realtime delivery |
+| `core/` and `modules/` | Shared infrastructure and domain ownership; integrate through public contracts/events, not private imports |
+| PostgreSQL + pgvector | Canonical data, configuration, source cursors, durable runs/outbox, chat, approvals and lexical/vector retrieval |
+| Protected raw/file storage | Original source payloads and uploaded files, referenced from canonical records and covered by backup/retention |
+| Redis + ARQ | Bounded execution and retries; PostgreSQL remains the durable work record |
+| Connector adapters + n8n | Provider integration and collection; n8n is the sole schedule owner for n8n-backed sources |
+| LangGraph | Stateful agent orchestration, PostgreSQL checkpoints, interrupts and resume; permission checks remain application-owned |
+| Graphiti | Temporal relationships with provenance; backend/version/resource compatibility must be established before graph implementation |
+| OmniRoute | Existing model gateway used through the server-side OpenAI SDK; no second gateway or mandatory local inference |
+
+Use PostgreSQL initially for time-series observations; a separate time-series database is not a baseline dependency. Retain Graphiti rather than silently replacing its scope with a PostgreSQL-only graph. Do not select Neo4j, Kuzu or another graph backend without compatibility/resource evidence. Preserve section 161's one-heavy-job and two-model-request starting limits across processes, and measure the enabled stack on the target 2-core/8-GB host. No new microservice fleet, message broker or Airbyte deployment is selected by this revision.
+
+## 166.2. Connector catalog and collection methods
+
+The catalog includes RSS/Atom, Google News feeds, GDELT/government sources, permitted Vietnamese press, Reddit, Hacker News, YouTube feeds, Telegram, Mastodon/Bluesky, authorized X APIs/providers, arXiv, Hugging Face, GitHub Releases, finance, weather/disaster/climate, cyber/CVE and map/OSINT data. Personal sources include Gmail, Calendar, Drive, browser data, notes, GitHub, health, personal finance and IoT; additional catalog examples include Notion, Slack and Home Assistant. Provider presence in the catalog is not proof of an implemented integration.
+
+| Source type | Selected collection method |
+| --- | --- |
+| RSS/Atom and sources exposing feeds | RSS adapter and scheduled polling; Google News feeds do not imply access to an unrestricted Google News API |
+| Structured provider APIs | Provider adapter using REST/API or supported n8n nodes, with provider-specific pagination, incremental cursor, mapping and quota handling |
+| Telegram | Authorized Bot API or supported provider; channel scope, historical access, replies, edits and deletions depend on actual capability |
+| Gmail / Calendar / Drive | Separate Google API connectors using explicit OAuth grants and minimum scopes |
+| Provider webhooks | Verified webhook receiver feeding the same durable ingestion path |
+| Static websites without a suitable feed/API | Crawlee Python HTTP plus parser, subject to permitted access and SSRF controls |
+| JavaScript websites / repeatable browser interactions | Crawlee Playwright in the isolated, bounded browser worker |
+| AI-directed browser tasks | browser-use only where required, subject to tool permissions, model compatibility and budgets |
+| MCP-provided data | MCP collection adapter only when the selected tools/resources support the required read and collection semantics |
+
+Reuse the existing validate/sync/normalize/health contracts. A generic REST connector does not replace provider-specific behavior. Preserve original record identity, versions, timestamps and provenance through deduplication and indexing. Prevent overlapping source syncs and advance cursors only after durable receipt. One collector serves many gadgets; gadgets never own polling, credentials or source ingestion.
+
+## 166.3. All connector management inside BBD-OS
+
+**Settings → Data sources** is the only normal connector-administration UI. Do not require users to open n8n, AnythingLLM, Airbyte or another administration app to connect, scope, schedule or operate a supported source. n8n remains an internal execution component rather than a user-facing configuration dependency.
+
+Provide the complete flow: choose provider → connect → choose authorized data → configure schedule/timezone/bounded history → Save & enable → monitor. Support draft validation, Collect now, Pause/Resume, retry, reconnect, credential replacement/removal and disconnect. Disconnect offers keeping imported data or explicitly deleting it through the existing deletion contract. Show collection and indexing status separately.
+
+Each catalog entry declares authentication method, configuration fields, scope discovery, supported collection modes, history/edit/delete capability and quota limits. Reuse common forms where appropriate; use provider-specific editors for different authorization/scope flows. Do not expose arbitrary workflow editing or raw execution commands as normal source setup.
+
+BBD-OS owns source identity, desired settings, cursor and public run/health status. For n8n-backed sources, its server adapter reconciles version-controlled workflow templates, protected credential references, scope, schedule and activation through supported n8n interfaces. n8n owns its provider execution credential and external schedule; BBD-OS stores the association/reference and never reads/writes n8n database tables directly. Native adapters use protected BBD-OS credential storage. Frontend users never receive service administration keys or plaintext stored secrets.
+
+Record desired configuration revision and actual activation status. Make create/update/enable operations idempotent and recoverable across partial failures. If settings are saved but workflow activation fails, show **Saved, not active** with an actionable retry. Disabling a source must fence new work even while external schedule deactivation is being reconciled. Validate supported operations against the pinned n8n release; an unsupported credential/provisioning operation requires an implemented compatible adapter before the provider is advertised as fully supported.
+
+OAuth begins in BBD-OS and returns to its callback. The provider's own login/consent screen may still be required; it is not a third-party connector administration screen. Deployment administrators may need a provider developer console to register an OAuth application and redirect URI once. Document that prerequisite rather than promising consent or application registration can be bypassed.
+
+## 166.4. MCP integration
+
+Support both directions through the existing tool/knowledge boundaries:
+
+1. **MCP client:** BBD-OS connects to authorized external MCP servers and exposes selected tools/resources to agents or collection adapters.
+2. **MCP server:** BBD-OS exposes explicitly permitted search/knowledge tools to external clients. Actions are only exposed through registered tools and their approval policies.
+
+External connections are configured in **Settings → Data sources → MCP** within the existing three-group Settings structure. Provide name, endpoint, supported authentication, draft connection check, capability discovery, selected tool/resource permissions, timeouts/limits, enable/disable and health/errors. Manage inbound client grants/revocation in the relevant advanced MCP section; inbound clients receive explicit scopes, never implicit owner access.
+
+Prefer MCP Streamable HTTP for remote servers. Local `stdio` servers require administrator-managed host installation/allowlisting; a browser form cannot launch arbitrary commands. Keep credentials server-side and enforce endpoint SSRF/egress rules, tool schemas, risk policies and authorization at execution. Discovery describes capabilities; it does not authorize every discovered tool. Tool names/schemas changing require permission review. Retrieved content cannot grant new rights.
+
+Distinguish **on-demand chat tool use**, **scheduled collection**, and **external actions**. An MCP collection adapter must define source identity, scope, normalization, provenance and deduplication, plus pagination/cursor/history behavior supported by that server. Do not assume incremental sync, notifications or subscriptions exist. Configure collection scheduling through the existing ownership rules; MCP does not introduce a competing scheduler. Disabling an MCP connection stops new calls/collection while retaining imported knowledge unless deletion is explicitly requested.
+
+## 166.5. Realtime through SSE
+
+Select **SSE** for server-to-browser dashboard updates and AI response streaming; use REST for configuration/layout changes, starting runs and cancellation. WebSocket is not a baseline requirement. A future continuous bidirectional feature needs a separate transport decision. Provider webhooks, polling and MCP transports remain distinct from browser SSE.
+
+- Use one shared authenticated dashboard stream per application view, not one stream per gadget. Events carry bounded identifiers/revisions and statuses; invalidate/refetch only affected query data through authorized APIs.
+- Use a run-scoped stream for chat response deltas, activity, citations, completion, failure and cancellation. Drawer/full Chat share the same persisted conversation/run. Persist the transcript and recoverable run progress; ephemeral token deltas are not the sole conversation record.
+- Bind streams to existing owner sessions or scoped client authorization, never credentials in URL query parameters. REST writes keep CSRF protection; session expiry/revocation terminates access and requires reauthentication.
+- Publish committed changes through the durable event/outbox path. Define ordered event IDs within each stream, bounded replay retention and cursor validation. Reconnect with the last received event ID; deduplicate delivery. If the replay window is exceeded, explicitly request an authorized snapshot/refetch and resume without claiming complete replay.
+- Handle the initial snapshot/subscription race, heartbeat, disconnect cleanup, bounded buffers/backpressure and reconnect backoff. Slow clients must resynchronize rather than consume unbounded server memory. Configure proxies to avoid buffering and support appropriate streaming timeouts.
+- Closing the drawer does not implicitly cancel generation. Stop uses an explicit authorized cancellation operation; reconnect never repeats a user send or completed side effect.
+- Footer distinguishes API reachability, stream connection and session state. Source freshness shows actual provider/collection/indexing timestamps. SSE cannot make a polled or delayed provider instant.
+- Queue new reading items behind the section 165 “N new items” action; realtime delivery never rearranges the saved layout or destroys reading state.
+
+## 166.6. Google sign-in for the single owner
+
+Add **Sign in with Google** to the login experience. This means Google OAuth/OIDC identity authentication, not permission to read Gmail. Reuse BBD-OS owner sessions, HttpOnly cookies, CSRF and logout behavior rather than introducing an independent authentication system.
+
+Use server-side authorization-code flow with PKCE, browser-bound single-use expiring state and nonce. Use a maintained OAuth/OIDC implementation to validate Google issuer, signature/JWKS, audience, expiration, nonce and verified email; bind the owner identity to the verified issuer/subject, not an email string alone. Bound network calls and handle cancellation, invalid callbacks and provider outages without leaking identity details or tokens.
+
+Only a securely linked owner identity may log in. Link/unlink from the user account menu after owner reauthentication and successful Google verification; do not permit first-callback account takeover, automatic public registration or a second owner. Unlinking cannot remove the last usable authentication method. Until secure linking is complete, Google login remains unavailable rather than accepting an arbitrary Google account.
+
+Request only `openid email profile` for sign-in. Gmail/Calendar/Drive connectors request their own explicit scopes and have independent grant, refresh/revocation and disconnect lifecycles; signing in must not start collection or implicitly grant source access. Do not retain provider tokens solely for login when they are no longer needed.
+
+Google client ID, client secret and exact callback URI are server/deployment configuration; provide placeholders in `.env.example`, deployment documentation and clear unconfigured UI. Never commit credentials. Production uses HTTPS and secure cookies; callback/return targets are validated and cannot become open redirects. Actual provider activation requires registering the OAuth application and supplying credentials securely.
+
+**Unresolved owner choice:** Google-only login versus Google plus password fallback has not been selected. Adding Google authentication does not authorize removing the existing password login. Preserve it until the owner explicitly chooses the final policy; a Google-only migration must first establish the linked identity and recovery method without locking the owner out.
+
+## 166.7. Delivery and evidence boundary
+
+This revision changes specification and architecture documentation only. Current source has RSS/web/REST connector foundations and password-based owner authentication; it does not establish complete provider coverage, embedded n8n credential provisioning, MCP, SSE or Google login acceptance. The UI preview remains illustrative.
+
+Reconcile phase plans against sections 165–166 before production work resumes. Preserve the owner's code/build-only implementation stage; create/modify/run no tests, lint or standalone typecheck until all phase production code is complete. In the deferred validation stage cover connector activation/recovery, OAuth linking and replay, MCP authorization, SSE reconnect/snapshot recovery, privacy, source freshness and measured host capacity. Builds alone do not satisfy those acceptance gates. Record actual reused/ported code and licenses in OSS_USED.md and setup/usage in README.

@@ -2,24 +2,23 @@
 
 ## Owner authorization and current checkpoint
 
-- Approved scope: master specification plus the approved Phase 1–12 breakdown and chat drawer clarification.
-- Execution method: Subagent-driven as previously requested; continuous progression through ready tasks and phases. Implementation stage is code plus builds only; tests begin after all Phase 1-12 code is complete.
-- Current action: Phase 1 is merged into main as `d425057`; P02-T1 through P02-T3 code/build/review are complete in `codex/bbd-os-phase-2`. P02-T2 commits are `cfe481b`, `e57ea74`, and `14b0f41`; P02-T3 follow-up commit is `9114775`. P02-T4 code/build and independent review are complete; four review findings were fixed and scoped re-review approved. Phase 2 merged to `main` as `2f7c409`. P03-T1 has started in `codex/bbd-os-phase-3`. Tests remain deferred until all Phase 1-12 production code is complete.
-- Current implementation phase: 3.
-- Active implementation task: **P03-T1 - Gateway configuration, capability probes and privacy policy**.
-- Next task: finish P03-T1 code/build/review/commit, then continue to P03-T2.
-- Read [master plan](2026-09-25-bbd-os-master-plan.md) before implementation.
-- Preserve Phase 0 and user changes. Commit each completed phase; merge Phase 1 into main after implementation and review. Do not push or deploy.
+- Product scope: canonical sections 165–166; original phase plans plus [R01–R16](2026-09-30-bbd-os-spec-reconciliation.md).
+- Method: subagent-driven; code/build first, test stage only after all original and supplemental code/build/review completes.
+- Current action: revised plans prepared for owner review 2026-09-30. No production execution started in this planning turn.
+- Baseline: original Phases 1–3 code/build/review complete; Phase 3 commit 4d0f774 is present in local main history. Runtime acceptance deferred.
+- Preserved unfinished work: P04-T1 in D:/Project/BBD-OS-phase-4 on codex/bbd-os-phase-4; uncommitted entity/relationship code and 0007_entities.py. Inspect diff/reports before resuming; no completion claimed.
+- Active production task: none during plan review. Next production task: **R01 — Repository instructions, boundaries and build-stage CI**, then supplementary execution order.
+- Report completion immediately and commit/merge scoped completed work per owner authorization. No push/deploy/destructive owner-data operations.
 
 ## Phase checkpoints
 
 | Phase | Plan | Implementation | Next task | Evidence |
 | --- | --- | --- | --- | --- |
 | 0 | Existing | Complete | None | See ../../IMPLEMENTATION_STATUS.md |
-| 1 | [Ready](2026-09-25-bbd-os-phase-1-core-data-platform.md) | Code/build and review complete; merged to main | P02-T1 | Build and whole-branch review passed; commit `da2baee`, merge `d425057`; deferred behavioral acceptance remains |
-| 2 | [Ready](2026-09-25-bbd-os-phase-2-ingestion-connectors.md) | Complete; merged to main | P03-T1 | Commit `2f7c409`; T4 build passed and independent review approved; acceptance deferred |
-| 3 | [Ready](2026-09-25-bbd-os-phase-3-search-model-gateway.md) | In progress | P03-T1 | Started on `codex/bbd-os-phase-3` from `2f7c409`; code/build stage only |
-| 4 | [Ready](2026-09-25-bbd-os-phase-4-entity-knowledge.md) | Not started | P04-T1 | Not executed |
+| 1 | [Ready](2026-09-25-bbd-os-phase-1-core-data-platform.md) | Code/build and review complete; merged to main | R01/R02 | Build and whole-branch review passed; commit `da2baee`, merge `d425057`; deferred behavioral acceptance remains |
+| 2 | [Ready](2026-09-25-bbd-os-phase-2-ingestion-connectors.md) | Complete; merged to main | R03/R04 | Commit `2f7c409`; T4 build passed and independent review approved; acceptance deferred |
+| 3 | [Ready](2026-09-25-bbd-os-phase-3-search-model-gateway.md) | Original code/build/review complete; supplemental pending | R05/R06 | Commit 4d0f774; recorded review/build; behavior deferred |
+| 4 | [Ready](2026-09-25-bbd-os-phase-4-entity-knowledge.md) | Uncommitted P04-T1 in separate worktree | Reconcile then resume P04-T1 | D:/Project/BBD-OS-phase-4; no completion claimed |
 | 5 | [Ready](2026-09-25-bbd-os-phase-5-temporal-knowledge.md) | Not started | P05-T1 | Not executed |
 | 6 | [Ready](2026-09-25-bbd-os-phase-6-ask-chat-drawer-memory.md) | Not started | P06-T1 | Not executed |
 | 7 | [Ready](2026-09-25-bbd-os-phase-7-agent-harness-tools.md) | Not started | P07-T1 | Not executed |
@@ -220,3 +219,7 @@ GitNexus pre-edit impact for `index_pending_chunks`, `_offset`, `_filters`, `_ve
 Ruling: Continue with an additional focused consent-resume correction after the first scoped re-review because the user explicitly directed to continue until complete and a blocking recovery regression remained; cost if wrong: one extra review/build cycle before merge.
 
 Phase 3 whole-branch review is clean after the scoped fixes. P03-T1 through P03-T4 code/build/review are complete; behavioral acceptance remains deferred until all Phase 1-12 production code is complete. Next: commit this fix wave, then merge Phase 3 into `main` as authorized.
+
+## Planning reconciliation — 2026-09-30
+
+Master/Phase 1–12 plans and navigation now reference sections 165–166 and [R01–R16](2026-09-30-bbd-os-spec-reconciliation.md). Historical task entries remain evidence, not current checkpoint. Google-only choice, graph backend, n8n provisioning, provider access/license, CII and host/restore gates remain open. No tests/lint/typecheck/build/provider calls ran during this planning turn.

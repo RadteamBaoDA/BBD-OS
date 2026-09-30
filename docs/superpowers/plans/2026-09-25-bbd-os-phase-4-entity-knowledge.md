@@ -12,9 +12,15 @@
 
 **Entry gate:** Phase 3 validated structured-output alias, search and public library.
 
-**Implementation status:** Not started. This file is an implementation plan, not evidence of working code.
+**Implementation status:** P04-T1 has uncommitted code in D:/Project/BBD-OS-phase-4. Preserve and inspect before resuming; no completion claimed.
 
 Code stage: implement production code and run affected production builds only. Do not create, modify or run tests, lint, or standalone typecheck until production code for all Phase 1-12 is complete. Behavioral acceptance is listed separately in the deferred test-stage section.
+
+## Spec reconciliation — 2026-09-30
+
+Read [R01–R16 supplemental plan](2026-09-30-bbd-os-spec-reconciliation.md) and canonical sections **165–166** before execution. Assigned scope: **R01 boundary policy and R15 consumers**. Preserve original task IDs and historical evidence. Production code/build only until all original and supplemental code/build/review is complete; no tests/fixtures, lint, standalone typecheck or runtime acceptance in this stage.
+
+Main navigation is Dashboard/Chat/Settings; Settings has three groups; account/appearance/language live in the user menu. Detail routes do not become main-navigation items. Migration names below are historical planning examples: inspect current head and active worktrees, including unfinished Phase 4 0007_entities.py, and allocate a unique linked revision without rewriting shipped migrations.
 
 ## Global Constraints
 
@@ -34,7 +40,7 @@ Module ownership: **knowledge/entities, knowledge/relationships**. Backend domai
 ## Task P04-T1: Canonical entities, aliases and evidence-backed relationships
 
 
-**Production files and responsibilities:** Create modules/knowledge/entities/models.py, modules/knowledge/entities/schemas.py, modules/knowledge/entities/public.py and modules/knowledge/entities/routes.py; modules/knowledge/relationships/models.py, modules/knowledge/relationships/schemas.py, modules/knowledge/relationships/public.py and modules/knowledge/relationships/routes.py; infrastructure/postgres/migrations/versions/0005_entities.py.
+**Production files and responsibilities:** Create modules/knowledge/entities/models.py, modules/knowledge/entities/schemas.py, modules/knowledge/entities/public.py and modules/knowledge/entities/routes.py; modules/knowledge/relationships/models.py, modules/knowledge/relationships/schemas.py, modules/knowledge/relationships/public.py and modules/knowledge/relationships/routes.py; an owning generated Alembic revision under infrastructure/postgres/migrations/versions/ after checking current and worktree heads.
 
 **Interfaces — consumes/produces:** CRUD /entities, /relationships; GET /entities/{id}/neighbors?limit<=100; EntityRef(id,type,name), EvidenceRef(document_version_id,chunk_id,observed_at,extracted_at,confidence); EntityAlias includes source_id. Public get_entity/get_neighbors return DTOs, never ORM rows.
 
@@ -72,7 +78,7 @@ Concrete contract/configuration shape (illustrative IDs/timestamps are test data
 ## Task P04-T3: Persistent corrections, merge and split
 
 
-**Production files and responsibilities:** Create modules/knowledge/entities/corrections.py; extend schemas/routes and correction tables in infrastructure/postgres/migrations/versions/0005_entities.py if unreleased, otherwise create a new revision.
+**Production files and responsibilities:** Create modules/knowledge/entities/corrections.py; extend schemas/routes and correction tables in an owning generated Alembic revision under infrastructure/postgres/migrations/versions/ after checking current and worktree heads if unreleased, otherwise create a new revision.
 
 **Interfaces — consumes/produces:** POST /entities/{id}/merge {into_id,expected_revision}; POST /entities/{id}/split {evidence_ids,new_entity,expected_revision}; PATCH entity with expected_revision; correction decisions include actor,reason,timestamp and evidence membership.
 
