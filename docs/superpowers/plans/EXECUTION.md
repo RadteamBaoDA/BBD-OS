@@ -227,3 +227,9 @@ Master/Phase 1–12 plans and navigation now reference sections 165–166 and [R
 ## Continuous develop integration — 2026-09-30
 
 Owner authorized full plan execution, separate worktree per agent and local automatic merges into develop. Current implementer: R01, base 3979ab2, isolated worktree C:/Users/doana/.codex/worktrees/bbd-r01-implementer/BBD-OS. Controller records each task completion, build/review evidence and merge SHA here. Detailed plan-scoped recovery ledger: .superpowers/sdd/2026-09-30-bbd-os-spec-reconciliation/progress.md. Production tests/lint/typecheck remain deferred.
+
+## Parallel model policy — 2026-09-30
+
+Owner requested gpt-6-luna for implementation/build and gpt-6.1-sol for inference/reasoning/review. r01_implementer (Sol) was interrupted; exclusive R01 worktree ownership transferred to r01_luna. Independent tasks may implement concurrently in separate worktrees; builds and develop merges are serialized.
+
+Ruling: R02 can implement alongside R01 because existing public auth/session contracts already exist and R01 instruction/CI work does not supply a new Google-login interface. Review/integration rechecks any shared files; cost if wrong is scoped merge/rebuild work, never bypassing owner linkage/security.
