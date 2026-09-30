@@ -247,3 +247,7 @@ Ruling: agent runtime rejected additional agent creation at its thread limit. Ke
 - Build lock: R02; reviewer: R02; parallel implementer: R01. Tests, lint, standalone typecheck and provider activation remain deferred.
 
 R02 committed initial implementation as `71aaf09`; independent Sol review found six Important issues (runtime dependency, owner mutation serialization, password proof, reauthentication throttling, account UI placement, provider deadlines) and one Minor status-state issue. Luna fix round 1 is active. Next.js passed; Docker build was interrupted after 60 seconds without progress. Task remains incomplete and unmerged; build lock released for R01.
+
+Owner chose to restore Docker themselves. Do not restart/reset Docker or WSL. Continue authorized code and source review; container-build and develop integration completion remain open until Docker recovery and successful prescribed build. R01 fix round 1 addresses all three Important findings; R02 fix round 1 addresses six Important/one Minor findings.
+
+R01 fix round 1 ready: three source defects repaired. Latest prescribed `./scripts/dev.ps1 build` from isolated R01 worktree exited 0 after final edit: Next.js plus web/API/worker/migrate Docker images succeeded. Prior Docker failures remain historical, not current R01 gate. No tests/lint/typecheck/runtime acceptance. Scoped Sol rereview pending; controller fresh change detection CRITICAL54 symbols/31 flows/20 tracked files matches previously warned ownership scope. No task completion/merge claimed yet.
