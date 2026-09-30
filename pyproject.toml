@@ -19,6 +19,8 @@ dependencies = [
     "structlog>=25,<26",
     "tiktoken>=0.12,<1",
     "uvicorn[standard]>=0.35,<1",
+    "authlib>=1.6,<2",
+    "itsdangerous>=2.2,<3",
 ]
 
 [dependency-groups]

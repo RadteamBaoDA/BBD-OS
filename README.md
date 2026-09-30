@@ -28,3 +28,5 @@ PostgreSQL migrations run before API and worker startup. Their persistent data u
 `OMNIROUTE_BASE_URL` and `OMNIROUTE_API_KEY` are optional placeholders. Phase 0 reports whether the gateway is configured but does not verify connectivity or send prompts. Provider/model calls and source ingestion are deferred to later phases. Review [privacy](docs/privacy.md) and [deployment](docs/deployment.md) before enabling remote access or adding connectors.
 
 See [development](docs/development.md), [deployment](docs/deployment.md), [privacy](docs/privacy.md), and [implementation status](docs/IMPLEMENTATION_STATUS.md).
+
+Optional Google sign-in uses server-side OAuth credentials. The account menu and its Google-link dialog use locally owned Radix-based shadcn source under `apps/web/src/components/ui`; run `npm ci` and `uv sync` to install the locked frontend and backend dependencies. See the [Google OAuth setup](docs/deployment.md#google-sign-in) and [open-source inventory](OSS_USED.md) for configuration and license details.

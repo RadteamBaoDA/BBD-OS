@@ -6,4 +6,8 @@ The web port binds to loopback by default. For remote access, terminate HTTPS at
 
 To apply migrations separately, run `./scripts/dev.ps1 migrate` or `make migrate`. Compose prevents API/worker startup if migrations fail. `docker compose ps` reports health and one-shot migration state; inspect `docker compose logs migrate api worker` for failures without publishing secret-bearing configuration.
 
+## Google sign-in
+
+Create a Google OAuth web client, add the exact `PUBLIC_ORIGIN` to its authorized JavaScript origins, and register `<PUBLIC_ORIGIN>/api/v1/auth/google/callback` as an authorized redirect URI. Set `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` in the server `.env`; the secret is consumed by the API through Compose `env_file` and is never sent to the browser. Sign-in requests only `openid`, `email`, and `profile`. Gmail collection requires separate consent when the Gmail source is configured. Google login is available only after an owner has linked that identity from Account settings; it never creates the owner or links by email.
+
 The design target is a 2-core, 8 GB host with remote AI inference. Phase 0 has not yet been measured on a complete deployment, so this target is not a capacity guarantee. OmniRoute credentials only configure a future gateway and are not connectivity-tested in this phase. Graph, n8n, and browser services are not installed yet.

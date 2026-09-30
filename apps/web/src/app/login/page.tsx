@@ -1,8 +1,9 @@
 'use client';
 
 import { zodResolver } from '@hookform/resolvers/zod';
-import { useMutation } from '@tanstack/react-query';
+import { useMutation, useQuery } from '@tanstack/react-query';
 import { useRouter } from 'next/navigation';
+import { useEffect, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { z } from 'zod';
 import { ApiError, apiRequest, csrfHeaders } from '@/core/api';
@@ -15,7 +16,21 @@ type LoginForm = z.infer<typeof loginSchema>;
 
 export default function LoginPage() {
   const router = useRouter();
+  const [googleError, setGoogleError] = useState(false);
+  useEffect(() => setGoogleError(new URLSearchParams(window.location.search).get('google') === 'error'), []);
   const form = useForm<LoginForm>({ resolver: zodResolver(loginSchema) });
+  const googleStatus = useQuery({ queryKey: ['auth-google-status'], queryFn: () => apiRequest<{ configured: boolean; linked: boolean }>('/api/v1/auth/google/status') });
+  const googleLogin = useMutation({
+    mutationFn: async () => {
+      const csrf = await apiRequest<{ csrfToken: string }>('/api/v1/auth/csrf');
+      return apiRequest<{ authorization_url: string }>('/api/v1/auth/google/start', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...csrfHeaders(csrf.csrfToken) },
+        body: JSON.stringify({ purpose: 'login' }),
+      });
+    },
+    onSuccess: ({ authorization_url }) => window.location.assign(authorization_url),
+  });
   const login = useMutation({
     mutationFn: async (values: LoginForm) => {
       const csrf = await apiRequest<{ csrfToken: string }>('/api/v1/auth/csrf');
@@ -32,5 +47,14 @@ export default function LoginPage() {
     <div className="field"><Label htmlFor="password">Password</Label><Input id="password" type="password" autoComplete="current-password" autoFocus {...form.register('password')} />{form.formState.errors.password && <span className="error">Enter your password.</span>}</div>
     {login.error && <p className="error" role="alert">{login.error instanceof ApiError ? login.error.message : 'Sign in could not be completed.'}</p>}
     <Button type="submit" disabled={login.isPending}>{login.isPending ? 'Signing in…' : 'Sign in'}</Button>
-  </form></section></main>;
+  </form>
+  {googleStatus.isPending && <p className="muted" role="status">Checking Google sign-in availability…</p>}
+  {googleStatus.isError && <p className="error" role="alert">Google sign-in availability is unknown.</p>}
+  {googleStatus.isSuccess && !googleStatus.data.configured && <p className="muted">Google sign-in is not configured.</p>}
+  {googleStatus.isSuccess && googleStatus.data.configured && <div className="form"><p className="muted">Or sign in with Google.</p>
+    {googleError && <p className="error" role="alert">Google sign-in could not be completed.</p>}
+    <Button className="secondary" type="button" disabled={googleLogin.isPending} onClick={() => googleLogin.mutate()}>{googleLogin.isPending ? 'Opening Google…' : 'Continue with Google'}</Button>
+    {googleLogin.error && <p className="error" role="alert">{googleLogin.error instanceof ApiError ? googleLogin.error.message : 'Google sign-in could not be started.'}</p>}
+  </div>}
+  </section></main>;
 }

@@ -1,7 +1,9 @@
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+import secrets
 
 from fastapi import FastAPI
+from starlette.middleware.sessions import SessionMiddleware
 from redis.asyncio import Redis
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
@@ -35,6 +37,15 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.settings = app_settings
     app.state.session_factory = async_sessionmaker(engine, expire_on_commit=False)
     app.state.redis = redis
+    app.add_middleware(
+        SessionMiddleware,
+        secret_key=(
+            app_settings.csrf_signing_secret.get_secret_value()
+            or secrets.token_urlsafe(32)
+        ),
+        https_only=app_settings.secure_cookies,
+        same_site="lax",
+    )
     install_error_handling(app)
     app.include_router(auth_router)
     app.include_router(system_router)
