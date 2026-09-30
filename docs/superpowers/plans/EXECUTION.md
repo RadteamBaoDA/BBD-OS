@@ -237,3 +237,13 @@ Ruling: R02 can implement alongside R01 because existing public auth/session con
 Ruling: R01 implements Sol-reviewed narrow source/document/ingestion DTOs and owner commands, exact search/backfill/raw-manifest read projection allowlists, reciprocal purge owner commands and mechanical ingestion orchestration move. Existing concrete callers require these changes to make owner-only mutations true; cost if wrong is focused refactor/review/build rework. No generic repository or migration. See .superpowers/sdd/2026-09-30-bbd-os-spec-reconciliation/R01-reasoning.md.
 
 Ruling: agent runtime rejected additional agent creation at its thread limit. Keep two Luna implementers plus the Sol reasoning/review seat; reuse seats with task-specific briefs and exclusive worktree reassignment after completion, never concurrent ownership. R05 worktree is prepared but no agent assigned yet. This preserves requested models and isolation; costs some context carryover versus a fresh agent.
+
+
+### Active task checkpoint — 2026-09-30
+
+- R01: boundary commands/projections and worker ownership implementation in progress in its Luna worktree; not complete.
+- R02: Google sign-in/linking production code frozen for Sol review; Next.js production build passed, Docker stage pending/unresponsive. Controller GitNexus change detection reported HIGH (12 symbols, 11 tracked files, six auth/shell flows), consistent with requested scope; these paths are explicit review targets. No feature task has merged yet.
+- Docker startup diagnostics show an Inference manager listener failure (`dockerInference`, invalid filename/access error). Container builds remain an external gate; no reset of Docker/WSL or owner volumes is authorized by this execution. Continue independent code/review and retain this gate before claiming build completion.
+- Build lock: R02; reviewer: R02; parallel implementer: R01. Tests, lint, standalone typecheck and provider activation remain deferred.
+
+R02 committed initial implementation as `71aaf09`; independent Sol review found six Important issues (runtime dependency, owner mutation serialization, password proof, reauthentication throttling, account UI placement, provider deadlines) and one Minor status-state issue. Luna fix round 1 is active. Next.js passed; Docker build was interrupted after 60 seconds without progress. Task remains incomplete and unmerged; build lock released for R01.
