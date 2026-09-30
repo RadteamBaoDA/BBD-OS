@@ -46,6 +46,16 @@ class Receipt(BaseModel):
     status: Literal["queued", "running", "succeeded", "needs_ocr", "failed"]
 
 
+class CrawlReceipt(BaseModel):
+    run_id: UUID
+
+
+class EventDelivery(BaseModel):
+    id: UUID
+    status: str
+    payload: dict[str, Any]
+
+
 class CollectorCredentialRead(BaseModel):
     source_id: UUID
     token: str

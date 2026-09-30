@@ -5,13 +5,12 @@ from dataclasses import dataclass
 from uuid import NAMESPACE_URL, uuid5
 
 from sqlalchemy import func, select
-from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from core.config import Settings
 from modules.knowledge.documents.models import Document, DocumentVersion
 from modules.knowledge.documents.public import content_hash
-from modules.sources.models import Source
+from modules.sources import public as sources
 
 DEMO_NAMESPACE = "bbd-os.demo.phase-1"
 SOURCE_ID = uuid5(NAMESPACE_URL, f"{DEMO_NAMESPACE}/source")
@@ -39,22 +38,8 @@ async def seed_demo(session: AsyncSession) -> SeedReport:
     """Create the Phase 1 fixture once; preserve subsequent edits and deletions."""
     document_ids = tuple(uuid5(NAMESPACE_URL, f"{DEMO_NAMESPACE}/{key}") for key, _, _ in NOTES)
     async with session.begin():
-        inserted = await session.scalar(
-            insert(Source)
-            .values(
-                id=SOURCE_ID,
-                type="manual",
-                name="Demo: fictional notes",
-                local_only=True,
-                configuration={"demo_namespace": DEMO_NAMESPACE},
-            )
-            .on_conflict_do_nothing(index_elements=[Source.id])
-            .returning(Source.id)
-        )
-        if inserted is None:
-            source = await session.get(Source, SOURCE_ID)
-            if source is None or source.configuration.get("demo_namespace") != DEMO_NAMESPACE:
-                raise RuntimeError("Demo source identity is occupied by another source")
+        inserted = await sources.ensure_demo_source(session, SOURCE_ID, DEMO_NAMESPACE)
+        if not inserted:
             document_count = await session.scalar(
                 select(func.count())
                 .select_from(Document)

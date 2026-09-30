@@ -153,25 +153,43 @@ async def search(session: AsyncSession, redis: Redis, settings: Settings, reques
     selected = ordered[offset:offset + request.limit + 1]
     # Recheck all source, revision and deletion fences after the provider call.
     rows = (await session.execute(_filters(
-        _visible_rows(DocumentChunk, DocumentVersion.id, DocumentVersion.version_number, DocumentVersion.observed_at, Document, Source), request,
+        _visible_rows(
+            DocumentChunk.id,
+            DocumentChunk.content,
+            DocumentVersion.id,
+            DocumentVersion.version_number,
+            DocumentVersion.observed_at,
+            Document.id,
+            Document.title,
+            Document.observed_at,
+            Document.published_at,
+            Document.content_type,
+            Document.canonical_url,
+            Source.id,
+            Source.name,
+            Source.type,
+        ), request,
     ).where(DocumentChunk.id.in_(selected)))).all() if selected else []
-    visible = {chunk.id: (chunk, version_id, version_number, version_observed, document, source)
-               for chunk, version_id, version_number, version_observed, document, source in rows}
+    visible = {row[0]: row for row in rows}
     items = []
     for chunk_id in selected[:request.limit]:
         if chunk_id not in visible:
             continue
-        chunk, version_id, version_number, version_observed, document, source = visible[chunk_id]
-        excerpt = chunk.content[:500]
+        (
+            chunk_id, content, version_id, version_number, version_observed, document_id,
+            title, document_observed, published_at, content_type, canonical_url,
+            source_id, source_name, source_type,
+        ) = visible[chunk_id]
+        excerpt = content[:500]
         items.append(SearchHit(
-            document_id=document.id, document_version_id=version_id, version_number=version_number, chunk_id=chunk.id,
-            title=document.title, excerpt=excerpt, score=ranked[chunk_id],
-            source=SearchSource(id=source.id, name=source.name, type=source.type),
-            observed_at=document.observed_at or version_observed,
-            published_at=document.published_at, content_type=document.content_type,
-            citation=Citation(sourceId=source.id, documentId=document.id, chunkId=chunk.id,
-                              title=document.title, url=document.canonical_url,
-                              observedAt=document.observed_at or version_observed, quote=excerpt),
+            document_id=document_id, document_version_id=version_id, version_number=version_number, chunk_id=chunk_id,
+            title=title, excerpt=excerpt, score=ranked[chunk_id],
+            source=SearchSource(id=source_id, name=source_name, type=source_type),
+            observed_at=document_observed or version_observed,
+            published_at=published_at, content_type=content_type,
+            citation=Citation(sourceId=source_id, documentId=document_id, chunkId=chunk_id,
+                              title=title, url=canonical_url,
+                              observedAt=document_observed or version_observed, quote=excerpt),
         ))
     next_cursor = _encode_cursor(request, offset + request.limit) if len(selected) > request.limit else None
     return SearchResponse(items=items, next_cursor=next_cursor, effective_mode=effective_mode, warnings=warnings)

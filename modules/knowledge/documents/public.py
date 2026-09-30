@@ -4,7 +4,7 @@ import hashlib
 from uuid import UUID
 
 from fastapi import HTTPException
-from sqlalchemy import delete, desc, select, tuple_
+from sqlalchemy import delete, desc, select, tuple_, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -50,6 +50,13 @@ async def backfill_current_chunks(session: AsyncSession, limit: int = 2) -> int:
     if versions:
         await session.commit()
     return len(versions)
+
+
+async def raw_uris(session: AsyncSession, source_id: UUID | None = None) -> set[str]:
+    statement = select(Document.raw_uri).where(Document.raw_uri.is_not(None))
+    if source_id is not None:
+        statement = statement.where(Document.source_id == source_id)
+    return {uri for uri in (await session.scalars(statement)).all() if uri}
 
 
 async def create_document(session: AsyncSession, payload: DocumentCreate) -> Document:
@@ -103,7 +110,7 @@ async def add_uploaded_document(
     metadata: dict[str, object],
     external_id: str,
     document_id: UUID,
-) -> Document:
+) -> UUID:
     document = Document(
         id=document_id,
         source_id=source_id,
@@ -121,17 +128,45 @@ async def add_uploaded_document(
     await session.flush()
     session.add(DocumentVersion(document_id=document.id, version_number=1, content="", content_hash=content_hash("")))
     await session.flush()
-    return document
+    return document.id
+
+
+async def lock_document_for_extraction(
+    session: AsyncSession, document_id: UUID, source_id: UUID
+) -> bool:
+    return await session.scalar(
+        select(Document.id)
+        .where(Document.id == document_id, Document.source_id == source_id)
+        .with_for_update()
+    ) is not None
+
+
+async def set_extraction_status(
+    session: AsyncSession, document_id: UUID, source_id: UUID, status: str
+) -> bool:
+    result = await session.execute(
+        update(Document)
+        .where(Document.id == document_id, Document.source_id == source_id)
+        .values(extraction_status=status)
+        .returning(Document.id)
+    )
+    return result.scalar_one_or_none() is not None
 
 
 async def save_extraction(
     session: AsyncSession,
     document_id: UUID,
+    source_id: UUID,
     text: str,
     chunks: list[dict[str, object]],
     extraction_status: str,
-) -> Document | None:
-    document = await session.scalar(select(Document).where(Document.id == document_id).with_for_update())
+    extraction_metadata: dict[str, object],
+    warnings: list[str],
+    parser: str,
+) -> UUID | None:
+    document = await session.scalar(
+        select(Document).where(Document.id == document_id, Document.source_id == source_id).with_for_update()
+    )
     if document is None:
         return None
     current = await session.scalar(
@@ -155,6 +190,12 @@ async def save_extraction(
         document.content_hash = digest
         await session.flush()
     document.extraction_status = extraction_status
+    document.metadata_json = {
+        **document.metadata_json,
+        "extraction": dict(extraction_metadata),
+        "warnings": list(warnings),
+        "parser": parser,
+    }
     existing = await session.scalar(
         select(DocumentChunk.id).where(DocumentChunk.document_version_id == current.id).limit(1)
     )
@@ -172,7 +213,7 @@ async def save_extraction(
                 )
             )
     await session.flush()
-    return document
+    return document.id
 
 
 async def list_documents(

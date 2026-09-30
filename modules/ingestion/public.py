@@ -1,11 +1,13 @@
 import hashlib
 import json
 import secrets
+from copy import deepcopy
 from datetime import UTC, datetime
+from typing import Literal
 from uuid import UUID, uuid4
 
 from fastapi import HTTPException
-from sqlalchemy import select, update
+from sqlalchemy import String, cast, delete, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.events import DomainEvent
@@ -19,10 +21,9 @@ from modules.ingestion.models import (
     SourceIngestionState,
     SourceObservation,
 )
-from modules.ingestion.schemas import ReceiveBatch
+from modules.ingestion.schemas import CrawlReceipt, EventDelivery, Receipt, ReceiveBatch
 from modules.knowledge.documents import public as documents
 from modules.sources import public as sources
-from modules.sources.models import Source
 
 def _digest(value: object) -> str:
     encoded = json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
@@ -30,7 +31,7 @@ def _digest(value: object) -> str:
 
 
 async def create_collector_credential(session: AsyncSession, source_id: UUID) -> str:
-    source = await session.scalar(select(Source).where(Source.id == source_id).with_for_update())
+    source = await sources.lock_source(session, source_id)
     if source is None or source.status == "archived":
         raise LookupError("Source not found")
     now = datetime.now(UTC)
@@ -59,27 +60,90 @@ async def revoke_collector_credential(session: AsyncSession, token: str) -> None
         await session.commit()
 
 
+async def revoke_source_credentials(session: AsyncSession, source_id: UUID) -> None:
+    await session.execute(
+        update(CollectorCredential)
+        .where(CollectorCredential.source_id == source_id, CollectorCredential.revoked_at.is_(None))
+        .values(revoked_at=datetime.now(UTC))
+    )
+
+
+async def publish_event(session: AsyncSession, event: DomainEvent) -> None:
+    session.add(EventOutbox(
+        id=event.id,
+        type=event.type,
+        version=event.version,
+        occurred_at=event.occurred_at,
+        producer=event.producer,
+        payload=event.payload,
+        status="pending",
+    ))
+
+
+async def get_event_delivery(session: AsyncSession, event_id: UUID) -> EventDelivery | None:
+    event = await session.get(EventOutbox, event_id)
+    if event is None:
+        return None
+    return EventDelivery(id=event.id, status=event.status, payload=deepcopy(event.payload))
+
+
+async def set_event_delivery(
+    session: AsyncSession,
+    event_id: UUID,
+    status: Literal["failed", "pending", "delivered"],
+    *,
+    next_attempt_at: datetime | None = None,
+) -> bool:
+    values: dict[str, object] = {"status": status}
+    if next_attempt_at is not None:
+        values["next_attempt_at"] = next_attempt_at
+    result = await session.execute(
+        update(EventOutbox)
+        .where(EventOutbox.id == event_id)
+        .values(**values)
+        .returning(EventOutbox.id)
+    )
+    return result.scalar_one_or_none() is not None
+
+
+async def get_source_cursor(session: AsyncSession, source_id: UUID) -> str | None:
+    state = await session.get(SourceIngestionState, source_id)
+    return state.cursor if state is not None else None
+
+
+async def cancel_and_purge_source_ingestion(session: AsyncSession, source_id: UUID) -> None:
+    run_ids = select(cast(IngestionRun.id, String)).where(IngestionRun.source_id == source_id)
+    await session.execute(
+        update(EventOutbox)
+        .where(EventOutbox.payload["run_id"].astext.in_(run_ids))
+        .values(status="failed")
+    )
+    await session.execute(delete(SourceObservation).where(SourceObservation.source_id == source_id))
+    await session.execute(delete(IngestionBatch).where(IngestionBatch.source_id == source_id))
+    state = await session.get(SourceIngestionState, source_id, with_for_update=True)
+    if state is not None:
+        state.lease_run_id = None
+        state.lease_expires_at = None
+    await session.execute(update(CollectorCredential).where(CollectorCredential.source_id == source_id)
+                          .values(revoked_at=datetime.now(UTC)))
+
+
 async def collector_can_ingest(session: AsyncSession, source_id: UUID, token: str) -> bool:
     token_hash = hashlib.sha256(token.encode()).hexdigest()
-    return bool(
-        await session.scalar(
-            select(CollectorCredential.token_hash)
-            .join(Source, Source.id == CollectorCredential.source_id)
-            .where(
-                CollectorCredential.token_hash == token_hash,
-                CollectorCredential.source_id == source_id,
-                CollectorCredential.scope == "ingestion:write",
-                CollectorCredential.revoked_at.is_(None),
-                Source.status == "active",
-            )
+    credential_valid = bool(await session.scalar(
+        select(CollectorCredential.token_hash).where(
+            CollectorCredential.token_hash == token_hash,
+            CollectorCredential.source_id == source_id,
+            CollectorCredential.scope == "ingestion:write",
+            CollectorCredential.revoked_at.is_(None),
         )
-    )
+    ))
+    source = await sources.get_connector_source(session, source_id) if credential_valid else None
+    return source is not None and source.status == "active"
 
 
 async def receive_batch(session: AsyncSession, payload: ReceiveBatch) -> tuple[IngestionBatch, IngestionRun]:
-    source = await session.scalar(
-        select(Source).where(Source.id == payload.source_id).with_for_update()
-    )
+    source = await sources.lock_source(session, payload.source_id)
     if source is None:
         raise HTTPException(status_code=404, detail="Source not found")
     if source.status != "active":
@@ -106,8 +170,8 @@ async def receive_batch(session: AsyncSession, payload: ReceiveBatch) -> tuple[I
         session.add(state)
         await session.flush()
     now = datetime.now(UTC)
-    source.last_sync_at = now
-    source.collected_at = now
+    if not await sources.record_collection_started(session, payload.source_id, source.generation, now):
+        raise HTTPException(status_code=409, detail="Source is not active")
     if state.lease_expires_at is not None and state.lease_expires_at > now:
         raise HTTPException(status_code=409, detail="Source already has an active collection run")
     if state.cursor != payload.cursor_before:
@@ -130,17 +194,7 @@ async def receive_batch(session: AsyncSession, payload: ReceiveBatch) -> tuple[I
         producer="modules.ingestion",
         payload={"run_id": str(run.id), "stage_id": str(stage.id), "source_generation": source.generation},
     )
-    session.add(
-        EventOutbox(
-            id=event.id,
-            type=event.type,
-            version=event.version,
-            occurred_at=event.occurred_at,
-            producer=event.producer,
-            payload=event.payload,
-            status="pending",
-        )
-    )
+    await publish_event(session, event)
     # Keep every distinct provider/content observation in the accepted batch.
     seen: set[tuple[str, str, datetime]] = set()
     for record in payload.records:
@@ -176,13 +230,18 @@ async def receive_batch(session: AsyncSession, payload: ReceiveBatch) -> tuple[I
     return batch, run
 
 
+async def receive_connector_batch(session: AsyncSession, payload: ReceiveBatch) -> Receipt:
+    batch, run = await receive_batch(session, payload)
+    return Receipt(batch_id=batch.id, run_id=run.id, status=run.status)
+
+
 async def queue_connector_crawl(
     session: AsyncSession,
     source_id: UUID,
     cursor_before: str | None,
     configuration: dict[str, object],
-) -> IngestionRun:
-    source = await session.scalar(select(Source).where(Source.id == source_id).with_for_update())
+) -> CrawlReceipt:
+    source = await sources.lock_source(session, source_id)
     if source is None:
         raise HTTPException(status_code=404, detail="Source not found")
     if source.status != "active":
@@ -196,8 +255,8 @@ async def queue_connector_crawl(
         raise HTTPException(status_code=409, detail="Collection cursor is stale")
 
     now = datetime.now(UTC)
-    source.last_sync_at = now
-    source.collected_at = now
+    if not await sources.record_collection_started(session, source_id, source.generation, now):
+        raise HTTPException(status_code=409, detail="Source is not active")
     minute = now.replace(second=0, microsecond=0).isoformat()
     key = "crawl:" + _digest({"source_id": str(source_id), "cursor": cursor_before, "config": configuration, "minute": minute})
     existing = await session.scalar(
@@ -207,7 +266,7 @@ async def queue_connector_crawl(
         run = await session.scalar(select(IngestionRun).where(IngestionRun.batch_id == existing.id))
         if run is None:
             raise RuntimeError("Crawl batch has no run")
-        return run
+        return CrawlReceipt(run_id=run.id)
     if state.lease_expires_at is not None and state.lease_expires_at > now:
         raise HTTPException(status_code=409, detail="Source already has an active collection run")
 
@@ -235,22 +294,12 @@ async def queue_connector_crawl(
             "configuration": configuration,
         },
     )
-    session.add(
-        EventOutbox(
-            id=event.id,
-            type=event.type,
-            version=event.version,
-            occurred_at=event.occurred_at,
-            producer=event.producer,
-            payload=event.payload,
-            status="pending",
-        )
-    )
+    await publish_event(session, event)
     state.lease_run_id = run.id
     state.lease_expires_at = now + COLLECTION_LEASE
     await session.commit()
     await session.refresh(run)
-    return run
+    return CrawlReceipt(run_id=run.id)
 
 
 async def receive_file(
@@ -264,7 +313,7 @@ async def receive_file(
     digest: str,
 ) -> tuple[IngestionRun, bool]:
     await sources.lock_source_for_document(session, source_id)
-    source = await session.get(Source, source_id)
+    source = await sources.lock_source(session, source_id)
     if source is None or source.status != "active":
         raise HTTPException(status_code=409, detail="Source is not active")
     batch_key = f"file:{digest}"
@@ -283,8 +332,8 @@ async def receive_file(
         return run, False
 
     now = datetime.now(UTC)
-    source.last_sync_at = now
-    source.collected_at = now
+    if not await sources.record_collection_started(session, source_id, source.generation, now):
+        raise HTTPException(status_code=409, detail="Source is not active")
     batch = IngestionBatch(source_id=source_id, batch_key=batch_key, payload_hash=digest)
     session.add(batch)
     await session.flush()
@@ -295,7 +344,7 @@ async def receive_file(
     session.add(stage)
     await session.flush()
     metadata = {"filename": filename, "raw_sha256": digest, "raw_size": size, "format": mime_type}
-    document = await documents.add_uploaded_document(
+    stored_document_id = await documents.add_uploaded_document(
         session, source_id, filename[:500] or "Uploaded file", mime_type, raw_uri, metadata, f"file:{digest}", document_id
     )
     event = DomainEvent(
@@ -304,17 +353,9 @@ async def receive_file(
         version=1,
         occurred_at=now,
         producer="modules.ingestion",
-        payload={"run_id": str(run.id), "stage_id": str(stage.id), "document_id": str(document.id), "raw_uri": raw_uri, "mime_type": mime_type, "source_generation": source.generation},
+        payload={"run_id": str(run.id), "stage_id": str(stage.id), "document_id": str(stored_document_id), "raw_uri": raw_uri, "mime_type": mime_type, "source_generation": source.generation},
     )
-    session.add(EventOutbox(
-        id=event.id,
-        type=event.type,
-        version=event.version,
-        occurred_at=event.occurred_at,
-        producer=event.producer,
-        payload=event.payload,
-        status="pending",
-    ))
+    await publish_event(session, event)
     await session.commit()
     await session.refresh(run)
     return run, True
@@ -339,7 +380,7 @@ async def retry_run(session: AsyncSession, run_id: UUID) -> IngestionRun | None:
     if run_hint is None:
         return None
     # Match source archive and workers: source, run, then stage.
-    source = await session.scalar(select(Source).where(Source.id == run_hint.source_id).with_for_update())
+    source = await sources.lock_source(session, run_hint.source_id)
     if source is None or source.status != "active":
         raise HTTPException(status_code=409, detail="Source is not active")
     run = await session.scalar(
