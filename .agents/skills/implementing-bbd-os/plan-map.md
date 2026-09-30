@@ -52,4 +52,4 @@ Read current status, ledger and code first. If the ledger still selects P01-T1, 
 
 ## Current reconciliation
 
-Read [R01–R16](../../../docs/superpowers/plans/2026-09-30-bbd-os-spec-reconciliation.md) for all supplemental owners/dependencies/acceptance. R01 is next after plan review; preserve uncommitted P04-T1 in D:/Project/BBD-OS-phase-4. Earlier Today/Ask names are historical; sections 165–166 govern presentation.
+Read [R01–R16](../../../docs/superpowers/plans/2026-09-30-bbd-os-spec-reconciliation.md) for all supplemental owners/dependencies/acceptance. R01 is the first reconciliation task; preserve uncommitted P04-T1 in D:/Project/BBD-OS-phase-4. Earlier Today/Ask names are historical; sections 165–166 govern presentation. Push/pull-request CI builds only during implementation; run deferred validation only after all original and reconciliation production tasks are complete.

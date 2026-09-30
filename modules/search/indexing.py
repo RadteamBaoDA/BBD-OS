@@ -15,6 +15,7 @@ from modules.knowledge.documents.models import Document, DocumentChunk, Document
 from modules.knowledge.documents.public import backfill_current_chunks
 from modules.search.models import IndexGeneration, SearchIndexItem
 from modules.settings import models as settings_models
+from modules.sources import public as sources
 from modules.sources.models import Source
 
 MAX_VECTOR_DIMENSIONS = 2000  # pgvector HNSW vector index limit.
@@ -57,7 +58,7 @@ async def configured_embedding(redis: Redis, settings: Settings) -> tuple[ModelM
 
 def eligible_chunks():
     return (
-        select(DocumentChunk, Source)
+        select(DocumentChunk.id, DocumentChunk.content, Source.id)
         .join(DocumentVersion, DocumentVersion.id == DocumentChunk.document_version_id)
         .join(Document, Document.id == DocumentVersion.document_id)
         .join(Source, Source.id == Document.source_id)
@@ -159,21 +160,21 @@ async def index_pending_chunks(ctx: dict[str, object]) -> int:
                         await activate_generation(session, generation)
                 await session.commit()
                 break
-            chunk, source = row
+            chunk_id, content, source_id = row
             item = await session.scalar(select(SearchIndexItem).where(
-                SearchIndexItem.generation_id == generation_id, SearchIndexItem.chunk_id == chunk.id,
+                SearchIndexItem.generation_id == generation_id, SearchIndexItem.chunk_id == chunk_id,
             ))
             if item is None:
-                item = SearchIndexItem(generation_id=generation_id, chunk_id=chunk.id)
+                item = SearchIndexItem(generation_id=generation_id, chunk_id=chunk_id)
                 session.add(item)
                 await session.flush()
-            item_id, chunk_id, source_id, content = item.id, chunk.id, source.id, chunk.content
+            item_id = item.id
             dimensions = generation.dimensions
             await session.commit()
         try:
             async with factory() as session:
                 # Hold the source lock across transport so archive/purge cannot race a send.
-                source = await session.get(Source, source_id, with_for_update=True)
+                source = await sources.lock_source(session, source_id)
                 current = await session.scalar(
                     select(DocumentChunk.id)
                     .join(DocumentVersion, DocumentVersion.id == DocumentChunk.document_version_id)

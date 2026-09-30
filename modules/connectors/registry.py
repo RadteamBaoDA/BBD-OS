@@ -2,16 +2,16 @@ from typing import Any
 from urllib.parse import urlsplit
 
 from modules.connectors.public import ConnectorConfig, DEFAULT_TIMEZONE, overlap_floor
-from modules.sources.models import Source
+from modules.sources.schemas import ConnectorSource
 
 SUPPORTED_TYPES = {"rss", "web", "api"}
 
 
-def configuration(source: Source) -> ConnectorConfig:
+def configuration(source: ConnectorSource) -> ConnectorConfig:
     return ConnectorConfig.model_validate(source.configuration or {})
 
 
-def validate(source: Source) -> dict[str, Any]:
+def validate(source: ConnectorSource) -> dict[str, Any]:
     if source.status != "active":
         raise ValueError("Source is not active")
     if source.type not in SUPPORTED_TYPES:
@@ -36,7 +36,7 @@ def validate(source: Source) -> dict[str, Any]:
     }
 
 
-def health(source: Source) -> dict[str, str]:
+def health(source: ConnectorSource) -> dict[str, str]:
     if source.status != "active":
         return {"status": source.status, "connector": source.type}
     try:
@@ -46,7 +46,7 @@ def health(source: Source) -> dict[str, str]:
     return {"status": "ready", "connector": source.type}
 
 
-def sync(source: Source, cursor: str | None) -> dict[str, Any]:
+def sync(source: ConnectorSource, cursor: str | None) -> dict[str, Any]:
     from modules.connectors.n8n import workflow_state
 
     return {**validate(source), **workflow_state(cursor)}

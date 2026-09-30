@@ -3,6 +3,13 @@ name: CI
 on:
   push:
   pull_request:
+  workflow_dispatch:
+    inputs:
+      run_deferred_validation:
+        description: Run lint, typecheck, and tests after production code is complete
+        required: true
+        default: false
+        type: boolean
 
 permissions:
   contents: read
@@ -22,10 +29,14 @@ jobs:
       - uses: docker/setup-buildx-action@v3
       - run: uv sync --frozen
       - run: npm ci
-      - run: uv run ruff check core apps modules tests infrastructure/postgres/migrations
-      - run: uv run mypy core apps modules
-      - run: npm run lint
-      - run: npm run typecheck
+      - if: ${{ github.event_name == 'workflow_dispatch' && inputs.run_deferred_validation }}
+        run: uv run ruff check core apps modules tests infrastructure/postgres/migrations
+      - if: ${{ github.event_name == 'workflow_dispatch' && inputs.run_deferred_validation }}
+        run: uv run mypy core apps modules
+      - if: ${{ github.event_name == 'workflow_dispatch' && inputs.run_deferred_validation }}
+        run: npm run lint
+      - if: ${{ github.event_name == 'workflow_dispatch' && inputs.run_deferred_validation }}
+        run: npm run typecheck
       - name: Create disposable CI configuration
         run: |
           cat > .env <<'EOF'
@@ -42,7 +53,8 @@ jobs:
           OMNIROUTE_BASE_URL=
           OMNIROUTE_API_KEY=
           EOF
-      - name: Run backend and browser acceptance on disposable Compose stack
+      - name: Run deferred backend and browser acceptance on disposable Compose stack
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.run_deferred_validation }}
         run: make test
       - name: Build frontend and production containers
         run: make build

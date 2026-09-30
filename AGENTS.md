@@ -30,7 +30,9 @@ For BBD-OS frontend design, implementation, or review, load `.agents/skills/bbd-
 
 ## Testing Guidelines
 
-Use pytest for backend tests and Playwright for end-to-end flows; the frontend unit-test framework is not selected. For Phases 1-12, do not create, modify or run tests, lint, or typecheck during implementation; run builds only. Begin the deferred test stage after all phase production code is complete. Name Python tests `test_*.py` and Playwright tests `*.spec.ts`. Cover module contracts, ingestion, permissions, search, and citation flows. No numeric coverage threshold is specified. Report checks run and any unavailable validation.
+Use pytest for backend tests and Playwright for end-to-end flows; the frontend unit-test framework is not selected. For Phases 1-12 and reconciliation tasks, do not create, modify or run tests, lint, or typecheck during implementation; run builds only. Begin the deferred validation stage after all original and reconciliation production code is complete. Name Python tests `test_*.py` and Playwright tests `*.spec.ts`. Cover module contracts, ingestion, permissions, search, and citation flows. No numeric coverage threshold is specified. Report checks run and any unavailable validation.
+
+Cross-module reads use owner `public.py` DTO/query contracts. A narrowly scoped read projection may be approved when its owner, fields, permission and deletion checks are documented; callers must not use that projection for writes. Module persistence models remain private.
 
 ## Commit & Pull Request Guidelines
 

@@ -34,7 +34,7 @@ For frontend work, also load [bbd-os-ui-system](../bbd-os-ui-system/SKILL.md) an
 
 Record task ID, prerequisite evidence, affected contracts/files, build commands/results, review findings, unresolved gates, and next task in `EXECUTION.md`. Keep one task active. During the Phase 1–12 implementation stage, implement production code and run builds only: do not create, modify or run tests, lint, or typecheck. Start the test stage after all phase code is complete. Follow the master plan and continue authorized ready work without repeated scope approval.
 
-During implementation, run `./scripts/dev.ps1 build` on Windows or `make build` on Linux/macOS. Do not create, modify or run tests, lint or typecheck until all original Phase 1-12 and reconciliation production code is complete; then follow the deferred test stage in the master plan.
+During implementation, run `./scripts/dev.ps1 build` on Windows or `make build` on Linux/macOS. Do not create, modify or run tests, lint or typecheck until all original Phase 1-12 and reconciliation production code is complete; then follow the deferred validation stage in the master plan. CI push/pull-request runs install dependencies and build only; manually dispatch its deferred-validation stage only after that gate.
 
 
 ## Common mistakes

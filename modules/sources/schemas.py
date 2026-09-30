@@ -48,6 +48,29 @@ class SourceRead(BaseModel):
     updated_at: datetime
 
 
+class SourceFence(BaseModel):
+    """Detached source eligibility snapshot; caller holds the DB row lock."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    id: UUID
+    status: str
+    generation: int
+    local_only: bool
+
+
+class ConnectorSource(BaseModel):
+    """Detached configuration snapshot for connector validation and dispatch."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    id: UUID
+    type: str
+    status: str
+    generation: int
+    configuration: dict[str, object]
+
+
 class SourceList(BaseModel):
     items: list[SourceRead]
     next_cursor: str | None

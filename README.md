@@ -19,6 +19,8 @@ The web service binds to `127.0.0.1` only. For remote use, place it behind an HT
 
 Both `scripts/dev.ps1` and Make provide `setup`, `dev`, `stop`, `migrate`, `seed`, `lint`, `typecheck`, `test`, and `build`. Run `./scripts/dev.ps1 seed` (or `make seed`) to explicitly add three fictional Phase 1 demo records: a manual source and two notes. The command reports created/existing counts and fails visibly if migration or database access fails. It never runs at startup. Repeating it preserves edits and deletions within the demo source; an archived demo source remains archived. Source deletion with data archives the source and deletes its notes, and later seed commands leave that archived source alone. `test` starts a uniquely named disposable Compose project on temporary loopback ports, runs backend, real-PostgreSQL race, and browser checks, then removes only that project's containers and volumes. It never touches the normal `bbd-os` data volumes. `reset`, `backup`, and `restore` are planned for later phases and are not implemented.
 
+During production implementation, CI runs dependency installation and `make build` only. After all original and reconciliation production tasks are complete, manually dispatch the CI workflow with **Run deferred validation** enabled to run lint, typecheck, and tests.
+
 PostgreSQL migrations run before API and worker startup. Their persistent data uses named volumes. `docker compose logs api migrate worker` shows service diagnostics; do not share logs with `.env` values. If startup is blocked, inspect `docker compose ps` and the migration service first.
 
 ## OmniRoute and privacy
