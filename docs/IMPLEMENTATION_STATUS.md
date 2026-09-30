@@ -30,6 +30,7 @@ Phase 0 verified on 2026-09-25: Ruff, mypy, pytest (15 passed, 1 integration tes
 
 - [x] Updated master and Phase 1–12 plans; added [R01–R16](superpowers/plans/2026-09-30-bbd-os-spec-reconciliation.md).
 - [x] R01 production code/build/review integrated into develop (`d968d89`); behavioral acceptance deferred.
-- [~] R02 secure Google login implementation/review-fix round 1; not merged.
-- [ ] R03–R16 production code/build/review and later acceptance.
-- Next production task: R03 (parallel R02 fix/review). Original Phase 1–3 evidence remains; tests are deferred until all original and supplemental code is complete.
+- [x] R02 secure Google login code/build/review integrated into develop (`faeb664`); live Google acceptance deferred.
+- [~] R03-core connector provisioning and R05 SDK/AI settings in parallel isolated Luna worktrees. R03-OAuth carried to the actual GitHub consumer in P09-T1; full R03 pending.
+- [ ] Remaining reconciliation production code/build/review and later acceptance.
+- Active production tasks: R03-core and R05 in parallel; remaining scope follows the amended plan. Original Phase 1–3 evidence remains; tests are deferred until all original and supplemental code is complete.
