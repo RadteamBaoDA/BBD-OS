@@ -51,6 +51,9 @@ Module ownership: **connectors/github**. Backend domain models/services stay in 
 
 **Interfaces — consumes/produces:** GitHubSourceConfig(repository,include_issues,include_pulls,include_commits,include_releases); provider credentials remain n8n-owned references. Connector registry exposes validate/sync/normalize/health without GitHub-specific imports in ingestion.
 
+**Mandatory carried production slice R03-OAuth — 2026-09-30:** Implement server start/callback/refresh/revoke for the concrete GitHub connection using a supported expiring/refresh grant mode, consumed by the actual read-only collection adapter. Keep Google sign-in permission separate. State must be browser-bound/single-use/expiring with maintained provider validation; provider endpoints/scopes are allowlisted, credentials protected and redacted, and stale callbacks/refresh cannot overwrite newer configuration or resurrect disabled sources. Revoke/disconnect must fence collection immediately; require explicit provider registration/configuration and show unavailable states honestly. Credential storage follows the R03 native/n8n ownership contracts. Record provider API/dependency evidence and close R03-OAuth in EXECUTION before full R03 or the all-code milestone can be marked complete. No generic unused OAuth framework and no tests during production implementation.
+
+
 
 - [ ] **P09-T1.3 — Implement the minimal production behavior.** Map stable numeric/node IDs to canonical external_id; document repository scope and permissions. Package real n8n export with credential references, source binding, batch receipt and response checking. Expose read-only collection only; no issue/comment writes implied. Validate selected repo and enabled resource types; display actual last successful validation.
 

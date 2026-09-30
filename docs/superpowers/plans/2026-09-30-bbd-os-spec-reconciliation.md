@@ -136,6 +136,9 @@ Contract shape (illustrative IDs/values, not credentials or production observati
 
 **Deferred acceptance — not executable during code stage:** Save followed by activation failure, retry after worker crash, duplicate reconcile, source disable race, credential rotation, OAuth revocation and unsupported n8n credential API.
 
+**Execution amendment — 2026-09-30:** Current RSS/URL/REST adapters have no OAuth-grant consumer. Retain the mandatory **R03-OAuth** production slice and deliver it with the concrete GitHub adapter in **P09-T1**, including start/callback/refresh/revoke, revision/source-generation fencing and an actual authorized read-only collection consumer. Do not build disconnected generic Google grant endpoints or claim Gmail/Calendar/Drive collection. R03-core catalog/credentials/n8n reconciliation can build, review and integrate before that slice; full R03 remains incomplete until R03-OAuth closes. Catalog OAuth capabilities stay planned/unavailable with a precise reason until implemented. R09 is shell/theme/locales. This amendment changes delivery placement, not requirements, and the deferred test stage still waits for R03-OAuth plus every other production task.
+
+
 ## Task R04: Embedded data-source editor
 
 **Phase/dependencies:** After R03; supplements P02.

@@ -255,3 +255,9 @@ R01 fix round 1 ready: three source defects repaired. Latest prescribed `./scrip
 ### R01 complete — 2026-09-30
 
 Task commit `90f189f`; local develop merge `d968d89`. Source/build/review complete after fix round1; Sol scoped rereview approved all three corrections with no findings. Final prescribed build session94944 exit0, Next.js and web/API/worker/migrate images succeeded. Pre-commit/worktree detection CRITICAL54 symbols/31 flows/20 files; merge staged detection CRITICAL52/31/20 matches approved scope. Merge conflicts only GitNexus generated counts in AGENTS/CLAUDE; retained develop metadata and all R01 functional instructions. Runtime acceptance remains deferred; no tests/lint/typecheck. Next ready task R03 in R01 agent worktree; R02 remains active fix round1 in its separate tree.
+
+### Parallel checkpoint after R01
+
+R03 active in isolated `C:/Users/doana/.codex/worktrees/bbd-r03-connectors/BBD-OS`, base `2878feb`, Luna implementation; catalog/credential/n8n provisioning scope. R02 full build passed after fix round1, but scoped Sol review requires two exception-class corrections (asyncpg DBAPIError/55P03 and Authlib JOSE errors) plus dialog description. Fix round2 active; task not complete/merged. Build/review evidence and real dependency/library source are retained in task reports/SDD artifacts. No tests/lint/typecheck/runtime ran.
+
+Ruling: R03 has no current consumed OAuth provider. Preserve mandatory R03-OAuth and deliver with concrete GitHub P09-T1 read-only consumer (supported expiring/refresh mode and revoke), amending both plans. R03-core can integrate its stable catalog/credential/n8n contracts first; full R03 remains incomplete. R09 owns shell only, not Google source adapters. Cost if wrong: provider integration rework, never false completion or permission reuse. Deferred tests wait for this slice too. See R03-oauth-ruling.md.
