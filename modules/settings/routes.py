@@ -12,11 +12,28 @@ from core.config import Settings
 from core.database import get_session
 from core.model_gateway.schemas import AISettingsRead, AISettingsUpdate, ConnectionDraft, ModelMapping, ModelSettingsRead, PrivacySettings
 from modules.settings import models, public
+from modules.settings.schemas import OwnerPreferencesRead, OwnerPreferencesUpdate
 
 router = APIRouter(prefix="/api/v1/settings", tags=["settings"])
 Session = Annotated[AsyncSession, Depends(get_session)]
 OwnerRead = Annotated[AuthSession, Depends(require_owner)]
 OwnerWrite = Annotated[AuthSession, Depends(require_owner_write)]
+
+
+@router.get("/preferences", response_model=OwnerPreferencesRead)
+async def read_owner_preferences(session: Session, _owner: OwnerRead) -> OwnerPreferencesRead:
+    return await public.read_owner_preferences(session)
+
+
+@router.put("/preferences", response_model=OwnerPreferencesRead)
+async def save_owner_preferences(
+    value: OwnerPreferencesUpdate,
+    session: Session,
+    _owner: OwnerWrite,
+) -> OwnerPreferencesRead:
+    saved = await public.save_owner_preferences(session, value)
+    await session.commit()
+    return saved
 
 
 async def _read(session: AsyncSession, request: Request) -> AISettingsRead:

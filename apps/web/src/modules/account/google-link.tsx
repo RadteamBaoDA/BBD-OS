@@ -2,15 +2,18 @@
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
+import { useTranslations } from 'next-intl';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { ApiError, apiRequest, csrfHeaders } from '@/core/api';
+import { apiRequest, csrfHeaders } from '@/core/api';
+import { apiFailureKey } from '@/core/api-failure-key';
 import { useWorkspaceSession } from '@/core/app-shell/workspace-shell';
 
 type GoogleStatus = { configured: boolean; linked: boolean };
 
 export function GoogleLink() {
+  const t = useTranslations('account');
   const { csrfToken } = useWorkspaceSession();
   const queryClient = useQueryClient();
   const [password, setPassword] = useState('');
@@ -49,19 +52,19 @@ export function GoogleLink() {
   const error = link.error ?? unlink.error;
 
   return <section className="status-panel">
-    <h2>Google sign-in</h2>
-    {status.isPending && <p className="muted" role="status">Checking Google sign-in status…</p>}
-    {status.isError && <p className="error" role="alert">Google sign-in status is unavailable.</p>}
-    {status.isSuccess && !status.data.configured && <p className="muted">Google sign-in is not configured by the administrator.</p>}
+    <h2>{t('googleSignIn')}</h2>
+    {status.isPending && <p className="muted" role="status">{t('checkingGoogle')}</p>}
+    {status.isError && <p className="error" role="alert">{t('unavailable')}</p>}
+    {status.isSuccess && !status.data.configured && <p className="muted">{t('unconfigured')}</p>}
     {status.isSuccess && status.data.configured && <>
-      <p className="muted">{status.data.linked ? 'A Google account is linked.' : 'No Google account is linked.'}</p>
-      {providerError && <p className="error" role="alert">Google account linking could not be completed.</p>}
-      <p className="muted">Sign-in requests only basic profile and email access. Gmail access is requested separately when a mail source is configured.</p>
-      <div className="field"><Label htmlFor="google-password">Confirm your password to continue</Label><Input id="google-password" type="password" autoComplete="current-password" value={password} onChange={(event) => setPassword(event.target.value)} /></div>
+      <p className="muted">{status.data.linked ? t('linked') : t('unlinked')}</p>
+      {providerError && <p className="error" role="alert">{t('linkFailed')}</p>}
+      <p className="muted">{t('scopeHelp')}</p>
+      <div className="field"><Label htmlFor="google-password">{t('confirmPassword')}</Label><Input id="google-password" type="password" autoComplete="current-password" value={password} onChange={(event) => setPassword(event.target.value)} /></div>
       {status.data.linked
-        ? <Button type="button" className="secondary" disabled={!password || unlink.isPending} onClick={() => unlink.mutate()}>{unlink.isPending ? 'Unlinking…' : 'Unlink Google'}</Button>
-        : <Button type="button" disabled={!password || link.isPending} onClick={() => link.mutate()}>{link.isPending ? 'Opening Google…' : 'Link Google account'}</Button>}
-      {error && <p className="error" role="alert">{error instanceof ApiError ? error.message : 'The Google account change could not be completed.'}</p>}
+        ? <Button type="button" className="secondary" disabled={!password || unlink.isPending} onClick={() => unlink.mutate()}>{unlink.isPending ? t('unlinking') : t('unlinkGoogle')}</Button>
+        : <Button type="button" disabled={!password || link.isPending} onClick={() => link.mutate()}>{link.isPending ? t('linking') : t('linkGoogle')}</Button>}
+      {error && <p className="error" role="alert">{t(apiFailureKey(error) ?? 'changeFailed')}</p>}
     </>}
   </section>;
 }

@@ -3,10 +3,12 @@
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { useRouter } from 'next/navigation';
+import { useTranslations } from 'next-intl';
 import { useEffect, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { z } from 'zod';
-import { ApiError, apiRequest, csrfHeaders } from '@/core/api';
+import { apiRequest, csrfHeaders } from '@/core/api';
+import { apiFailureKey } from '@/core/api-failure-key';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -16,6 +18,7 @@ type LoginForm = z.infer<typeof loginSchema>;
 
 export default function LoginPage() {
   const router = useRouter();
+  const t = useTranslations('login');
   const [googleError, setGoogleError] = useState(false);
   useEffect(() => setGoogleError(new URLSearchParams(window.location.search).get('google') === 'error'), []);
   const form = useForm<LoginForm>({ resolver: zodResolver(loginSchema) });
@@ -43,18 +46,18 @@ export default function LoginPage() {
     onSuccess: () => router.replace('/app'),
   });
 
-  return <main className="page"><section className="auth-panel"><span className="brand">BBD-OS</span><h1>Welcome back</h1><p className="muted">Sign in to your private workspace.</p><form className="form" onSubmit={form.handleSubmit((values) => login.mutate(values))}>
-    <div className="field"><Label htmlFor="password">Password</Label><Input id="password" type="password" autoComplete="current-password" autoFocus {...form.register('password')} />{form.formState.errors.password && <span className="error">Enter your password.</span>}</div>
-    {login.error && <p className="error" role="alert">{login.error instanceof ApiError ? login.error.message : 'Sign in could not be completed.'}</p>}
-    <Button type="submit" disabled={login.isPending}>{login.isPending ? 'Signing in…' : 'Sign in'}</Button>
+  return <main className="page"><section className="auth-panel"><span className="brand">BBD-OS</span><h1>{t('welcome')}</h1><p className="muted">{t('privateWorkspace')}</p><form className="form" onSubmit={form.handleSubmit((values) => login.mutate(values))}>
+    <div className="field"><Label htmlFor="password">{t('password')}</Label><Input id="password" type="password" autoComplete="current-password" autoFocus {...form.register('password')} />{form.formState.errors.password && <span className="error">{t('enterPassword')}</span>}</div>
+    {login.error && <p className="error" role="alert">{t(apiFailureKey(login.error) ?? 'signInFailed')}</p>}
+    <Button type="submit" disabled={login.isPending}>{login.isPending ? t('signingIn') : t('signIn')}</Button>
   </form>
-  {googleStatus.isPending && <p className="muted" role="status">Checking Google sign-in availability…</p>}
-  {googleStatus.isError && <p className="error" role="alert">Google sign-in availability is unknown.</p>}
-  {googleStatus.isSuccess && !googleStatus.data.configured && <p className="muted">Google sign-in is not configured.</p>}
-  {googleStatus.isSuccess && googleStatus.data.configured && <div className="form"><p className="muted">Or sign in with Google.</p>
-    {googleError && <p className="error" role="alert">Google sign-in could not be completed.</p>}
-    <Button className="secondary" type="button" disabled={googleLogin.isPending} onClick={() => googleLogin.mutate()}>{googleLogin.isPending ? 'Opening Google…' : 'Continue with Google'}</Button>
-    {googleLogin.error && <p className="error" role="alert">{googleLogin.error instanceof ApiError ? googleLogin.error.message : 'Google sign-in could not be started.'}</p>}
+  {googleStatus.isPending && <p className="muted" role="status">{t('checkingGoogle')}</p>}
+  {googleStatus.isError && <p className="error" role="alert">{t('googleUnknown')}</p>}
+  {googleStatus.isSuccess && !googleStatus.data.configured && <p className="muted">{t('googleUnconfigured')}</p>}
+  {googleStatus.isSuccess && googleStatus.data.configured && <div className="form"><p className="muted">{t('orGoogle')}</p>
+    {googleError && <p className="error" role="alert">{t('googleFailed')}</p>}
+    <Button className="secondary" type="button" disabled={googleLogin.isPending} onClick={() => googleLogin.mutate()}>{googleLogin.isPending ? t('openingGoogle') : t('continueGoogle')}</Button>
+    {googleLogin.error && <p className="error" role="alert">{t(apiFailureKey(googleLogin.error) ?? 'googleStartFailed')}</p>}
   </div>}
   </section></main>;
 }

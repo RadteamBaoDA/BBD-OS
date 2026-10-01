@@ -15,6 +15,8 @@ from redis.asyncio import Redis
 from core.config import Settings
 from core.model_gateway.schemas import AIExecutionConfig, AISettingsRead, AISettingsUpdate, ModelMapping, PrivacySettings
 from modules.settings.models import AISettingsRecord, legacy_aliases
+from modules.settings.models import OwnerPreferencesRecord
+from modules.settings.schemas import OwnerPreferencesRead, OwnerPreferencesUpdate
 
 OWNER_ID = 1
 ALIASES = ("reasoning-large", "reasoning-small", "fast", "embedding", "reranker", "vision", "local-private")
@@ -262,3 +264,58 @@ async def save_ai_settings(session: AsyncSession, update: AISettingsUpdate, sett
     row.configuration_revision += 1
     await session.flush()
     return await read_ai_settings(session, settings)
+
+
+async def read_owner_preferences(session: AsyncSession) -> OwnerPreferencesRead:
+    row = await session.scalar(
+        select(OwnerPreferencesRecord)
+        .where(OwnerPreferencesRecord.owner_id == OWNER_ID)
+        .execution_options(populate_existing=True)
+    )
+    if row is None:
+        return OwnerPreferencesRead(
+            configuration_revision=1,
+            persisted=False,
+            theme="system",
+            locale="en-us",
+            timezone="Asia/Ho_Chi_Minh",
+        )
+    return OwnerPreferencesRead(
+        configuration_revision=row.configuration_revision,
+        persisted=True,
+        theme=row.theme,
+        locale=row.locale,
+        timezone=row.timezone,
+    )
+
+
+async def save_owner_preferences(
+    session: AsyncSession,
+    update: OwnerPreferencesUpdate,
+) -> OwnerPreferencesRead:
+    await session.execute(
+        insert(OwnerPreferencesRecord)
+        .values(owner_id=OWNER_ID)
+        .on_conflict_do_nothing(index_elements=["owner_id"])
+    )
+    row = await session.scalar(
+        select(OwnerPreferencesRecord)
+        .where(OwnerPreferencesRecord.owner_id == OWNER_ID)
+        .with_for_update()
+    )
+    if row is None:
+        raise RuntimeError("Owner preferences singleton could not be initialized")
+    if row.configuration_revision != update.expected_revision:
+        raise HTTPException(status_code=409, detail="Preferences changed; reload before saving")
+    row.theme = update.theme
+    row.locale = update.locale
+    row.timezone = update.timezone
+    row.configuration_revision += 1
+    await session.flush()
+    return OwnerPreferencesRead(
+        configuration_revision=row.configuration_revision,
+        persisted=True,
+        theme=row.theme,
+        locale=row.locale,
+        timezone=row.timezone,
+    )

@@ -30,3 +30,5 @@ PostgreSQL migrations run before API and worker startup. Their persistent data u
 See [development](docs/development.md), [deployment](docs/deployment.md), [privacy](docs/privacy.md), and [implementation status](docs/IMPLEMENTATION_STATUS.md).
 
 Optional Google sign-in uses server-side OAuth credentials. The account menu and its Google-link dialog use locally owned Radix-based shadcn source under `apps/web/src/components/ui`; run `npm ci` and `uv sync` to install the locked frontend and backend dependencies. See the [Google OAuth setup](docs/deployment.md#google-sign-in) and [open-source inventory](OSS_USED.md) for configuration and license details.
+
+User display preferences (theme, interface language, and IANA time zone) are stored in the owner preferences row. The shell provides English (US) and Vietnamese UI catalogs; source and user-authored content remain unchanged.

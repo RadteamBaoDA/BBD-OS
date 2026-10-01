@@ -1,5 +1,7 @@
 import type { Metadata } from 'next';
+import { NextIntlClientProvider } from 'next-intl';
 import type { ReactNode } from 'react';
+import { messages } from '@/core/messages';
 import { QueryProvider } from '@/core/query-provider';
 import './globals.css';
 
@@ -10,9 +12,11 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: Readonly<{ children: ReactNode }>) {
   return (
-    <html lang="en">
+    <html lang="en-US" suppressHydrationWarning>
       <body>
-        <QueryProvider>{children}</QueryProvider>
+        <NextIntlClientProvider locale="en-US" messages={messages['en-us']}>
+          <QueryProvider>{children}</QueryProvider>
+        </NextIntlClientProvider>
       </body>
     </html>
   );

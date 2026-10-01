@@ -1,4 +1,3 @@
-import { WorkspaceShell } from '@/core/app-shell/workspace-shell';
-import { SourceList } from '@/modules/sources/source-list';
+import { redirect } from 'next/navigation';
 
-export default function SourcesPage() { return <WorkspaceShell><SourceList /></WorkspaceShell>; }
+export default function SourcesPage() { redirect('/settings/sources'); }

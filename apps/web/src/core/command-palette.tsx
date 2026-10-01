@@ -2,8 +2,9 @@
 
 import { useRouter } from 'next/navigation';
 import { useEffect, useRef, useState } from 'react';
+import { useTranslations } from 'next-intl';
 import { Button } from '@/components/ui/button';
-import { modules } from '@/core/module-registry';
+import { commandDestinations } from '@/core/module-registry';
 
 function isEditing(target: EventTarget | null) {
   return target instanceof HTMLElement && Boolean(target.closest('input, textarea, select, [contenteditable], [role="textbox"]'));
@@ -11,11 +12,12 @@ function isEditing(target: EventTarget | null) {
 
 export function CommandPalette() {
   const router = useRouter();
+  const t = useTranslations('shell');
   const dialogRef = useRef<HTMLDialogElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const [open, setOpen] = useState(false);
   const [filter, setFilter] = useState('');
-  const actions = modules.filter((module) => module.enabled && module.label.toLocaleLowerCase().includes(filter.toLocaleLowerCase()));
+  const actions = commandDestinations.filter((action) => t(action.messageKey).toLocaleLowerCase().includes(filter.toLocaleLowerCase()));
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -39,12 +41,12 @@ export function CommandPalette() {
     if (!open && dialog.open) dialog.close();
   }, [open]);
 
-  return <><Button type="button" className="secondary" onClick={() => setOpen(true)} aria-keyshortcuts="Control+K Meta+K">Commands <span className="muted">⌘K</span></Button>
-    <dialog ref={dialogRef} className="command-dialog" aria-label="Workspace commands" onClose={() => { setOpen(false); setFilter(''); }}>
-      <div className="section-heading"><h2>Go to</h2><Button type="button" className="secondary" onClick={() => setOpen(false)}>Close</Button></div>
-      <label className="label" htmlFor="command-filter">Filter actions</label><input ref={inputRef} id="command-filter" className="input" value={filter} onChange={(event) => setFilter(event.target.value)} />
-      <ul className="command-actions">{actions.map((action) => <li key={action.id}><button type="button" className="text-button" onClick={() => { setOpen(false); router.push(action.href); }}>{action.label}</button></li>)}</ul>
-      {actions.length === 0 && <p className="muted">No matching actions.</p>}
+  return <><Button type="button" className="secondary" onClick={() => setOpen(true)} aria-keyshortcuts="Control+K Meta+K">{t('commands')} <span className="muted">⌘K</span></Button>
+    <dialog ref={dialogRef} className="command-dialog" aria-label={t('workspaceCommands')} onClose={() => { setOpen(false); setFilter(''); }}>
+      <div className="section-heading"><h2>{t('goTo')}</h2><Button type="button" className="secondary" onClick={() => setOpen(false)}>{t('close')}</Button></div>
+      <label className="label" htmlFor="command-filter">{t('filterActions')}</label><input ref={inputRef} id="command-filter" className="input" value={filter} onChange={(event) => setFilter(event.target.value)} />
+      <ul className="command-actions">{actions.map((action) => <li key={action.id}><button type="button" className="text-button" onClick={() => { setOpen(false); router.push(action.href); }}>{t(action.messageKey)}</button></li>)}</ul>
+      {actions.length === 0 && <p className="muted">{t('noActions')}</p>}
     </dialog>
   </>;
 }
