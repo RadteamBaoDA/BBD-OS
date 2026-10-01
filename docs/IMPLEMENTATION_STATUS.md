@@ -33,6 +33,6 @@ Phase 0 verified on 2026-09-25: Ruff, mypy, pytest (15 passed, 1 integration tes
 - [x] R02 secure Google login code/build/review integrated into develop (`faeb664`); live Google acceptance deferred.
 - [~] R03-core code/build/review integrated into develop (`fb647bb`, feature `a52bc24`); three repair rounds closed all material source findings. R03-OAuth carried to the actual GitHub consumer in P09-T1; full R03 pending.
 - [x] R05 SDK/durable AI settings code/build/review integrated into develop (`65c5acf`; feature `dd9142f`, integration `24982d1`). Combined build/review passed; runtime acceptance deferred.
-- [~] R09 shell/preferences/theme/locales feature216e135 code/build/source review approved; combined R03/R05 integration build passed, integration review active before develop merge.
+- [x] R09 shell/preferences/theme/locales integrated into develop3e98c0f (feature216e135, integrationb170746); code/build/source and integration review approved. Behavioral acceptance deferred; legacy UI localization tracked for R16.
 - [ ] Remaining reconciliation production code/build/review and later acceptance.
-- Active production task: R09 integration source review after successful combined build; R03-core and R05 integrated. R04/R06 follow the reviewed shell. Original Phase 1–3 evidence remains; tests are deferred until all original and supplemental code is complete.
+- Active production task: R04/R06 ready for parallel implementation after R09 integration; R03-core and R05 integrated. R04/R06 follow the reviewed shell. Original Phase 1–3 evidence remains; tests are deferred until all original and supplemental code is complete.
