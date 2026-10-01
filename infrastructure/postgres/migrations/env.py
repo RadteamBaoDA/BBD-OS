@@ -20,6 +20,7 @@ from modules.ingestion.models import (
     SourceIngestionState,
     SourceObservation,
 )
+from modules.connectors.models import ConnectorManagedCredential, ConnectorProvisioning
 from modules.sources.models import Source, SourcePurgeOperation
 from modules.search.models import IndexGeneration, SearchIndexItem
 from modules.settings.models import AISettingsRecord
@@ -36,6 +37,7 @@ _ingestion_models = (
     SourceObservation,
 )
 _search_models = (IndexGeneration, SearchIndexItem)
+_connector_models = (ConnectorProvisioning, ConnectorManagedCredential)
 config = context.config
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)

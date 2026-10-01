@@ -27,6 +27,8 @@ class ReceiveBatch(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     source_id: UUID
+    source_generation: int = Field(ge=1)
+    connector_revision: int | None = Field(default=None, ge=1)
     batch_key: str = Field(min_length=1, max_length=255)
     cursor_before: str | None = Field(default=None, max_length=4096)
     cursor_after: str | None = Field(default=None, max_length=4096)

@@ -17,6 +17,7 @@ from modules.ingestion.routes import documents_router as document_upload_router
 from modules.ingestion.routes import router as ingestion_router
 from modules.sources.routes import router as sources_router
 from modules.connectors.routes import router as connectors_router
+from modules.connectors.provisioning_routes import router as connector_provisioning_router
 from modules.settings.routes import router as settings_router
 from modules.model_gateway.routes import router as model_gateway_router
 from modules.search.routes import router as search_router
@@ -54,6 +55,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(document_upload_router)
     app.include_router(ingestion_router)
     app.include_router(connectors_router)
+    app.include_router(connector_provisioning_router)
     app.include_router(settings_router)
     app.include_router(model_gateway_router)
     app.include_router(search_router)

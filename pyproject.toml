@@ -22,7 +22,7 @@ dependencies = [
     "authlib>=1.6,<2",
     "itsdangerous>=2.2,<3",
     "openai>=2.20,<3",
-    "cryptography>=44,<51",
+    "cryptography>=50,<51",
 ]
 
 [dependency-groups]
