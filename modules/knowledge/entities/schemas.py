@@ -166,6 +166,81 @@ class EntityEvidenceRead(BaseModel):
     observed_at: datetime
     extracted_at: datetime
     confidence: float
+    source_id: UUID
+    title: str
+    canonical_url: str | None
+    excerpt: str
+
+
+class EntityEvidencePage(BaseModel):
+    items: list[EntityEvidenceRead]
+    next_cursor: str | None
+
+
+class EntityMergeRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    into_id: UUID
+    expected_revision: int = Field(ge=1)
+    expected_into_revision: int = Field(ge=1)
+    reason: str = Field(min_length=1, max_length=300)
+    future_document_id: UUID | None = None
+
+
+class EntitySplitRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    evidence_ids: list[UUID] = Field(min_length=1, max_length=200)
+    expected_revision: int = Field(ge=1)
+    new_entity: EntityCreate
+    reason: str = Field(min_length=1, max_length=300)
+    future_document_id: UUID | None = None
+
+    @field_validator("evidence_ids")
+    @classmethod
+    def unique_evidence(cls, value: list[UUID]) -> list[UUID]:
+        if len(set(value)) != len(value):
+            raise ValueError("Evidence membership IDs must be unique")
+        return value
+
+
+class EntitySuppressionRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    evidence_ids: list[UUID] = Field(min_length=1, max_length=200)
+    expected_revision: int = Field(ge=1)
+    reason: str = Field(min_length=1, max_length=300)
+    future_document_id: UUID | None = None
+
+    @field_validator("evidence_ids")
+    @classmethod
+    def unique_evidence(cls, value: list[UUID]) -> list[UUID]:
+        if len(set(value)) != len(value):
+            raise ValueError("Evidence membership IDs must be unique")
+        return value
+
+
+class EntityCorrectionResult(BaseModel):
+    operation: Literal["merge", "split", "suppress"]
+    entity_id: UUID
+    canonical_entity_id: UUID
+    replacement_entity_ids: list[UUID]
+    revision: int
+    conflicts: list[dict[str, Any]] = Field(default_factory=list)
+
+
+class EntityCorrectionConflict(BaseModel):
+    code: str
+    message: str
+    entity_ids: list[UUID] = Field(default_factory=list)
+    membership_ids: list[UUID] = Field(default_factory=list)
+    relationship_ids: list[UUID] = Field(default_factory=list)
+
+
+class EntityCorrectionPreview(BaseModel):
+    operation: Literal["merge", "split"]
+    entity_ids: list[UUID]
+    membership_ids: list[UUID]
+    relationship_ids: list[UUID]
+    evidence_ref_count: int
+    conflicts: list[EntityCorrectionConflict] = Field(default_factory=list)
 
 
 class EvidenceRef(BaseModel):

@@ -1,7 +1,7 @@
 from datetime import datetime
 from uuid import UUID, uuid4
 
-from sqlalchemy import CheckConstraint, DateTime, ForeignKey, Index, String, UniqueConstraint, func
+from sqlalchemy import CheckConstraint, DateTime, ForeignKey, Index, String, UniqueConstraint, func, literal_column
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.types import Uuid
@@ -36,7 +36,12 @@ class Relationship(Base):
 class RelationshipEvidence(Base):
     __tablename__ = "relationship_evidence"
     __table_args__ = (
-        UniqueConstraint("relationship_id", "document_version_id", "chunk_id", name="uq_relationship_evidence_fact_chunk"),
+        Index(
+            "uq_relationship_evidence_fact_endpoint_pair", "relationship_id", "document_version_id", "chunk_id",
+            func.coalesce(literal_column("source_membership_id"), literal_column("'00000000-0000-0000-0000-000000000000'::uuid")),
+            func.coalesce(literal_column("target_membership_id"), literal_column("'00000000-0000-0000-0000-000000000000'::uuid")),
+            unique=True,
+        ),
         CheckConstraint("confidence >= 0 AND confidence <= 1", name="ck_relationship_evidence_confidence"),
         Index("ix_relationship_evidence_version", "document_version_id"),
         Index("ix_relationship_evidence_chunk", "chunk_id"),

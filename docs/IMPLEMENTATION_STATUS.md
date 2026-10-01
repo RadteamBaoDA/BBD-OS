@@ -1,6 +1,6 @@
 # BBD-OS implementation status
 
-Updated: 2026-10-01 (R01/R02 integrated; R03-core/R05 integrated; R09 integrated; R04/R06 integrated and archived; RN1 integrated and archived; P04-T2 production/build/review complete; P04-T3 next; behavioral acceptance deferred).
+Updated: 2026-10-01 (R01/R02 integrated; R03-core/R05 integrated; R09 integrated; R04/R06 integrated and archived; RN1 integrated and archived; P04-T2 production/build/review complete; P04-T3 production/build/review complete; P04-T4 next; behavioral acceptance deferred).
 
 Markers: `[ ]` not started; `[~]` in progress; `[x]` complete; `[!]` blocked.
 
@@ -14,7 +14,7 @@ Markers: `[ ]` not started; `[~]` in progress; `[x]` complete; `[!]` blocked.
 - [x] Phase 1: core data platform code/build and whole-branch review complete; merged to `main` (`d425057`). Behavioral acceptance remains deferred.
 - [x] Phase 2: ingestion and packaged collection workflows (code/build and independent review complete; merged to `main` as `2f7c409`; behavioral acceptance deferred).
 - [x] Phase 3: search and embeddings production code/build/whole-branch review complete; behavioral acceptance deferred to the post-code test stage.
-- [~] Phase 4: P04-T1 entity/relationship and P04-T2 bounded extraction/resolution code/build/review complete; P04-T3 is next and T4 remains. Runtime/provider acceptance is deferred. See `docs/task-reports/P04-T2.md`.
+- [~] Phase 4: P04-T1 entity/relationship and P04-T2 bounded extraction/resolution code/build/review complete; P04-T3 production code/build/review complete; T4 remains. Runtime/provider acceptance is deferred. See `docs/task-reports/P04-T2.md`.
 - [ ] Phase 5: temporal knowledge and Graphiti.
 - [ ] Phase 6: Ask/RAG and citations.
 - [ ] Phase 7: agents, tools, and approvals.

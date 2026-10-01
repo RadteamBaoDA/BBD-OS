@@ -23,14 +23,15 @@ def install_error_handling(app: FastAPI) -> None:
 
     @app.exception_handler(StarletteHTTPException)
     async def http_error(request: Request, exc: StarletteHTTPException) -> JSONResponse:
+        structured = exc.detail if isinstance(exc.detail, dict) else {}
         return JSONResponse(
             status_code=exc.status_code,
             headers=exc.headers,
             content={
                 "error": {
-                    "code": f"HTTP_{exc.status_code}",
-                    "message": str(exc.detail),
-                    "details": {},
+                    "code": structured.get("code", f"HTTP_{exc.status_code}"),
+                    "message": structured.get("message", str(exc.detail)),
+                    "details": structured.get("details", {}),
                     "requestId": getattr(request.state, "request_id", ""),
                 }
             },

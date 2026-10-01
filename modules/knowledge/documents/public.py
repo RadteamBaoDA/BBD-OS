@@ -854,6 +854,19 @@ async def read_evidence_refs(
     return result
 
 
+async def lock_document_ids(session: AsyncSession, document_ids: list[UUID]) -> list[UUID]:
+    """Lock a bounded, sorted set of retained document rows for owner transactions."""
+    ids = sorted(set(document_ids), key=str)
+    if len(ids) > 100:
+        raise ValueError("Document lock set exceeds its atomic limit")
+    if not ids:
+        return []
+    locked = list((await session.scalars(
+        select(Document.id).where(Document.id.in_(ids)).order_by(Document.id).with_for_update()
+    )).all())
+    return locked
+
+
 async def _read_evidence_ref_rows(
     session: AsyncSession, refs: list[tuple[UUID, UUID]]
 ) -> list[EvidenceReferenceRead]:

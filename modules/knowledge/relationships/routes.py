@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from core.auth.dependencies import require_owner, require_owner_write
 from core.auth.models import AuthSession
 from core.database import get_session
+from modules.knowledge.entities.public import RedirectedEntityConflict
 from modules.knowledge.relationships import public
 from modules.knowledge.relationships.schemas import EvidencePage, RelationshipCreate, RelationshipPage, RelationshipRead
 
@@ -31,6 +32,8 @@ async def list_relationships(
 async def create_relationship(payload: RelationshipCreate, session: Session, owner: OwnerWrite) -> RelationshipRead:
     try:
         return await public.create_relationship(session, payload, actor_id=owner.owner_id)
+    except RedirectedEntityConflict as exc:
+        raise HTTPException(status_code=409, detail={"code": "ENTITY_REDIRECTED", "message": str(exc), "details": {}}) from exc
     except LookupError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except ValueError as exc:
@@ -42,8 +45,13 @@ async def delete_relationship(
     relationship_id: UUID, session: Session, owner: OwnerWrite,
     reason: Annotated[str, Query(min_length=1, max_length=300)] = "owner_relationship_delete",
 ) -> None:
-    if not await public.remove_relationship(session, relationship_id, actor_id=owner.owner_id, reason=reason):
-        raise HTTPException(status_code=404, detail="Relationship not found")
+    try:
+        if not await public.remove_relationship(session, relationship_id, actor_id=owner.owner_id, reason=reason):
+            raise HTTPException(status_code=404, detail="Relationship not found")
+    except RedirectedEntityConflict as exc:
+        raise HTTPException(status_code=409, detail={"code": "ENTITY_REDIRECTED", "message": str(exc), "details": {}}) from exc
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
 
 
 @router.get("/{relationship_id}/evidence", response_model=EvidencePage)

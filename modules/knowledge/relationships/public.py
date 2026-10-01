@@ -20,6 +20,8 @@ from modules.knowledge.relationships.schemas import (
     RelationshipCreate,
     RelationshipPage,
     RelationshipRead,
+    CorrectionRelationshipRef,
+    CorrectionSupportRef,
 )
 
 MAX_CLEANUP_SUPPORTS = 10_000
@@ -87,6 +89,8 @@ async def publish_extracted_relationship(
         RelationshipEvidence.relationship_id == relationship.id,
         RelationshipEvidence.document_version_id == document_version_id,
         RelationshipEvidence.chunk_id == chunk_id,
+        RelationshipEvidence.source_membership_id == source_membership_id,
+        RelationshipEvidence.target_membership_id == target_membership_id,
     ).with_for_update())
     if evidence is None:
         session.add(RelationshipEvidence(
@@ -109,7 +113,7 @@ async def publish_extracted_relationship(
 async def _evidence_read(session: AsyncSession, rows: list[RelationshipEvidence]) -> list[EvidenceRead]:
     if not rows:
         return []
-    pairs = [(row.document_version_id, row.chunk_id) for row in rows]
+    pairs = list(dict.fromkeys((row.document_version_id, row.chunk_id) for row in rows))
     refs = await documents.read_evidence_refs(session, pairs)
     by_pair = {(ref.document_version_id, ref.chunk_id): ref for ref in refs}
     return [
@@ -200,14 +204,14 @@ async def get_neighbors(
     if not 2 <= limit <= 100:
         raise ValueError("Neighbor page limit must be between 2 and 100 total nodes")
     try:
-        await entities.get_entity_refs(session, [entity_id])
+        focus = (await entities.get_entity_refs(session, [entity_id]))[0].canonical_id
     except LookupError:
         return None
     statement = select(Relationship).where(
-        or_(Relationship.source_entity_id == entity_id, Relationship.target_entity_id == entity_id)
+        or_(Relationship.source_entity_id == focus, Relationship.target_entity_id == focus)
     )
     if cursor:
-        created_at, relationship_id = _decode_neighbor_cursor(cursor, entity_id)
+        created_at, relationship_id = _decode_neighbor_cursor(cursor, focus)
         statement = statement.where(tuple_(Relationship.created_at, Relationship.id) < (created_at, relationship_id))
     rows = list((await session.scalars(
         statement.order_by(desc(Relationship.created_at), desc(Relationship.id)).limit(limit + 1)
@@ -215,22 +219,22 @@ async def get_neighbors(
     truncated = len(rows) > limit - 1
     rows = rows[: limit - 1]
     neighbor_ids = list(dict.fromkeys(
-        row.target_entity_id if row.source_entity_id == entity_id else row.source_entity_id for row in rows
+        row.target_entity_id if row.source_entity_id == focus else row.source_entity_id for row in rows
     ))
     refs = await entities.get_entity_refs(session, neighbor_ids) if neighbor_ids else []
     by_id = {ref.requested_id: ref for ref in refs}
     items = [
         NeighborRead(
             entity=EntityGraphRead(
-                id=by_id[neighbor_id].canonical_id, type=by_id[neighbor_id].type,
+            id=by_id[neighbor_id].canonical_id, type=by_id[neighbor_id].type,
                 name=by_id[neighbor_id].name, revision=by_id[neighbor_id].revision,
             ),
             relationship=_relationship_read(row),
         )
         for row in rows
-        if (neighbor_id := (row.target_entity_id if row.source_entity_id == entity_id else row.source_entity_id)) in by_id
+        if (neighbor_id := (row.target_entity_id if row.source_entity_id == focus else row.source_entity_id)) in by_id
     ]
-    next_cursor = _encode_neighbor_cursor(entity_id, rows[-1].created_at, rows[-1].id) if truncated and rows else None
+    next_cursor = _encode_neighbor_cursor(focus, rows[-1].created_at, rows[-1].id) if truncated and rows else None
     return NeighborPage(items=items, truncated=truncated, next_cursor=next_cursor)
 
 
@@ -241,22 +245,28 @@ async def create_relationship(
         raise ValueError("Relationship endpoints must be different")
     if payload.origin == "derived" and not payload.evidence:
         raise ValueError("Derived relationships require at least one evidence reference")
-    pairs = [(item.document_version_id, item.chunk_id) for item in payload.evidence]
-    if len(set(pairs)) != len(pairs):
-        raise ValueError("Evidence references must be unique")
+    pairs = list(dict.fromkeys((item.document_version_id, item.chunk_id) for item in payload.evidence))
+    support_pairs = [(
+        item.document_version_id, item.chunk_id,
+        item.source_membership_id, item.target_membership_id,
+    ) for item in payload.evidence]
+    if len(set(support_pairs)) != len(support_pairs):
+        raise ValueError("Relationship evidence membership pairs must be unique")
     evidence_refs = await documents.read_evidence_refs(session, pairs, for_write=bool(pairs))
     by_pair = {(ref.document_version_id, ref.chunk_id): ref for ref in evidence_refs}
     endpoints = [payload.source_entity_id, payload.target_entity_id]
     try:
         await entities.get_entity_refs(session, endpoints, for_write=True)
+    except entities.TerminalEntityConflict as exc:
+        raise LookupError("Relationship entity not found") from exc
     except LookupError as exc:
         raise LookupError("Relationship entity not found") from exc
-    membership_ids = [
+    membership_ids = sorted({
         identifier
         for item in payload.evidence
         for identifier in (item.source_membership_id, item.target_membership_id)
         if identifier is not None
-    ]
+    }, key=str)
     try:
         memberships = await entities.get_membership_refs(session, membership_ids, for_write=True)
     except LookupError as exc:
@@ -324,7 +334,10 @@ async def remove_relationship(
     if hint is None:
         return False
     endpoints = [hint.source_entity_id, hint.target_entity_id]
-    await entities.get_entity_refs(session, endpoints, for_write=True)
+    try:
+        await entities.get_entity_refs(session, endpoints, for_write=True)
+    except entities.TerminalEntityConflict as exc:
+        raise LookupError("Relationship entity not found") from exc
     relationship = await session.scalar(
         select(Relationship).where(Relationship.id == relationship_id).with_for_update()
     )
@@ -374,6 +387,298 @@ async def lock_relationship_ids(session: AsyncSession, relationship_ids: list[UU
         await session.scalars(
             select(Relationship.id).where(Relationship.id.in_(ids)).order_by(Relationship.id).with_for_update()
         )
+
+
+async def lock_delete_closure(
+    session: AsyncSession, entity_ids: list[UUID]
+) -> tuple[list[UUID], list[UUID]]:
+    """Lock and return the exact incident edge/support IDs after entity locks."""
+    ids = sorted(set(entity_ids), key=str)
+    if len(ids) > 100:
+        raise ValueError("Entity deletion closure exceeds its atomic entity limit")
+    edges = list((await session.scalars(
+        select(Relationship).where(
+            or_(Relationship.source_entity_id.in_(ids), Relationship.target_entity_id.in_(ids))
+        ).order_by(Relationship.id).limit(101).execution_options(populate_existing=True)
+    )).all())
+    if len(edges) > 100:
+        raise ValueError("Entity deletion closure exceeds its atomic relationship limit")
+    relationship_ids = [item.id for item in edges]
+    supports = list((await session.scalars(
+        select(RelationshipEvidence).where(RelationshipEvidence.relationship_id.in_(relationship_ids))
+        .order_by(RelationshipEvidence.id).limit(201).execution_options(populate_existing=True)
+    )).all()) if relationship_ids else []
+    support_snapshot = [(
+        item.id, item.relationship_id, item.document_version_id, item.chunk_id,
+        item.source_membership_id, item.target_membership_id, item.confidence,
+    ) for item in supports]
+    if len(supports) > 200 or len({(item.document_version_id, item.chunk_id) for item in supports}) > 100:
+        raise ValueError("Entity deletion closure exceeds its atomic support limit")
+    await lock_relationship_ids(session, relationship_ids)
+    support_ids = sorted((item.id for item in supports), key=str)
+    if support_ids:
+        await session.scalars(select(RelationshipEvidence.id).where(
+            RelationshipEvidence.id.in_(support_ids)
+        ).order_by(RelationshipEvidence.id).with_for_update().execution_options(populate_existing=True))
+    refreshed_edges = list((await session.scalars(
+        select(Relationship).where(
+            or_(Relationship.source_entity_id.in_(ids), Relationship.target_entity_id.in_(ids))
+        ).order_by(Relationship.id).execution_options(populate_existing=True)
+    )).all())
+    refreshed_supports = list((await session.scalars(
+        select(RelationshipEvidence).where(RelationshipEvidence.relationship_id.in_(relationship_ids))
+        .order_by(RelationshipEvidence.id).execution_options(populate_existing=True)
+    )).all()) if relationship_ids else []
+    if ([item.id for item in refreshed_edges] != relationship_ids
+            or [item.id for item in refreshed_supports] != support_ids
+            or support_snapshot
+            != [(item.id, item.relationship_id, item.document_version_id, item.chunk_id,
+                 item.source_membership_id, item.target_membership_id, item.confidence) for item in refreshed_supports]):
+        raise ValueError("Entity deletion relationship closure changed; retry")
+    return relationship_ids, support_ids
+
+
+async def remove_entity_closure(
+    session: AsyncSession, entity_ids: list[UUID], relationship_ids: list[UUID], support_ids: list[UUID]
+) -> None:
+    ids = sorted(set(entity_ids), key=str)
+    current = list((await session.scalars(
+        select(Relationship.id).where(
+            or_(Relationship.source_entity_id.in_(ids), Relationship.target_entity_id.in_(ids))
+        ).order_by(Relationship.id)
+    )).all())
+    if current != sorted(set(relationship_ids), key=str):
+        raise ValueError("Entity deletion relationship closure changed; retry")
+    await session.execute(delete(RelationshipEvidence).where(RelationshipEvidence.id.in_(support_ids)))
+    await session.execute(delete(Relationship).where(Relationship.id.in_(relationship_ids)))
+
+
+async def list_correction_relationship_refs(
+    session: AsyncSession, entity_ids: list[UUID]
+) -> list[CorrectionRelationshipRef]:
+    ids = sorted(set(entity_ids), key=str)
+    if len(ids) > 100:
+        raise ValueError("Correction entity closure exceeds its atomic limit")
+    if not ids:
+        return []
+    edges = list((await session.scalars(
+        select(Relationship).where(
+            or_(Relationship.source_entity_id.in_(ids), Relationship.target_entity_id.in_(ids))
+        ).order_by(Relationship.id).limit(101).execution_options(populate_existing=True)
+    )).all())
+    if len(edges) > 100:
+        raise ValueError("Correction relationship closure exceeds its atomic limit")
+    if len(edges) != len(set(entity_ids)) and any(
+        edge.source_entity_id == edge.target_entity_id for edge in edges
+    ):
+        raise ValueError("Correction relationship closure contains a self relationship")
+    supports = (await session.scalars(
+        select(RelationshipEvidence).where(
+            RelationshipEvidence.relationship_id.in_([edge.id for edge in edges])
+        ).order_by(RelationshipEvidence.relationship_id, RelationshipEvidence.id).limit(201).execution_options(populate_existing=True)
+    )).all() if edges else []
+    if len(supports) > 200 or len({(row.document_version_id, row.chunk_id) for row in supports}) > 100:
+        raise ValueError("Correction evidence closure exceeds its atomic limit")
+    if len({
+        identifier for row in supports
+        for identifier in (row.source_membership_id, row.target_membership_id)
+        if identifier is not None
+    }) > 200:
+        raise ValueError("Correction membership closure exceeds its atomic limit")
+    by_edge: dict[UUID, list[CorrectionSupportRef]] = {}
+    for row in supports:
+        by_edge.setdefault(row.relationship_id, []).append(CorrectionSupportRef(
+            id=row.id, document_id=row.document_id, source_id=row.source_id,
+            document_version_id=row.document_version_id, chunk_id=row.chunk_id,
+            source_membership_id=row.source_membership_id,
+            target_membership_id=row.target_membership_id, confidence=row.confidence,
+        ))
+    return [CorrectionRelationshipRef(
+        id=edge.id, source_entity_id=edge.source_entity_id,
+        target_entity_id=edge.target_entity_id, type=edge.type, origin=edge.origin,
+        valid_from=edge.valid_from, valid_to=edge.valid_to, metadata=edge.metadata_json,
+        supports=by_edge.get(edge.id, []),
+    ) for edge in edges]
+
+
+async def lock_correction_closure(
+    session: AsyncSession, entity_ids: list[UUID], expected_relationship_ids: set[UUID]
+) -> None:
+    refs = await list_correction_relationship_refs(session, entity_ids)
+    if {item.id for item in refs} != expected_relationship_ids:
+        raise ValueError("Correction relationship closure changed; retry preview")
+    relation_ids = sorted(expected_relationship_ids, key=str)
+    if relation_ids:
+        await session.scalars(select(Relationship).where(Relationship.id.in_(relation_ids)).order_by(Relationship.id).with_for_update().execution_options(populate_existing=True))
+        support_ids = sorted({support.id for ref in refs for support in ref.supports}, key=str)
+        if support_ids:
+            await session.scalars(select(RelationshipEvidence).where(RelationshipEvidence.id.in_(support_ids)).order_by(RelationshipEvidence.id).with_for_update().execution_options(populate_existing=True))
+        refreshed = await list_correction_relationship_refs(session, entity_ids)
+        if [item.model_dump(mode="json") for item in refs] != [item.model_dump(mode="json") for item in refreshed]:
+            raise ValueError("Correction relationship support closure changed; retry preview")
+
+
+def validate_entity_merge_plan(
+    source_entity_id: UUID, target_entity_id: UUID,
+    refs: list[CorrectionRelationshipRef],
+    source_redirect_ids: set[UUID] | None = None,
+) -> None:
+    source_ids = {source_entity_id, *(source_redirect_ids or set())}
+    groups: dict[tuple[object, ...], list[CorrectionRelationshipRef]] = {}
+    for ref in refs:
+        if ref.origin != "derived" and ref.supports:
+            raise ValueError("Merge has unexpected evidence attached to an owner-authored relationship")
+        source_id = target_entity_id if ref.source_entity_id in source_ids else ref.source_entity_id
+        target_id = target_entity_id if ref.target_entity_id in source_ids else ref.target_entity_id
+        if source_id == target_id:
+            raise ValueError("Merge would create a self relationship")
+        key = (source_id, target_id, ref.type, ref.origin, ref.valid_from, ref.valid_to)
+        groups.setdefault(key, []).append(ref)
+    for group in groups.values():
+        if any(ref.metadata != group[0].metadata for ref in group[1:]):
+            raise ValueError("Merge has conflicting relationship metadata")
+
+
+def validate_entity_split_plan(
+    entity_id: UUID, membership_ids: set[UUID],
+    refs: list[CorrectionRelationshipRef],
+) -> None:
+    for ref in refs:
+        if ref.origin == "owner" and ref.supports:
+            raise ValueError("Split has unexpected evidence attached to an owner-authored relationship")
+        if ref.supports and any(
+            support.source_membership_id is None or support.target_membership_id is None
+            for support in ref.supports
+        ):
+            raise ValueError("Split has unresolved legacy relationship endpoint bindings")
+        for support in ref.supports:
+            moves_source = support.source_membership_id in membership_ids
+            moves_target = support.target_membership_id in membership_ids
+            if moves_source and moves_target:
+                raise ValueError("Split would create a self relationship")
+
+
+async def apply_entity_merge(
+    session: AsyncSession, source_entity_id: UUID, target_entity_id: UUID,
+    expected_relationship_ids: set[UUID], closure_entity_ids: list[UUID],
+    source_redirect_ids: set[UUID],
+) -> list[tuple[UUID, UUID]]:
+    refs = await list_correction_relationship_refs(session, closure_entity_ids)
+    if {item.id for item in refs} != expected_relationship_ids:
+        raise ValueError("Correction relationship closure changed; retry preview")
+    validate_entity_merge_plan(source_entity_id, target_entity_id, refs, source_redirect_ids)
+    relation_ids = sorted(expected_relationship_ids, key=str)
+    rows = list((await session.scalars(select(Relationship).where(Relationship.id.in_(relation_ids)).order_by(Relationship.id))).all()) if relation_ids else []
+    source_merge_ids = {source_entity_id} | source_redirect_ids
+    key_groups: dict[tuple[object, ...], list[Relationship]] = {}
+    for row in rows:
+        next_source = target_entity_id if row.source_entity_id in ({source_entity_id} | source_redirect_ids) else row.source_entity_id
+        next_target = target_entity_id if row.target_entity_id in ({source_entity_id} | source_redirect_ids) else row.target_entity_id
+        key = (next_source, next_target, row.type, row.origin, row.valid_from, row.valid_to)
+        key_groups.setdefault(key, []).append(row)
+    replacements: list[tuple[UUID, UUID]] = []
+    affected_relationship_ids: set[UUID] = set()
+    for (source_id, target_id, _, _, _, _), group in key_groups.items():
+        group.sort(key=lambda row: (bool(source_merge_ids.intersection((row.source_entity_id, row.target_entity_id))), str(row.id)))
+        survivor = group[0]
+        survivor.source_entity_id, survivor.target_entity_id = source_id, target_id
+        affected_relationship_ids.add(survivor.id)
+        supports_by_key: dict[tuple[UUID, UUID, UUID | None, UUID | None], RelationshipEvidence] = {}
+        for row in group:
+            support_rows = (await session.scalars(
+                select(RelationshipEvidence).where(RelationshipEvidence.relationship_id == row.id).order_by(RelationshipEvidence.id)
+            )).all()
+            for support in support_rows:
+                key = (support.document_version_id, support.chunk_id, support.source_membership_id, support.target_membership_id)
+                if key in supports_by_key:
+                    keep = supports_by_key[key]
+                    keep.confidence = max(keep.confidence, support.confidence)
+                    await session.delete(support)
+                else:
+                    supports_by_key[key] = support
+                    support.relationship_id = survivor.id
+            if row.id != survivor.id:
+                replacements.append((row.id, survivor.id))
+                await session.delete(row)
+    await _refresh_derived_confidence(session, affected_relationship_ids)
+    return replacements
+
+
+async def apply_entity_split(
+    session: AsyncSession, entity_id: UUID, new_entity_id: UUID,
+    membership_ids: set[UUID], expected_relationship_ids: set[UUID],
+) -> list[tuple[UUID, UUID]]:
+    refs = await list_correction_relationship_refs(session, [entity_id])
+    if {item.id for item in refs} != expected_relationship_ids:
+        raise ValueError("Correction relationship closure changed; retry preview")
+    validate_entity_split_plan(entity_id, membership_ids, refs)
+    relation_ids = sorted(expected_relationship_ids, key=str)
+    rows = list((await session.scalars(select(Relationship).where(Relationship.id.in_(relation_ids)).order_by(Relationship.id))).all()) if relation_ids else []
+    support_by_edge: dict[UUID, list[RelationshipEvidence]] = {}
+    for support in (await session.scalars(select(RelationshipEvidence).where(RelationshipEvidence.relationship_id.in_(relation_ids)).order_by(RelationshipEvidence.relationship_id, RelationshipEvidence.id))).all() if relation_ids else []:
+        support_by_edge.setdefault(support.relationship_id, []).append(support)
+    replacements: list[tuple[UUID, UUID]] = []
+    affected_relationship_ids: set[UUID] = set()
+    for row in rows:
+        source_rows = support_by_edge.get(row.id, [])
+        if not source_rows:
+            continue
+        if row.origin == "owner":
+            raise ValueError("Split cannot move evidence from an owner-authored relationship")
+        moving = [item for item in source_rows if item.source_membership_id in membership_ids or item.target_membership_id in membership_ids]
+        if not moving:
+            continue
+        endpoints: dict[tuple[UUID, UUID], list[RelationshipEvidence]] = {}
+        for support in moving:
+            next_source = new_entity_id if support.source_membership_id in membership_ids else row.source_entity_id
+            next_target = new_entity_id if support.target_membership_id in membership_ids else row.target_entity_id
+            if next_source == next_target:
+                raise ValueError("Split would create a self relationship")
+            endpoints.setdefault((next_source, next_target), []).append(support)
+        for (next_source, next_target), moved_supports in endpoints.items():
+            existing = await session.scalar(select(Relationship).where(
+                Relationship.id != row.id,
+                Relationship.source_entity_id == next_source,
+                Relationship.target_entity_id == next_target,
+                Relationship.type == row.type,
+                Relationship.origin == row.origin,
+                Relationship.valid_from.is_not_distinct_from(row.valid_from),
+                Relationship.valid_to.is_not_distinct_from(row.valid_to),
+            ).order_by(Relationship.id).limit(1))
+            if existing is not None and existing.metadata_json != row.metadata_json:
+                raise ValueError("Split has conflicting relationship metadata")
+            destination = existing or Relationship(
+                source_entity_id=next_source, target_entity_id=next_target, type=row.type,
+                origin=row.origin, confidence=None, valid_from=row.valid_from,
+                valid_to=row.valid_to, metadata_json=row.metadata_json,
+            )
+            if existing is None:
+                session.add(destination)
+                await session.flush()
+            for support in moved_supports:
+                support.relationship_id = destination.id
+            affected_relationship_ids.add(destination.id)
+            affected_relationship_ids.add(row.id)
+            replacements.append((row.id, destination.id))
+        if len(source_rows) == len(moving):
+            await session.delete(row)
+    await _refresh_derived_confidence(session, affected_relationship_ids)
+    return replacements
+
+
+async def _refresh_derived_confidence(session: AsyncSession, relationship_ids: set[UUID]) -> None:
+    if not relationship_ids:
+        return
+    await session.flush()
+    for relationship_id in sorted(relationship_ids, key=str):
+        relationship = await session.scalar(select(Relationship).where(
+            Relationship.id == relationship_id
+        ).execution_options(populate_existing=True))
+        if relationship is None or relationship.origin != "derived":
+            continue
+        relationship.confidence = await session.scalar(select(func.max(
+            RelationshipEvidence.confidence
+        )).where(RelationshipEvidence.relationship_id == relationship_id))
 
 
 async def remove_document_support(

@@ -20,12 +20,16 @@ from modules.knowledge.entities.models import (
     EntityAliasEvidence,
     EntityFieldEvidence,
     EntityOwnerAction,
+    EntityRedirect,
+    EntityCorrectionDecision,
     EntityExtractionWork,
     EntityExtractionResult,
 )
 from modules.knowledge.entities.schemas import (
     AliasCreate,
     EntityAliasRead,
+    EntityEvidencePage,
+    EntityEvidenceRead,
     EntityCreate,
     EntityMembershipReferenceRead,
     EntityPage,
@@ -34,6 +38,14 @@ from modules.knowledge.entities.schemas import (
     EntityReferenceRead,
     canonicalize_name,
 )
+
+
+class RedirectedEntityConflict(ValueError):
+    pass
+
+
+class TerminalEntityConflict(LookupError):
+    pass
 if TYPE_CHECKING:
     from modules.knowledge.documents.public import ExtractionEvidenceRef
 
@@ -109,7 +121,7 @@ async def record_owner_action(
 async def list_entities(
     session: AsyncSession, limit: int, cursor: str | None, entity_type: str | None, query: str | None
 ) -> EntityPage:
-    statement = select(Entity)
+    statement = select(Entity).where(~Entity.id.in_(select(EntityRedirect.old_entity_id)))
     if entity_type:
         statement = statement.where(Entity.type == entity_type)
     if query:
@@ -130,7 +142,11 @@ async def list_entities(
 
 
 async def get_entity(session: AsyncSession, entity_id: UUID) -> EntityRead | None:
-    entity = await session.get(Entity, entity_id)
+    try:
+        canonical_id = await resolve_canonical_entity_id(session, entity_id)
+    except LookupError:
+        return None
+    entity = await session.get(Entity, canonical_id)
     if entity is None:
         return None
     aliases = await _aliases(session, [entity.id])
@@ -144,20 +160,51 @@ async def get_entity_refs(
         raise ValueError("Entity reference query must contain up to 100 unique IDs")
     if not ids:
         return []
-    query = select(Entity).where(Entity.id.in_(ids))
+    canonical_ids: dict[UUID, UUID] = {}
+    for identifier in ids:
+        try:
+            canonical_ids[identifier] = await resolve_canonical_entity_id(session, identifier)
+        except LookupError as exc:
+            if for_write and await session.scalar(select(EntityRedirect.old_entity_id).where(EntityRedirect.old_entity_id == identifier)) is not None:
+                raise TerminalEntityConflict("Entity identity was deleted") from exc
+            raise
+    if for_write and any(canonical_ids[identifier] != identifier for identifier in ids):
+        raise RedirectedEntityConflict("Entity ID was merged; use its canonical ID")
+    query = select(Entity).where(Entity.id.in_(set(canonical_ids.values())))
     if for_write:
         query = query.order_by(Entity.id).with_for_update()
     rows = (await session.scalars(query)).all()
+    rows_by_id = {row.id: row for row in rows}
     by_id = {
-        row.id: EntityReferenceRead(
-            requested_id=row.id, canonical_id=row.id, revision=row.revision, type=row.type,
-            name=row.name if row.name_origin is not None else None,
+        requested_id: EntityReferenceRead(
+            requested_id=requested_id, canonical_id=canonical_ids[requested_id], revision=rows_by_id[canonical_ids[requested_id]].revision, type=rows_by_id[canonical_ids[requested_id]].type,
+            name=rows_by_id[canonical_ids[requested_id]].name if rows_by_id[canonical_ids[requested_id]].name_origin is not None else None,
         )
-        for row in rows
+        for requested_id in ids if canonical_ids[requested_id] in rows_by_id
     }
     if set(by_id) != set(ids):
         raise LookupError("Entity reference is missing")
     return [by_id[identifier] for identifier in ids]
+
+
+async def resolve_canonical_entity_id(session: AsyncSession, entity_id: UUID) -> UUID:
+    """Follow the bounded owner redirect chain; malformed cycles fail closed."""
+    current = entity_id
+    seen = {current}
+    for _ in range(32):
+        redirect = await session.scalar(select(EntityRedirect).where(EntityRedirect.old_entity_id == current))
+        if redirect is None:
+            if await session.get(Entity, current) is None:
+                raise LookupError("Entity reference is missing")
+            return current
+        target = redirect.target_entity_id
+        if target is None:
+            raise LookupError("Entity identity was deleted")
+        if target in seen:
+            raise ValueError("Entity redirect cycle detected")
+        seen.add(target)
+        current = target
+    raise ValueError("Entity redirect chain exceeds its limit")
 
 
 async def get_membership_refs(
@@ -169,7 +216,7 @@ async def get_membership_refs(
         return []
     query = select(EntityEvidenceMembership).where(EntityEvidenceMembership.id.in_(ids))
     if for_write:
-        query = query.order_by(EntityEvidenceMembership.entity_id, EntityEvidenceMembership.id).with_for_update()
+        query = query.order_by(EntityEvidenceMembership.entity_id, EntityEvidenceMembership.id).with_for_update().execution_options(populate_existing=True)
     rows = (await session.scalars(query)).all()
     by_id = {
         row.id: EntityMembershipReferenceRead(
@@ -182,6 +229,47 @@ async def get_membership_refs(
     if set(by_id) != set(ids):
         raise LookupError("Entity evidence membership is missing")
     return [by_id[identifier] for identifier in ids]
+
+
+async def list_entity_evidence(
+    session: AsyncSession, entity_id: UUID, limit: int = 50, cursor: str | None = None
+) -> EntityEvidencePage | None:
+    if not 1 <= limit <= 100:
+        raise ValueError("Entity evidence page limit must be between 1 and 100")
+    try:
+        canonical_id = await resolve_canonical_entity_id(session, entity_id)
+    except LookupError:
+        return None
+    statement = select(EntityEvidenceMembership).where(EntityEvidenceMembership.entity_id == canonical_id)
+    if cursor:
+        extracted_at, identifier = decode_cursor(cursor)
+        statement = statement.where(tuple_(EntityEvidenceMembership.extracted_at, EntityEvidenceMembership.id) > (extracted_at, identifier))
+    rows = list((await session.scalars(
+        statement.order_by(EntityEvidenceMembership.extracted_at, EntityEvidenceMembership.id).limit(limit + 1)
+    )).all())
+    has_more = len(rows) > limit
+    rows = rows[:limit]
+    if not rows:
+        return EntityEvidencePage(items=[], next_cursor=None)
+    from modules.knowledge.documents import public as documents
+
+    refs = await documents.read_evidence_refs(
+        session, list(dict.fromkeys((row.document_version_id, row.chunk_id) for row in rows))
+    )
+    by_pair = {(ref.document_version_id, ref.chunk_id): ref for ref in refs}
+    items = [
+        EntityEvidenceRead(
+            id=row.id, entity_id=row.entity_id, document_id=ref.document_id,
+            document_version_id=row.document_version_id, version_number=ref.version_number,
+            chunk_id=row.chunk_id, observed_at=row.observed_at, extracted_at=row.extracted_at,
+            confidence=row.confidence, source_id=ref.source_id, title=ref.title,
+            canonical_url=ref.canonical_url, excerpt=ref.excerpt,
+        )
+        for row in rows
+        if (ref := by_pair.get((row.document_version_id, row.chunk_id))) is not None
+    ]
+    next_cursor = encode_cursor(rows[-1].extracted_at, rows[-1].id) if has_more and rows else None
+    return EntityEvidencePage(items=items, next_cursor=next_cursor)
 
 
 async def publish_derived_field(
@@ -474,7 +562,10 @@ async def list_resolution_candidates(
     normalized_names = sorted({canonicalize_name(name) for name in candidate_names})
     rows = list((await session.execute(
         select(Entity.id, Entity.type, Entity.name, Entity.revision)
-        .where(Entity.type == entity_type).order_by(Entity.id).limit(limit + 1)
+        .where(
+            Entity.type == entity_type,
+            ~Entity.id.in_(select(EntityRedirect.old_entity_id)),
+        ).order_by(Entity.id).limit(limit + 1)
     )).all())
     overflow = len(rows) > limit
     rows = rows[:limit]
@@ -509,11 +600,12 @@ async def create_extracted_entity(session: AsyncSession, entity_type: str) -> UU
 async def record_extraction_membership(
     session: AsyncSession, *, entity_id: UUID, evidence_ref: ExtractionEvidenceRef,
     source_generation: int, extraction_identity: str, candidate_key: str,
-    observed_at: datetime, confidence: float,
+    match_fingerprint: str, observed_at: datetime, confidence: float,
 ) -> UUID:
     if (
         not extraction_identity or len(extraction_identity) > 256
         or not candidate_key or len(candidate_key) > 256
+        or len(match_fingerprint) != 64
         or not math.isfinite(confidence) or not 0 <= confidence <= 1
         or evidence_ref.source_generation != source_generation
     ):
@@ -525,6 +617,7 @@ async def record_extraction_membership(
         entity_id=entity_id, document_id=evidence_ref.document_id, source_id=evidence_ref.source_id,
         document_version_id=evidence_ref.document_version_id, chunk_id=evidence_ref.chunk_id,
         extraction_identity=extraction_identity, candidate_key=candidate_key,
+        match_fingerprint=match_fingerprint,
         observed_at=observed_at, confidence=confidence,
     ).on_conflict_do_nothing(constraint="uq_entity_evidence_retry"))
     membership_id = await session.scalar(select(EntityEvidenceMembership.id).where(
@@ -538,6 +631,124 @@ async def record_extraction_membership(
     if member is None or member.entity_id != entity_id:
         raise ValueError("Extraction retry identity resolved to a different entity")
     return membership_id
+
+
+async def get_document_correction_decisions(
+    session: AsyncSession, document_id: UUID, document_version_id: UUID,
+    candidates: dict[str, tuple[str, set[UUID]]],
+    *, for_update: bool = False,
+) -> dict[str, tuple[UUID, str, UUID | None] | None]:
+    if len(candidates) > 30:
+        raise ValueError("Correction decision lookup exceeds its candidate limit")
+    if not candidates:
+        return {}
+    fingerprints = {spec[0] for spec in candidates.values()}
+    chunk_ids = {chunk_id for _, chunks in candidates.values() for chunk_id in chunks}
+    if len(chunk_ids) > 200 or any(not chunks for _, chunks in candidates.values()):
+        raise ValueError("Correction evidence binding exceeds its chunk limit")
+    membership_query = select(EntityEvidenceMembership).where(
+        EntityEvidenceMembership.document_id == document_id,
+        EntityEvidenceMembership.document_version_id == document_version_id,
+        EntityEvidenceMembership.match_fingerprint.in_(fingerprints),
+        EntityEvidenceMembership.chunk_id.in_(chunk_ids),
+    ).order_by(EntityEvidenceMembership.entity_id, EntityEvidenceMembership.id).limit(201)
+    if for_update:
+        membership_query = membership_query.with_for_update()
+    memberships = list((await session.scalars(
+        membership_query.execution_options(populate_existing=True)
+    )).all())
+    memberships_by_selector: dict[tuple[str, UUID], list[EntityEvidenceMembership]] = {}
+    for membership in memberships:
+        if membership.match_fingerprint is not None:
+            memberships_by_selector.setdefault(
+                (membership.match_fingerprint, membership.chunk_id), []
+            ).append(membership)
+    membership_ids = sorted({row.id for row in memberships}, key=str)
+    decisions_query = select(EntityCorrectionDecision).where(
+        EntityCorrectionDecision.scope == "evidence",
+        EntityCorrectionDecision.document_id.is_(None),
+        EntityCorrectionDecision.membership_id.in_(membership_ids),
+    ).order_by(EntityCorrectionDecision.id).limit(201)
+    if for_update:
+        decisions_query = decisions_query.with_for_update()
+    evidence_decisions = list((await session.scalars(
+        decisions_query.execution_options(populate_existing=True)
+    )).all()) if membership_ids else []
+    membership_by_id = {row.id: row for row in memberships}
+    evidence_rows = [
+        (row, membership_by_id[row.membership_id].chunk_id,
+         membership_by_id[row.membership_id].match_fingerprint)
+        for row in evidence_decisions if row.membership_id in membership_by_id
+    ]
+    document_query = select(EntityCorrectionDecision).where(
+            EntityCorrectionDecision.scope == "document",
+            EntityCorrectionDecision.document_id == document_id,
+            EntityCorrectionDecision.match_fingerprint.in_(fingerprints),
+        ).order_by(EntityCorrectionDecision.id).limit(201)
+    if for_update:
+        document_query = document_query.with_for_update()
+    document_rows = list((await session.scalars(
+        document_query.execution_options(populate_existing=True)
+    )).all())
+    by_document_fingerprint: dict[str, list[EntityCorrectionDecision]] = {}
+    for row in document_rows:
+        if row.match_fingerprint is not None:
+            by_document_fingerprint.setdefault(row.match_fingerprint, []).append(row)
+    current_candidates_by_selector: dict[tuple[str, UUID], list[str]] = {}
+    current_candidates_by_fingerprint: dict[str, list[str]] = {}
+    for request_key, (fingerprint, chunks) in candidates.items():
+        current_candidates_by_fingerprint.setdefault(fingerprint, []).append(request_key)
+        for chunk_id in chunks:
+            current_candidates_by_selector.setdefault((fingerprint, chunk_id), []).append(request_key)
+    by_candidate: dict[str, list[tuple[EntityCorrectionDecision, UUID, bool]]] = {}
+    for row, chunk_id, membership_fingerprint in evidence_rows:
+        for request_key, (fingerprint, chunks) in candidates.items():
+            if membership_fingerprint == fingerprint and chunk_id in chunks:
+                by_candidate.setdefault(request_key, []).append((
+                    row, chunk_id, row.match_fingerprint == fingerprint,
+                ))
+    result: dict[str, tuple[UUID, str, UUID | None] | None] = {}
+    for request_key, (fingerprint, chunks) in candidates.items():
+        all_evidence = by_candidate.get(request_key, [])
+        evidence_matches = [
+            (row, chunk) for row, chunk, exact_fingerprint in all_evidence
+            if exact_fingerprint
+        ]
+        document_matches = by_document_fingerprint.get(fingerprint, [])
+        evidence_states = {(row.decision, row.entity_id) for row, _ in evidence_matches}
+        document_states = {(row.decision, row.entity_id) for row in document_matches}
+        partial = bool(all_evidence) and {chunk for _, chunk in evidence_matches} != chunks
+        fingerprint_ambiguous = any(not exact_fingerprint for _, _, exact_fingerprint in all_evidence)
+        membership_ambiguous = any(
+            len(memberships_by_selector.get((fingerprint, chunk_id), [])) > 1
+            for chunk_id in chunks
+        )
+        current_evidence_ambiguous = any(
+            len(current_candidates_by_selector.get((fingerprint, chunk_id), [])) > 1
+            for chunk_id in chunks
+        )
+        current_document_ambiguous = (
+            bool(document_matches)
+            and len(current_candidates_by_fingerprint.get(fingerprint, [])) > 1
+        )
+        conflicting = (
+            len(memberships) > 200 or len(evidence_decisions) > 200
+            or len(document_rows) > 200 or partial or fingerprint_ambiguous
+            or membership_ambiguous or current_evidence_ambiguous
+            or current_document_ambiguous or len(evidence_states) > 1
+            or len(document_states) > 1
+        )
+        conflicting = conflicting or bool(evidence_states and document_states and evidence_states != document_states)
+        all_matches = [row for row, _, _ in all_evidence] + document_matches
+        if conflicting:
+            latest = max(all_matches, key=lambda row: (row.created_at, row.id)) if all_matches else None
+            result[request_key] = (latest.id if latest else UUID(int=0), "conflict", None)
+        elif not all_matches:
+            result[request_key] = None
+        else:
+            latest = max(all_matches, key=lambda row: (row.created_at, row.id))
+            result[request_key] = (latest.id, latest.decision, latest.entity_id)
+    return result
 
 
 async def create_entity(session: AsyncSession, payload: EntityCreate, *, actor_id: int) -> EntityRead:
@@ -582,6 +793,14 @@ async def create_entity(session: AsyncSession, payload: EntityCreate, *, actor_i
 async def update_entity(
     session: AsyncSession, entity_id: UUID, payload: EntityPatch, *, actor_id: int
 ) -> EntityRead | None:
+    try:
+        canonical_id = await resolve_canonical_entity_id(session, entity_id)
+    except LookupError as exc:
+        if await session.scalar(select(EntityRedirect.old_entity_id).where(EntityRedirect.old_entity_id == entity_id)) is not None:
+            raise TerminalEntityConflict("Entity identity was deleted") from exc
+        raise
+    if canonical_id != entity_id:
+        raise RedirectedEntityConflict("Entity ID was merged; use its canonical ID")
     entity = await session.scalar(select(Entity).where(Entity.id == entity_id).with_for_update())
     if entity is None:
         return None
@@ -623,6 +842,14 @@ async def update_entity(
 async def add_alias(
     session: AsyncSession, entity_id: UUID, payload: AliasCreate, *, actor_id: int
 ) -> EntityRead | None:
+    try:
+        canonical_id = await resolve_canonical_entity_id(session, entity_id)
+    except LookupError as exc:
+        if await session.scalar(select(EntityRedirect.old_entity_id).where(EntityRedirect.old_entity_id == entity_id)) is not None:
+            raise TerminalEntityConflict("Entity identity was deleted") from exc
+        raise
+    if canonical_id != entity_id:
+        raise RedirectedEntityConflict("Entity ID was merged; use its canonical ID")
     entity = await session.scalar(select(Entity).where(Entity.id == entity_id).with_for_update())
     if entity is None:
         return None
@@ -651,6 +878,14 @@ async def add_alias(
 async def delete_alias(
     session: AsyncSession, entity_id: UUID, alias_id: UUID, *, actor_id: int, reason: str = "owner_alias_delete"
 ) -> bool:
+    try:
+        canonical_id = await resolve_canonical_entity_id(session, entity_id)
+    except LookupError as exc:
+        if await session.scalar(select(EntityRedirect.old_entity_id).where(EntityRedirect.old_entity_id == entity_id)) is not None:
+            raise TerminalEntityConflict("Entity identity was deleted") from exc
+        raise
+    if canonical_id != entity_id:
+        raise RedirectedEntityConflict("Entity ID was merged; use its canonical ID")
     entity = await session.scalar(select(Entity).where(Entity.id == entity_id).with_for_update())
     if entity is None:
         return False
@@ -671,16 +906,9 @@ async def delete_alias(
 async def delete_entity(
     session: AsyncSession, entity_id: UUID, *, actor_id: int, reason: str = "owner_entity_delete"
 ) -> bool:
-    entity = await session.scalar(select(Entity).where(Entity.id == entity_id).with_for_update())
-    if entity is None:
-        return False
-    await session.delete(entity)
-    await record_owner_action(
-        session, actor_id=actor_id, operation="entity_delete", reason=reason,
-        affected_ids=[entity.id], revisions={str(entity.id): entity.revision},
-    )
-    await commit_with_replay(session, [make_graph_change(entity_id=entity.id, deleted=True)])
-    return True
+    from modules.knowledge.entities.corrections import delete_canonical_entity
+
+    return await delete_canonical_entity(session, entity_id, actor_id=actor_id, reason=reason)
 
 
 async def support_cleanup_ids(

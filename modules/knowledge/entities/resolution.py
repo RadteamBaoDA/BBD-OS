@@ -1,7 +1,12 @@
 from difflib import SequenceMatcher
+from hashlib import sha256
 from typing import Iterable
 
 from modules.knowledge.entities.schemas import canonicalize_name
+
+
+def candidate_match_fingerprint(name: str, entity_type: str) -> str:
+    return sha256(f"{entity_type}:{canonicalize_name(name)}".encode("utf-8")).hexdigest()
 
 
 def resolve_candidate(name: str, entity_type: str, known: Iterable[dict[str, object]]) -> tuple[str, str | None, list[str]]:

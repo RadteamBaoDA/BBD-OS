@@ -26,7 +26,7 @@ from modules.knowledge.entities import public as entities
 from modules.knowledge.entities.extraction import (
     EXTRACTOR_VERSION, PROMPT_VERSION, extraction_messages, response_content, response_schema,
 )
-from modules.knowledge.entities.resolution import resolve_candidate
+from modules.knowledge.entities.resolution import candidate_match_fingerprint, resolve_candidate
 from modules.knowledge.entities.schemas import canonicalize_name
 from modules.knowledge.relationships import public as relationships
 from modules.settings import public as settings_public
@@ -418,6 +418,39 @@ async def process_entity_extraction_work(ctx: dict[str, object], work_id_value: 
                     elif left_resolution == "matched" and right_resolution == "new":
                         resolution_plan[right.key] = ("review", None, [left_id] if left_id else [], "ambiguous_identity")
 
+            match_fingerprints = {
+                candidate.key: candidate_match_fingerprint(candidate.name, candidate.type)
+                for candidate in extracted.entities
+            }
+            candidate_bindings = {
+                candidate.key: (match_fingerprints[candidate.key], set(candidate.chunk_ids))
+                for candidate in extracted.entities
+            }
+            initial_decisions = await entities.get_document_correction_decisions(
+                session, data.document_id, version_id, candidate_bindings
+            )
+            canonical_decisions: dict[str, tuple[UUID, str, UUID | None] | None] = {}
+            for candidate in extracted.entities:
+                fingerprint = match_fingerprints[candidate.key]
+                decision = initial_decisions.get(candidate.key)
+                if decision is None:
+                    canonical_decisions[candidate.key] = None
+                    continue
+                decision_id, action, target_id = decision
+                if target_id is not None:
+                    try:
+                        target_id = await entities.resolve_canonical_entity_id(session, target_id)
+                    except (LookupError, ValueError):
+                        action, target_id = "conflict", None
+                canonical = (decision_id, action, target_id)
+                canonical_decisions[candidate.key] = canonical
+                if action == "suppress":
+                    resolution_plan[candidate.key] = ("review", None, [], "owner_suppressed_candidate")
+                elif action == "assign" and target_id is not None:
+                    resolution_plan[candidate.key] = ("matched", str(target_id), [], None)
+                elif action == "conflict":
+                    resolution_plan[candidate.key] = ("review", None, [], "conflicting_owner_corrections")
+
             existing_ids = sorted({
                 UUID(match_id) for resolution, match_id, _, _ in resolution_plan.values()
                 if resolution == "matched" and match_id is not None
@@ -427,7 +460,7 @@ async def process_entity_extraction_work(ctx: dict[str, object], work_id_value: 
                 try:
                     refs = await entities.get_entity_refs(session, existing_ids, for_write=True)
                     locked_refs = {ref.requested_id: ref for ref in refs}
-                except LookupError:
+                except (LookupError, ValueError):
                     for key, (resolution, match_id, possible, reason) in list(resolution_plan.items()):
                         if resolution == "matched":
                             resolution_plan[key] = ("review", None, possible + ([match_id] if match_id else []), "identity_changed_during_resolution")
@@ -438,6 +471,9 @@ async def process_entity_extraction_work(ctx: dict[str, object], work_id_value: 
             refreshed: dict[str, tuple[list[dict[str, object]], bool]] = {}
             for entity_type, names in candidate_names_by_type.items():
                 refreshed[entity_type] = await entities.list_resolution_candidates(session, entity_type, names)
+            current_decisions = await entities.get_document_correction_decisions(
+                session, data.document_id, version_id, candidate_bindings, for_update=True
+            )
             for candidate in extracted.entities:
                 old_resolution, old_id, old_possible, old_reason = resolution_plan[candidate.key]
                 if old_reason == "resolution_context_bounded":
@@ -446,7 +482,32 @@ async def process_entity_extraction_work(ctx: dict[str, object], work_id_value: 
                 if overflow:
                     resolution_plan[candidate.key] = ("review", None, [], "resolution_context_bounded")
                     continue
+                decision = current_decisions.get(candidate.key)
+                current_owner_decision: tuple[UUID, str, UUID | None] | None = None
+                if decision is not None:
+                    decision_id, action, target_id = decision
+                    if target_id is not None:
+                        try:
+                            target_id = await entities.resolve_canonical_entity_id(session, target_id)
+                        except (LookupError, ValueError):
+                            target_id = None
+                    current_owner_decision = (decision_id, action, target_id)
+                if current_owner_decision != canonical_decisions[candidate.key]:
+                    resolution_plan[candidate.key] = ("review", None, [], "identity_changed_during_resolution")
+                    continue
                 current_resolution, current_id, possible = resolve_candidate(candidate.name, candidate.type, known)
+                owner_decision = canonical_decisions[candidate.key]
+                if owner_decision is not None:
+                    _, action, assigned_id = owner_decision
+                    if action == "suppress":
+                        resolution_plan[candidate.key] = ("review", None, [], "owner_suppressed_candidate")
+                        continue
+                    if action != "assign" or assigned_id is None or current_resolution == "review" or (
+                        current_resolution == "matched" and current_id != str(assigned_id)
+                    ):
+                        resolution_plan[candidate.key] = ("review", None, possible, "conflicting_owner_corrections")
+                        continue
+                    current_resolution, current_id = "matched", str(assigned_id)
                 if old_resolution == "review":
                     resolution_plan[candidate.key] = (
                         "review", None, possible, old_reason or "ambiguous_identity"
@@ -495,6 +556,7 @@ async def process_entity_extraction_work(ctx: dict[str, object], work_id_value: 
                         session, entity_id=entity_id, evidence_ref=evidence_by_chunk[chunk_id],
                         source_generation=captured_generation,
                         extraction_identity=str(work_id), candidate_key=candidate_key,
+                        match_fingerprint=match_fingerprints[candidate.key],
                         observed_at=data.observed_at, confidence=candidate.confidence,
                     )
                     membership_for[(candidate.key, chunk_id)] = membership_id

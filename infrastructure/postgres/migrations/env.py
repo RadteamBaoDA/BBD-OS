@@ -33,6 +33,8 @@ from modules.knowledge.entities.models import (
     EntityAliasEvidence,
     EntityFieldEvidence,
     EntityOwnerAction,
+    EntityRedirect,
+    EntityCorrectionDecision,
     EntityExtractionWork,
     EntityExtractionResult,
 )
@@ -65,6 +67,8 @@ _knowledge_models = (
     EntityAliasEvidence,
     EntityFieldEvidence,
     EntityOwnerAction,
+    EntityRedirect,
+    EntityCorrectionDecision,
     EntityExtractionWork,
     EntityExtractionResult,
     Relationship,

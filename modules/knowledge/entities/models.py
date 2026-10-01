@@ -64,6 +64,7 @@ class EntityEvidenceMembership(Base):
         Index("ix_entity_evidence_chunk", "chunk_id"),
         Index("ix_entity_evidence_document", "document_id"),
         Index("ix_entity_evidence_source", "source_id"),
+        Index("ix_entity_evidence_match_fingerprint", "match_fingerprint"),
     )
 
     id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid4)
@@ -74,6 +75,7 @@ class EntityEvidenceMembership(Base):
     chunk_id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), ForeignKey("document_chunks.id", ondelete="CASCADE"), nullable=False)
     extraction_identity: Mapped[str | None] = mapped_column(String(256))
     candidate_key: Mapped[str | None] = mapped_column(String(256))
+    match_fingerprint: Mapped[str | None] = mapped_column(String(64))
     observed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     extracted_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
     confidence: Mapped[float] = mapped_column(nullable=False)
@@ -126,6 +128,37 @@ class EntityOwnerAction(Base):
     reason: Mapped[str] = mapped_column(String(300), nullable=False)
     affected_ids: Mapped[list[str]] = mapped_column(JSONB, nullable=False)
     revisions: Mapped[dict[str, int | None]] = mapped_column(JSONB, nullable=False, server_default="{}")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+
+
+class EntityRedirect(Base):
+    __tablename__ = "entity_redirects"
+    __table_args__ = (Index("ix_entity_redirect_target", "target_entity_id"),)
+
+    old_entity_id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), ForeignKey("entities.id", ondelete="CASCADE"), primary_key=True)
+    target_entity_id: Mapped[UUID | None] = mapped_column(Uuid(as_uuid=True), ForeignKey("entities.id", ondelete="SET NULL"))
+    actor_id: Mapped[int] = mapped_column(ForeignKey("owner.id", ondelete="CASCADE"), nullable=False)
+    reason: Mapped[str] = mapped_column(String(300), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+
+
+class EntityCorrectionDecision(Base):
+    __tablename__ = "entity_correction_decisions"
+    __table_args__ = (
+        CheckConstraint("decision IN ('assign', 'suppress')", name="ck_entity_correction_decision_kind"),
+        CheckConstraint("scope = 'evidence' OR (scope = 'document' AND document_id IS NOT NULL)", name="ck_entity_correction_decision_scope"),
+        Index("ix_entity_correction_decision_match", "document_id", "match_fingerprint", "created_at"),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid4)
+    decision: Mapped[str] = mapped_column(String(16), nullable=False)
+    scope: Mapped[str] = mapped_column(String(16), nullable=False)
+    entity_id: Mapped[UUID | None] = mapped_column(Uuid(as_uuid=True), ForeignKey("entities.id", ondelete="CASCADE"))
+    document_id: Mapped[UUID | None] = mapped_column(Uuid(as_uuid=True), ForeignKey("documents.id", ondelete="CASCADE"))
+    membership_id: Mapped[UUID | None] = mapped_column(Uuid(as_uuid=True), ForeignKey("entity_evidence_memberships.id", ondelete="CASCADE"))
+    match_fingerprint: Mapped[str | None] = mapped_column(String(64))
+    actor_id: Mapped[int] = mapped_column(ForeignKey("owner.id", ondelete="CASCADE"), nullable=False)
+    reason: Mapped[str] = mapped_column(String(300), nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
 
 

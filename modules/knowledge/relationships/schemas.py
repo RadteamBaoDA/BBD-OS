@@ -85,3 +85,26 @@ class NeighborPage(BaseModel):
     items: list[NeighborRead]
     truncated: bool
     next_cursor: str | None
+
+
+class CorrectionSupportRef(BaseModel):
+    id: UUID
+    document_id: UUID | None
+    source_id: UUID | None
+    document_version_id: UUID
+    chunk_id: UUID
+    source_membership_id: UUID | None
+    target_membership_id: UUID | None
+    confidence: float
+
+
+class CorrectionRelationshipRef(BaseModel):
+    id: UUID
+    source_entity_id: UUID
+    target_entity_id: UUID
+    type: str
+    origin: Literal["owner", "derived"]
+    valid_from: datetime | None
+    valid_to: datetime | None
+    metadata: dict[str, Any]
+    supports: list[CorrectionSupportRef]

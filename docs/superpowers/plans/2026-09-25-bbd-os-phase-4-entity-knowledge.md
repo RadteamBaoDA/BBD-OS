@@ -12,7 +12,7 @@
 
 **Entry gate:** Phase 3 validated structured-output alias, search and public library.
 
-**Implementation status:** P04-T1.1–T1.3 and P04-T2 production code, prescribed build and scoped independent reviews are complete on `codex/bbd-p04`. P04-T3 is next; T4 remains. Runtime/provider acceptance is deferred. See `docs/task-reports/P04-T2.md`.
+**Implementation status:** P04-T1.1–T1.3 and P04-T2 production code, prescribed build and scoped independent reviews are complete on `codex/bbd-p04`. P04-T3 production code/build/review is complete; T4 remains. Runtime/provider acceptance is deferred. See `docs/task-reports/P04-T2.md`.
 
 Code stage: implement production code and run affected production builds only. Do not create, modify or run tests, lint, or standalone typecheck until production code for all Phase 1-12 is complete. Behavioral acceptance is listed separately in the deferred test-stage section.
 
@@ -82,7 +82,7 @@ Concrete contract/configuration shape (illustrative IDs/timestamps are test data
 
 **Interfaces — consumes/produces:** POST /entities/{id}/merge {into_id,expected_revision}; POST /entities/{id}/split {evidence_ids,new_entity,expected_revision}; PATCH entity with expected_revision; correction decisions include actor,reason,timestamp and evidence membership.
 
-- [ ] **P04-T3.1 - Implement production behavior.** Apply corrections transactionally and persist them as inputs to subsequent extraction reconciliation. Merge redirects old IDs while preserving evidence and avoiding duplicate relationships; split moves explicitly chosen evidence, not arbitrary inferred facts. Corrections protect names/identity but cannot retain deleted source text. Emit versioned EntityUpdated/KnowledgeChanged through the existing durable dispatch contract.
+- [x] **P04-T3.1 - Implement production behavior.** Apply corrections transactionally and persist them as inputs to subsequent extraction reconciliation. Merge redirects old IDs while preserving evidence and avoiding duplicate relationships; split moves explicitly chosen evidence, not arbitrary inferred facts. Corrections protect names/identity but cannot retain deleted source text. Emit versioned EntityUpdated/KnowledgeChanged through the existing durable dispatch contract.
 
 Concrete contract/configuration shape (illustrative IDs/timestamps are test data, not production defaults):
 
@@ -90,9 +90,9 @@ Concrete contract/configuration shape (illustrative IDs/timestamps are test data
 {"entity_id":"uuid","revision":2,"protected_fields":["name"],"correction_reason":"owner_edit"}
 ```
 
-- [ ] **P04-T3.2 - Build the affected deliverable.** Run `./scripts/dev.ps1 build` (or `make build`) and fix production build failures before proceeding.
+- [x] **P04-T3.2 - Build the affected deliverable.** Run `./scripts/dev.ps1 build` (or `make build`) and fix production build failures before proceeding.
 
-- [ ] **P04-T3.3 - Record build evidence, commit and continue.** Record changed files, the exact production build command/result, review findings and unresolved gates in `EXECUTION.md`; commit the completed task and continue to the next ready task.
+- [x] **P04-T3.3 - Record build evidence, commit and continue.** Record changed files, the exact production build command/result, review findings and unresolved gates in `EXECUTION.md`; commit the completed task and continue to the next ready task.
 
 ## Task P04-T4: Knowledge pages and bounded React Flow graph
 
