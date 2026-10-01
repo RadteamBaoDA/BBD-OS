@@ -632,3 +632,7 @@ Live root source inspection confirms typed relationship review request/result, p
 ### P04-T4 tool recovery confirmed by authoritative source — 2026-10-01
 
 Root568 terminal: checkpoint commit c0c6ef3 confirmed. Luna389 read and390 patch now terminal. Root fresh source independently verifies390 localization/scope patch applied (useTranslations, entityScope draft/effect, submit scope and translated options). Earlier389 content preceded390; empty apply_patch result is success, not proof of failed mutation. Duplicate application prevented; implementer instructed to reread current source and continue remaining unaffected work. No restart/reset or duplicate patch. Source remains mutable; no T4 build/review/completion yet. Goal active; tests/runtime remain deferred.
+
+### P04-T4 independent OSS docs parallelized — 2026-10-01
+
+Native managed worktree creation347778b1-04d3-4ad1-be1c-95466757fc2a completed at C:/Users/doana/.codex/worktrees/bbd-p04-oss/BBD-OS, accepted T3fe6207a. Reused gpt-6-luna T3 seat owns only README/OSS_USED/required notices; main Luna remains on app/owner source. Main implementer explicitly confirms no pending mutations to docs scope. Docs seat reads actual adopted phase package/lock/LICENSE without modifying it; no install/runtime/build/tests. Root independently reviews and integrates scoped docs before final T4 build, then archive follows completed integration. No T4 acceptance yet; goal active.
