@@ -2,7 +2,7 @@ from typing import Annotated
 from pathlib import PurePosixPath, PureWindowsPath
 from uuid import UUID, uuid4
 
-from fastapi import APIRouter, Depends, File, Form, Header, HTTPException, Request, UploadFile
+from fastapi import APIRouter, Depends, File, Form, Header, HTTPException, Query, Request, UploadFile
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.auth.dependencies import require_owner, require_owner_write
@@ -12,7 +12,7 @@ from core.storage import save_upload, storage_path
 from modules.ingestion import public
 from modules.connectors import public as connectors
 from modules.ingestion.files import validate_upload
-from modules.ingestion.schemas import CollectorCredentialRead, Receipt, ReceiveBatch, RunRead, StageRead
+from modules.ingestion.schemas import CollectorCredentialRead, Receipt, ReceiveBatch, RunRead, SourceIngestionRead, StageRead
 
 router = APIRouter(prefix="/api/v1/ingestion", tags=["ingestion"])
 documents_router = APIRouter(prefix="/api/v1/documents", tags=["documents"])
@@ -67,6 +67,20 @@ async def get_run(run_id: UUID, session: Session, _owner: OwnerRead) -> RunRead:
         created_at=run.created_at,
         updated_at=run.updated_at,
     )
+
+
+@router.get("/sources/{source_id}/runs", response_model=SourceIngestionRead)
+async def list_source_runs(
+    source_id: UUID,
+    session: Session,
+    _owner: OwnerRead,
+    limit: int = Query(default=20, ge=1, le=50),
+    cursor: str | None = Query(default=None, max_length=512),
+) -> SourceIngestionRead:
+    result = await public.list_source_runs(session, source_id, limit=limit, cursor=cursor)
+    if result is None:
+        raise HTTPException(status_code=404, detail="Source not found")
+    return result
 
 
 @router.post("/runs/{run_id}/retry", response_model=Receipt, status_code=202)

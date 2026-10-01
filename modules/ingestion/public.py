@@ -7,10 +7,11 @@ from typing import Literal
 from uuid import UUID, uuid4
 
 from fastapi import HTTPException
-from sqlalchemy import String, cast, delete, select, update
+from sqlalchemy import String, cast, delete, select, tuple_, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.events import DomainEvent
+from core.pagination import decode_cursor, encode_cursor
 from modules.ingestion.models import (
     COLLECTION_LEASE,
     CollectorCredential,
@@ -21,7 +22,7 @@ from modules.ingestion.models import (
     SourceIngestionState,
     SourceObservation,
 )
-from modules.ingestion.schemas import CrawlReceipt, EventDelivery, Receipt, ReceiveBatch
+from modules.ingestion.schemas import CrawlReceipt, EventDelivery, Receipt, ReceiveBatch, RunRead, SourceIngestionRead, StageRead
 from modules.knowledge.documents import public as documents
 from modules.sources import public as sources
 from modules.sources.schemas import ConnectorSource
@@ -446,6 +447,74 @@ async def get_run(session: AsyncSession, run_id: UUID) -> tuple[IngestionRun, li
         ).all()
     )
     return run, stages
+
+
+async def list_source_runs(
+    session: AsyncSession,
+    source_id: UUID,
+    *,
+    limit: int = 20,
+    cursor: str | None = None,
+) -> SourceIngestionRead | None:
+    """Return detached current and bounded recent runs after source-owner existence check."""
+    from modules.ingestion.schemas import SourceIngestionRead
+
+    source = await sources.get_connector_source(session, source_id)
+    if source is None:
+        return None
+    statement = select(IngestionRun).where(IngestionRun.source_id == source_id)
+    if cursor:
+        created_at, identifier = decode_cursor(cursor)
+        statement = statement.where(
+            tuple_(IngestionRun.created_at, IngestionRun.id) < (created_at, identifier)
+        )
+    rows = list((await session.scalars(
+        statement.order_by(IngestionRun.created_at.desc(), IngestionRun.id.desc()).limit(limit + 1)
+    )).all())
+    page_rows = rows[:limit]
+    next_cursor = (
+        encode_cursor(page_rows[-1].created_at, page_rows[-1].id)
+        if len(rows) > limit and page_rows
+        else None
+    )
+    state = await session.get(SourceIngestionState, source_id)
+    current = None
+    if (
+        source.status == "active"
+        and state is not None
+        and state.lease_run_id is not None
+        and state.lease_expires_at is not None
+        and state.lease_expires_at > datetime.now(UTC)
+    ):
+        lease_run = await session.get(IngestionRun, state.lease_run_id)
+        if lease_run is not None and lease_run.source_id == source_id and lease_run.status in {"queued", "running"}:
+            current = lease_run
+    run_rows = list({run.id: run for run in [*page_rows, *([current] if current else [])]}.values())
+    stage_rows = list((await session.scalars(
+        select(IngestionStage)
+        .where(IngestionStage.run_id.in_([run.id for run in run_rows]))
+        .order_by(IngestionStage.stage_key)
+    )).all()) if run_rows else []
+    stages_by_run: dict[UUID, list[StageRead]] = {run.id: [] for run in run_rows}
+    for stage in stage_rows:
+        stages_by_run[stage.run_id].append(StageRead.model_validate(stage, from_attributes=True))
+
+    def detach(run: IngestionRun) -> RunRead:
+        return RunRead(
+            run_id=run.id,
+            source_id=run.source_id,
+            status=run.status,
+            stages=stages_by_run[run.id],
+            error_code=run.error_code,
+            created_at=run.created_at,
+            updated_at=run.updated_at,
+        )
+
+    return SourceIngestionRead(
+        current_run=detach(current) if current is not None else None,
+        items=[detach(run) for run in page_rows],
+        next_cursor=next_cursor,
+    )
 
 
 async def retry_run(session: AsyncSession, run_id: UUID) -> IngestionRun | None:

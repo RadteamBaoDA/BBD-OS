@@ -80,3 +80,9 @@ class RunRead(BaseModel):
     error_code: str | None
     created_at: datetime
     updated_at: datetime
+
+
+class SourceIngestionRead(BaseModel):
+    current_run: RunRead | None
+    items: list[RunRead]
+    next_cursor: str | None

@@ -4,6 +4,8 @@ from socket import getaddrinfo
 from urllib.parse import urlsplit
 from uuid import UUID
 import asyncio
+from dataclasses import dataclass
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, HttpUrl, field_validator
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -29,6 +31,7 @@ class ConnectorConfig(BaseModel):
     content_field: str | None = Field(default=None, max_length=128)
     updated_field: str | None = Field(default=None, max_length=128)
     timezone: str = DEFAULT_TIMEZONE
+    schedule_interval_minutes: Literal[15, 30, 60, 360, 1440] | None = None
 
     @field_validator("timezone")
     @classmethod
@@ -40,6 +43,78 @@ class ConnectorConfig(BaseModel):
         except ZoneInfoNotFoundError as exc:
             raise ValueError("timezone must be a valid IANA timezone") from exc
         return value
+
+
+@dataclass(frozen=True)
+class ConnectorConfigurationSnapshot:
+    source_id: UUID
+    source_type: str
+    source_generation: int
+    configuration: dict[str, object]
+    expected_revision: int
+    auth_method: str
+    auth_header_name: str | None
+    desired_enabled: bool
+    activation_state: str
+    activation_error_code: str | None
+    provider_credential_configured: bool
+    provider_credential_state: str | None
+
+
+async def get_connector_configuration(
+    session: AsyncSession, source_id: UUID
+) -> ConnectorConfigurationSnapshot | None:
+    """Return a coherent owner-safe configuration view under source-first locks."""
+    from modules.sources import public as sources
+    from modules.connectors import provisioning
+
+    source_fence, row, credentials = await provisioning.lock_connector(
+        session, source_id, ("provider",)
+    )
+    if source_fence is None:
+        return None
+    source = await sources.get_connector_source(session, source_id)
+    if source is None:
+        return None
+    if source.generation != source_fence.generation:
+        raise RuntimeError("Locked source snapshot generation mismatch")
+    provider_credential = credentials.get("provider")
+    configuration = ConnectorConfig.model_validate(source.configuration).model_dump(
+        mode="json", exclude_none=True
+    )
+    if "schedule_interval_minutes" not in configuration:
+        configuration["schedule_interval_minutes"] = default_schedule_interval_minutes(
+            source.type
+        )
+    desired = row.desired_configuration if row is not None else {}
+    return ConnectorConfigurationSnapshot(
+        source_id=source.id,
+        source_type=source.type,
+        source_generation=source.generation,
+        configuration=configuration,
+        expected_revision=row.desired_revision if row is not None else 0,
+        auth_method=str(desired.get("auth_method", "none")),
+        auth_header_name=(
+            str(desired["auth_header_name"])
+            if desired.get("auth_header_name") is not None
+            else None
+        ),
+        desired_enabled=bool(row and row.desired_enabled),
+        activation_state=row.state if row is not None else "saved_not_active",
+        activation_error_code=row.error_code if row is not None else None,
+        provider_credential_configured=bool(
+            provider_credential is not None
+            and provider_credential.state == "ready"
+            and provider_credential.credential_id
+        ),
+        provider_credential_state=(
+            provider_credential.state if provider_credential is not None else None
+        ),
+    )
+
+
+def default_schedule_interval_minutes(source_type: str) -> int:
+    return 15 if source_type == "rss" else 30
 
 
 class ConnectorRecord(BaseModel):
