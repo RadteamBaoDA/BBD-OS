@@ -636,3 +636,11 @@ Root568 terminal: checkpoint commit c0c6ef3 confirmed. Luna389 read and390 patch
 ### P04-T4 independent OSS docs parallelized — 2026-10-01
 
 Native managed worktree creation347778b1-04d3-4ad1-be1c-95466757fc2a completed at C:/Users/doana/.codex/worktrees/bbd-p04-oss/BBD-OS, accepted T3fe6207a. Reused gpt-6-luna T3 seat owns only README/OSS_USED/required notices; main Luna remains on app/owner source. Main implementer explicitly confirms no pending mutations to docs scope. Docs seat reads actual adopted phase package/lock/LICENSE without modifying it; no install/runtime/build/tests. Root independently reviews and integrates scoped docs before final T4 build, then archive follows completed integration. No T4 acceptance yet; goal active.
+
+### P04-T4 source frozen, OSS accepted/integrated; prescribed build dispatched — 2026-10-01
+
+Main Luna completed its22production-path source freeze; root captured P04-T4-controller-before-build-hashes.json. Named entity target search uses canonical target detail/revision internally; merge/split confirmation retains exact preview inputs; typed review local relationship retry and assignment consumed; full source review remains pending.
+
+Independent OSS docs review2PASS closed type-version3.0.9/runtime-notice assertion fixes. Canonical3pathdocs patch SHA256DC01ED7B63BD1BF1D38AC144BCF045838B75D0B6F8FF6F031245987B202D81C2,133additions/1deletion. Exact docs precommitdetect LOW7symbols/0flows/3files; doccommitc40fb00691f23547149b46c8ead2c436f48c68f2 in isolated managed checkout. Scopedcherrypick into phase164789799dedb42b79989242370630e213c07ffd succeeded. Root independently confirmed22production hashesunchanged after docs integration. Docs worktree retained until phase integration/archive, no rootdevelop code merge yet.
+
+Luna assigned reserved sole buildslot for ./scripts/dev.ps1 build with temporary process-only overrides/restoration. Build not yet reported; no T4 acceptance/productioncommit. Final successful frozen build then root exact staging/detection/canonicaldiff and Sol whole-task source/spec+quality review required. No tests/lint/standalone typecheck/runtime/migrations/services/providers. Goal active.
