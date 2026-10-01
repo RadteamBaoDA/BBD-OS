@@ -1,18 +1,24 @@
 import base64
 import binascii
 import hashlib
+from datetime import UTC, datetime
 from uuid import UUID
 
 from fastapi import HTTPException
-from sqlalchemy import delete, desc, select, tuple_, update
+from sqlalchemy import delete, desc, func, select, tuple_, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.pagination import decode_cursor, encode_cursor
 from core.chunking import chunk_text
 from core.realtime import commit_with_replay, make_knowledge_change
-from modules.knowledge.documents.models import Document, DocumentChunk, DocumentVersion
-from modules.knowledge.documents.schemas import DocumentCreate, DocumentPatch
+from modules.knowledge.documents.models import (
+    Document, DocumentChunk, DocumentVersion, NormalizedDocumentIdentity,
+    NormalizedVersionProvenance,
+)
+from modules.knowledge.documents.schemas import (
+    DocumentCreate, DocumentPatch, NormalizedDocumentInput, NormalizedDocumentResult,
+)
 from modules.sources import public as sources
 from modules.sources.models import Source
 
@@ -105,6 +111,138 @@ async def has_document_identity(session: AsyncSession, source_id: UUID, external
     )
 
 
+async def upsert_normalized_document(
+    session: AsyncSession, payload: NormalizedDocumentInput
+) -> NormalizedDocumentResult:
+    """Persist one source-owned immutable normalized revision without committing."""
+    source = await sources.lock_source(session, payload.source_id)
+    if source is None or source.status != "active" or source.generation != payload.expected_source_generation:
+        raise ValueError("Normalized source generation is no longer active")
+
+    identity = await session.scalar(
+        select(NormalizedDocumentIdentity)
+        .where(
+            NormalizedDocumentIdentity.source_id == payload.source_id,
+            NormalizedDocumentIdentity.external_id == payload.provider_id,
+        )
+        .with_for_update()
+    )
+    created_identity = identity is None
+    if identity is None:
+        identity = NormalizedDocumentIdentity(source_id=payload.source_id, external_id=payload.provider_id)
+        session.add(identity)
+        await session.flush()
+    if identity.tombstoned_at is not None:
+        return NormalizedDocumentResult(
+            disposition="tombstoned", document_id=None, document_version_id=None,
+            version_number=None, created_version=False, selected_current=False, chunk_count=0,
+        )
+
+    document = await session.scalar(
+        select(Document)
+        .where(Document.source_id == payload.source_id, Document.external_id == payload.provider_id)
+        .with_for_update()
+    )
+    if document is not None and identity.document_id not in (None, document.id):
+        raise ValueError("Normalized identity points to a different document")
+    if document is not None and identity.document_id is None:
+        if created_identity:
+            await session.delete(identity)
+            await session.flush()
+        raise ValueError("Provider identity conflicts with an existing non-normalized document")
+    if document is None:
+        document = Document(
+            source_id=payload.source_id, external_id=payload.provider_id,
+            title=payload.title, content_type=payload.content_type,
+            canonical_url=payload.canonical_url, published_at=payload.published_at,
+            observed_at=payload.observed_at, current_version=0,
+            content_hash=content_hash(payload.content), extraction_status="ready",
+        )
+        session.add(document)
+        await session.flush()
+        identity.document_id = document.id
+
+    prior = await session.scalar(
+        select(NormalizedVersionProvenance).where(
+            NormalizedVersionProvenance.document_id == document.id,
+            NormalizedVersionProvenance.accepted_record_hash == payload.accepted_record_hash,
+            NormalizedVersionProvenance.normalization_version == payload.normalization_version,
+        )
+    )
+    if prior is not None:
+        version = await session.get(DocumentVersion, prior.document_version_id)
+        if version is None:
+            raise RuntimeError("Normalized provenance references a missing revision")
+        count = await session.scalar(
+            select(func.count()).select_from(DocumentChunk)
+            .where(DocumentChunk.document_version_id == version.id)
+        )
+        return NormalizedDocumentResult(
+            disposition="duplicate", document_id=document.id, document_version_id=version.id,
+            version_number=version.version_number, created_version=False,
+            selected_current=document.current_version == version.version_number,
+            chunk_count=int(count or 0),
+        )
+
+    current_provenance = None
+    if document.current_version:
+        current_provenance = await session.scalar(
+            select(NormalizedVersionProvenance)
+            .join(DocumentVersion, DocumentVersion.id == NormalizedVersionProvenance.document_version_id)
+            .where(
+                DocumentVersion.document_id == document.id,
+                DocumentVersion.version_number == document.current_version,
+            )
+        )
+        if current_provenance is None:
+            raise ValueError("Provider identity conflicts with an owner-authored current revision")
+    current_rank = (
+        (current_provenance.selection_observed_at, current_provenance.accepted_record_hash)
+        if current_provenance is not None else None
+    )
+    selected = current_rank is None or (payload.observed_at, payload.accepted_record_hash) > current_rank
+    max_number = await session.scalar(
+        select(func.coalesce(func.max(DocumentVersion.version_number), 0))
+        .where(DocumentVersion.document_id == document.id)
+    )
+    version = DocumentVersion(
+        document_id=document.id, version_number=int(max_number or 0) + 1,
+        content=payload.content, content_hash=content_hash(payload.content),
+        observed_at=payload.observed_at,
+    )
+    session.add(version)
+    await session.flush()
+    session.add(NormalizedVersionProvenance(
+        document_id=document.id, document_version_id=version.id,
+        provider_id=payload.provider_id, provider_version=payload.provider_version,
+        accepted_record_hash=payload.accepted_record_hash,
+        normalization_version=payload.normalization_version,
+        source_generation=payload.expected_source_generation,
+        observed_at=payload.observed_at, received_at=payload.received_at,
+        collected_at=payload.collected_at, selection_observed_at=payload.observed_at,
+        title=payload.title, canonical_url=payload.canonical_url,
+        published_at=payload.published_at, content_type=payload.content_type,
+        provenance_json=payload.provenance,
+    ))
+    await add_content_chunks(session, version)
+    chunk_count = len(chunk_text(payload.content))
+    if selected:
+        document.current_version = version.version_number
+        document.content_hash = version.content_hash
+        document.title = payload.title
+        document.canonical_url = payload.canonical_url
+        document.published_at = payload.published_at
+        document.content_type = payload.content_type
+        document.observed_at = payload.observed_at
+        document.extraction_status = "ready"
+    await session.flush()
+    return NormalizedDocumentResult(
+        disposition="normalized", document_id=document.id,
+        document_version_id=version.id, version_number=version.version_number,
+        created_version=True, selected_current=selected, chunk_count=chunk_count,
+    )
+
+
 async def add_uploaded_document(
     session: AsyncSession,
     source_id: UUID,
@@ -168,6 +306,9 @@ async def save_extraction(
     warnings: list[str],
     parser: str,
 ) -> UUID | None:
+    source = await sources.lock_source(session, source_id)
+    if source is None or source.status != "active":
+        return None
     document = await session.scalar(
         select(Document).where(Document.id == document_id, Document.source_id == source_id).with_for_update()
     )
@@ -183,14 +324,18 @@ async def save_extraction(
         raise RuntimeError("Current document version is missing")
     if current.content != text:
         digest = content_hash(text)
+        max_number = await session.scalar(
+            select(func.coalesce(func.max(DocumentVersion.version_number), 0))
+            .where(DocumentVersion.document_id == document.id)
+        )
         current = DocumentVersion(
             document_id=document.id,
-            version_number=document.current_version + 1,
+            version_number=int(max_number or 0) + 1,
             content=text,
             content_hash=digest,
         )
         session.add(current)
-        document.current_version += 1
+        document.current_version = current.version_number
         document.content_hash = digest
         await session.flush()
     document.extraction_status = extraction_status
@@ -262,7 +407,33 @@ async def delete_document(session: AsyncSession, document_id: UUID) -> bool:
     source_id = identity.scalar_one_or_none()
     if source_id is None:
         return False
-    await sources.lock_source(session, source_id)
+    source = await sources.lock_source(session, source_id)
+    if source is None:
+        return False
+    document = await session.scalar(
+        select(Document).where(Document.id == document_id, Document.source_id == source_id).with_for_update()
+    )
+    if document is None:
+        return False
+    if document.external_id is not None:
+        identity = await session.scalar(
+            select(NormalizedDocumentIdentity).where(
+                NormalizedDocumentIdentity.source_id == source_id,
+                NormalizedDocumentIdentity.external_id == document.external_id,
+            ).with_for_update()
+        )
+        if identity is None:
+            identity = NormalizedDocumentIdentity(
+                source_id=source_id,
+                external_id=document.external_id,
+                document_id=document.id,
+            )
+            session.add(identity)
+            await session.flush()
+        identity.tombstoned_at = datetime.now(UTC)
+        identity.document_id = None
+        from modules.ingestion import public as ingestion
+        await ingestion.tombstone_document_materializations(session, document.id)
     result = await session.scalars(
         delete(Document)
         .where(Document.id == document_id, Document.source_id == source_id)
@@ -276,12 +447,21 @@ async def delete_document(session: AsyncSession, document_id: UUID) -> bool:
 
 async def delete_source_documents(session: AsyncSession, source_id: UUID) -> None:
     """Delete owned data inside the caller's source-locked transaction; do not commit."""
+    await session.execute(
+        delete(NormalizedDocumentIdentity).where(NormalizedDocumentIdentity.source_id == source_id)
+    )
     await session.execute(delete(Document).where(Document.source_id == source_id))
 
 
 async def append_content(
     session: AsyncSession, document_id: UUID, expected_version: int, content: str
 ) -> Document | None:
+    source_id = await session.scalar(select(Document.source_id).where(Document.id == document_id))
+    if source_id is None:
+        return None
+    source = await sources.lock_source(session, source_id)
+    if source is None or source.status != "active":
+        return None
     document = await session.scalar(
         select(Document).where(Document.id == document_id).with_for_update()
     )
@@ -299,7 +479,11 @@ async def append_content(
         return document
     if document.current_version != expected_version:
         raise ValueError("Document revision is stale")
-    next_version = document.current_version + 1
+    max_number = await session.scalar(
+        select(func.coalesce(func.max(DocumentVersion.version_number), 0))
+        .where(DocumentVersion.document_id == document.id)
+    )
+    next_version = int(max_number or 0) + 1
     digest = content_hash(content)
     version = DocumentVersion(
             document_id=document_id,

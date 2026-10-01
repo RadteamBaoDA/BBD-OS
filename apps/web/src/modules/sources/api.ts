@@ -25,7 +25,7 @@ export type IngestionRun = {
   run_id: string;
   source_id: string;
   status: 'queued' | 'running' | 'succeeded' | 'needs_ocr' | 'failed';
-  stages: { stage_key: string; status: string; attempts: number; error_code: string | null; result_count: number | null; updated_at: string }[];
+  stages: { stage_key: string; status: string; attempts: number; error_code: string | null; result_count: number | null; normalized_count: number; duplicate_count: number; skipped_count: number; failed_count: number; pending_count: number; updated_at: string }[];
   error_code: string | null;
   created_at: string;
   updated_at: string;
@@ -214,8 +214,8 @@ export function getSourceIngestion(id: string, cursor?: string) {
   return apiRequest<SourceIngestion>(`/api/v1/ingestion/sources/${id}/runs?limit=20${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ''}`);
 }
 
-export function retryRun(id: string, csrfToken: string) {
-  return apiRequest<{ run_id: string }>(`/api/v1/ingestion/runs/${id}/retry`, { method: 'POST', headers: csrfHeaders(csrfToken) });
+export function retryRun(id: string, stageKey: string, csrfToken: string) {
+  return apiRequest<{ run_id: string }>(`/api/v1/ingestion/runs/${id}/retry`, { method: 'POST', headers: { 'Content-Type': 'application/json', ...csrfHeaders(csrfToken) }, body: JSON.stringify({ stage_key: stageKey }) });
 }
 
 export function getOperation(id: string) { return apiRequest<PurgeOperation>(`/api/v1/system/operations/${id}`); }

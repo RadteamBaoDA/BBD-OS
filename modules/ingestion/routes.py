@@ -12,7 +12,7 @@ from core.storage import save_upload, storage_path
 from modules.ingestion import public
 from modules.connectors import public as connectors
 from modules.ingestion.files import validate_upload
-from modules.ingestion.schemas import CollectorCredentialRead, Receipt, ReceiveBatch, RunRead, SourceIngestionRead, StageRead
+from modules.ingestion.schemas import CollectorCredentialRead, Receipt, ReceiveBatch, RetryRunRequest, RunRead, SourceIngestionRead, StageRead
 
 router = APIRouter(prefix="/api/v1/ingestion", tags=["ingestion"])
 documents_router = APIRouter(prefix="/api/v1/documents", tags=["documents"])
@@ -62,7 +62,7 @@ async def get_run(run_id: UUID, session: Session, _owner: OwnerRead) -> RunRead:
         run_id=run.id,
         source_id=run.source_id,
         status=run.status,
-        stages=[StageRead.model_validate(stage, from_attributes=True) for stage in stages],
+        stages=stages,
         error_code=run.error_code,
         created_at=run.created_at,
         updated_at=run.updated_at,
@@ -84,8 +84,8 @@ async def list_source_runs(
 
 
 @router.post("/runs/{run_id}/retry", response_model=Receipt, status_code=202)
-async def retry_run(run_id: UUID, session: Session, _owner: OwnerWrite) -> Receipt:
-    run = await public.retry_run(session, run_id)
+async def retry_run(run_id: UUID, payload: RetryRunRequest, session: Session, _owner: OwnerWrite) -> Receipt:
+    run = await public.retry_run(session, run_id, payload.stage_key)
     if run is None:
         raise HTTPException(status_code=404, detail="Ingestion run not found")
     return Receipt(batch_id=run.batch_id, run_id=run.id, status=run.status)

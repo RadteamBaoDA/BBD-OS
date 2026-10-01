@@ -48,6 +48,11 @@ class Receipt(BaseModel):
     status: Literal["queued", "running", "succeeded", "needs_ocr", "failed"]
 
 
+class RetryRunRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    stage_key: str = Field(min_length=1, max_length=128)
+
+
 class CrawlReceipt(BaseModel):
     run_id: UUID
 
@@ -69,6 +74,11 @@ class StageRead(BaseModel):
     attempts: int
     error_code: str | None
     result_count: int | None = None
+    normalized_count: int = 0
+    duplicate_count: int = 0
+    skipped_count: int = 0
+    failed_count: int = 0
+    pending_count: int = 0
     updated_at: datetime
 
 
