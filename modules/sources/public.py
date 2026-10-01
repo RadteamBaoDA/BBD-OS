@@ -97,10 +97,15 @@ async def set_connector_configuration(
     source_id: UUID,
     expected_generation: int,
     configuration: dict[str, object],
+    *,
+    allow_paused: bool = False,
 ) -> ConnectorSource | None:
     source = await _lock_source_row(session, source_id)
-    if source is None or source.status != "active" or source.generation != expected_generation:
+    if source is None or source.status == "archived" or source.generation != expected_generation:
         return None
+    if source.status != "active" and not (allow_paused and source.status == "paused"):
+        return None
+    source.generation += 1
     source.configuration = deepcopy(configuration)
     await session.flush()
     return _connector_source(source)
@@ -198,10 +203,28 @@ async def update_source(
         if next_status != source.status:
             source.generation += 1
             source.status = next_status
-            source.retired_at = datetime.now(UTC) if next_status == "archived" else None
+            source.retired_at = datetime.now(UTC) if next_status in {"paused", "archived"} else None
+            if next_status in {"paused", "archived"}:
+                await _fence_connector_source(session, source)
     await session.commit()
     await session.refresh(source)
     return source
+
+
+async def pause_source_for_connector(
+    session: AsyncSession, source_id: UUID
+) -> ConnectorSource | None:
+    """Pause a connector source within the caller's transaction."""
+    source = await _lock_source_row(session, source_id)
+    if source is None or source.status == "archived":
+        return None
+    if source.status != "paused":
+        source.generation += 1
+        source.status = "paused"
+        source.retired_at = datetime.now(UTC)
+    await _fence_connector_source(session, source)
+    await session.flush()
+    return _connector_source(source)
 
 
 async def archive_source(
@@ -214,9 +237,7 @@ async def archive_source(
         source.generation += 1
         source.status = "archived"
         source.retired_at = datetime.now(UTC)
-    from modules.ingestion import public as ingestion
-
-    await ingestion.revoke_source_credentials(session, source_id)
+    await _fence_connector_source(session, source)
     await session.commit()
     await session.refresh(source)
     return source
@@ -247,7 +268,7 @@ async def start_source_purge(
     from modules.knowledge.documents import public as documents
 
     operation.raw_uris = sorted(await documents.raw_uris(session, source_id))
-    await ingestion.revoke_source_credentials(session, source_id)
+    await _fence_connector_source(session, source)
     now = datetime.now(UTC)
     event = DomainEvent(
         id=uuid4(), type="source.purge.requested", version=1, occurred_at=now,
@@ -257,3 +278,19 @@ async def start_source_purge(
     await session.commit()
     await session.refresh(operation)
     return operation
+
+
+async def _fence_connector_source(session: AsyncSession, source: Source) -> None:
+    from modules.connectors import public as connectors
+    from modules.ingestion import public as ingestion
+
+    await ingestion.revoke_source_credentials(session, source.id)
+    await connectors.fence_source_collection(
+        session,
+        SourceFence(
+            id=source.id,
+            status=source.status,
+            generation=source.generation,
+            local_only=source.local_only,
+        ),
+    )

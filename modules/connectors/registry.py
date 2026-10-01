@@ -29,6 +29,7 @@ def validate(source: ConnectorSource) -> dict[str, Any]:
             raise ValueError("REST connector URLs must use the default HTTP(S) port")
     return {
         "source_id": str(source.id),
+        "source_generation": source.generation,
         "type": source.type,
         "timezone": config.timezone or DEFAULT_TIMEZONE,
         "url": str(required_url),

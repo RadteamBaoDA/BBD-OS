@@ -24,6 +24,7 @@ from modules.ingestion.models import (
 from modules.ingestion.schemas import CrawlReceipt, EventDelivery, Receipt, ReceiveBatch
 from modules.knowledge.documents import public as documents
 from modules.sources import public as sources
+from modules.sources.schemas import ConnectorSource
 
 def _digest(value: object) -> str:
     encoded = json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
@@ -48,19 +49,30 @@ async def create_collector_credential(session: AsyncSession, source_id: UUID) ->
         credential.revoked_at = now
     token = secrets.token_urlsafe(32)
     session.add(CollectorCredential(token_hash=hashlib.sha256(token.encode()).hexdigest(), source_id=source_id))
-    await session.commit()
+    await session.flush()
     return token
 
 
 async def revoke_collector_credential(session: AsyncSession, token: str) -> None:
     token_hash = hashlib.sha256(token.encode()).hexdigest()
-    row = await session.get(CollectorCredential, token_hash)
+    source_id = await session.scalar(
+        select(CollectorCredential.source_id).where(CollectorCredential.token_hash == token_hash)
+    )
+    if source_id is None or await sources.lock_source(session, source_id) is None:
+        return
+    row = await session.scalar(
+        select(CollectorCredential)
+        .where(CollectorCredential.token_hash == token_hash, CollectorCredential.source_id == source_id)
+        .with_for_update()
+        .execution_options(populate_existing=True)
+    )
     if row is not None:
         row.revoked_at = datetime.now(UTC)
-        await session.commit()
 
 
 async def revoke_source_credentials(session: AsyncSession, source_id: UUID) -> None:
+    if await sources.lock_source(session, source_id) is None:
+        return
     await session.execute(
         update(CollectorCredential)
         .where(CollectorCredential.source_id == source_id, CollectorCredential.revoked_at.is_(None))
@@ -142,12 +154,44 @@ async def collector_can_ingest(session: AsyncSession, source_id: UUID, token: st
     return source is not None and source.status == "active"
 
 
-async def receive_batch(session: AsyncSession, payload: ReceiveBatch) -> tuple[IngestionBatch, IngestionRun]:
+async def receive_batch(
+    session: AsyncSession,
+    payload: ReceiveBatch,
+    collector_token: str,
+) -> tuple[IngestionBatch, IngestionRun]:
     source = await sources.lock_source(session, payload.source_id)
     if source is None:
         raise HTTPException(status_code=404, detail="Source not found")
     if source.status != "active":
         raise HTTPException(status_code=409, detail="Source is not active")
+    if source.generation != payload.source_generation:
+        raise HTTPException(status_code=409, detail="Source generation changed during collection")
+    token_hash = hashlib.sha256(collector_token.encode()).hexdigest()
+    grant_valid = bool(await session.scalar(
+        select(CollectorCredential.token_hash).where(
+            CollectorCredential.token_hash == token_hash,
+            CollectorCredential.source_id == payload.source_id,
+            CollectorCredential.scope == "ingestion:write",
+            CollectorCredential.revoked_at.is_(None),
+        )
+    ))
+    if not grant_valid:
+        raise HTTPException(status_code=401, detail="Collector authentication required")
+    from modules.connectors import public as connectors
+
+    if not await connectors.require_batch_fence(
+        session,
+        ConnectorSource(
+            id=source.id,
+            type="api",
+            status=source.status,
+            generation=source.generation,
+            configuration={},
+        ),
+        payload.source_generation,
+        payload.connector_revision,
+    ):
+        raise HTTPException(status_code=409, detail="Connector collection fence is stale or required")
 
     payload_hash = _digest(payload.model_dump(mode="json"))
     existing = await session.scalar(
@@ -192,7 +236,12 @@ async def receive_batch(session: AsyncSession, payload: ReceiveBatch) -> tuple[I
         version=1,
         occurred_at=now,
         producer="modules.ingestion",
-        payload={"run_id": str(run.id), "stage_id": str(stage.id), "source_generation": source.generation},
+        payload={
+            "run_id": str(run.id),
+            "stage_id": str(stage.id),
+            "source_generation": source.generation,
+            **({"connector_revision": payload.connector_revision} if payload.connector_revision is not None else {}),
+        },
     )
     await publish_event(session, event)
     # Keep every distinct provider/content observation in the accepted batch.
@@ -230,14 +279,18 @@ async def receive_batch(session: AsyncSession, payload: ReceiveBatch) -> tuple[I
     return batch, run
 
 
-async def receive_connector_batch(session: AsyncSession, payload: ReceiveBatch) -> Receipt:
-    batch, run = await receive_batch(session, payload)
+async def receive_connector_batch(
+    session: AsyncSession, payload: ReceiveBatch, collector_token: str
+) -> Receipt:
+    batch, run = await receive_batch(session, payload, collector_token)
     return Receipt(batch_id=batch.id, run_id=run.id, status=run.status)
 
 
 async def queue_connector_crawl(
     session: AsyncSession,
     source_id: UUID,
+    source_generation: int,
+    connector_revision: int,
     cursor_before: str | None,
     configuration: dict[str, object],
 ) -> CrawlReceipt:
@@ -246,6 +299,25 @@ async def queue_connector_crawl(
         raise HTTPException(status_code=404, detail="Source not found")
     if source.status != "active":
         raise HTTPException(status_code=409, detail="Source is not active")
+    from modules.connectors import public as connectors
+    from modules.connectors.public import CollectionFence
+
+    if not await connectors.require_collection_fence(
+        session,
+        ConnectorSource(
+            id=source.id,
+            type="api",
+            status=source.status,
+            generation=source.generation,
+            configuration={},
+        ),
+        CollectionFence(
+            source_generation=source_generation,
+            connector_revision=connector_revision,
+        ),
+        lock=True,
+    ):
+        raise HTTPException(status_code=409, detail="Connector collection fence is stale")
     state = await session.get(SourceIngestionState, source_id, with_for_update=True)
     if state is None:
         state = SourceIngestionState(source_id=source_id, cursor=None)
@@ -287,7 +359,8 @@ async def queue_connector_crawl(
         producer="modules.connectors",
         payload={
             "source_id": str(source_id),
-            "source_generation": source.generation,
+            "source_generation": source_generation,
+            "connector_revision": connector_revision,
             "run_id": str(run.id),
             "stage_id": str(stage.id),
             "cursor_before": cursor_before,

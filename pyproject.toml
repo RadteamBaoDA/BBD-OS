@@ -21,6 +21,7 @@ dependencies = [
     "uvicorn[standard]>=0.35,<1",
     "authlib>=1.6,<2",
     "itsdangerous>=2.2,<3",
+    "cryptography>=50,<51",
 ]
 
 [dependency-groups]

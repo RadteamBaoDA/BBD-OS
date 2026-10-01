@@ -12,15 +12,19 @@ from core.auth.dependencies import require_owner_write
 from core.auth.models import AuthSession
 from core.database import get_session
 from modules.connectors.public import (
-    ConnectorConfig,
+    ConnectorConfigurationRequest,
     ConnectorPreview,
     ConnectorReceipt,
+    CollectionFence,
     CrawlRequest,
     CrawlResult,
     RSSRequest,
     validate_public_url,
+    save_connector_configuration,
 )
 from modules.connectors import registry
+from modules.connectors import provisioning
+from modules.connectors.n8n import workflow_webhook_path
 from modules.ingestion import public as ingestion
 from modules.ingestion.schemas import Receipt, ReceiveBatch
 from modules.sources import public as sources
@@ -35,6 +39,8 @@ class ConnectorState(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     source_id: UUID
+    source_generation: int
+    connector_revision: int | None = None
     type: str
     timezone: str
     url: str
@@ -58,23 +64,24 @@ async def _source(session: AsyncSession, source_id: UUID) -> ConnectorSource:
 
 async def _collector(
     session: AsyncSession, source_id: UUID, authorization: str | None
-) -> None:
+) -> str:
     scheme, _, token = (authorization or "").partition(" ")
     if scheme.lower() != "bearer" or not token or not await ingestion.collector_can_ingest(
         session, source_id, token
     ):
         raise HTTPException(status_code=401, detail="Source collector authentication required")
+    return token
 
 
 @router.put("/{source_id}/configuration", response_model=ConnectorState)
 async def configure_source(
-    source_id: UUID, payload: ConnectorConfig, session: Session, _owner: OwnerWrite
+    source_id: UUID, payload: ConnectorConfigurationRequest, session: Session, _owner: OwnerWrite
 ) -> ConnectorState:
     source = await _source(session, source_id)
     if source.type not in registry.SUPPORTED_TYPES:
         raise HTTPException(status_code=422, detail="This source type has no packaged connector")
     candidate = source.model_copy(
-        update={"configuration": payload.model_dump(mode="json", exclude_none=True)}
+        update={"configuration": payload.configuration.model_dump(mode="json", exclude_none=True)}
     )
     try:
         data = registry.validate(candidate)
@@ -84,13 +91,22 @@ async def configure_source(
         await validate_public_url(data["url"])
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
-    saved = await sources.set_connector_configuration(
-        session, source_id, source.generation, candidate.configuration
+    desired = dict(candidate.configuration)
+    desired["auth_method"] = "none"
+    saved_result = await save_connector_configuration(
+        session,
+        source,
+        payload.expected_revision,
+        candidate.configuration,
+        desired,
     )
-    if saved is None:
-        raise HTTPException(status_code=409, detail="Source changed while configuration was validated")
+    if saved_result is None:
+        raise HTTPException(status_code=409, detail="Source or connector revision changed while configuration was validated")
+    saved, provisioning_row = saved_result
     await session.commit()
-    return ConnectorState(**registry.sync(saved, None))
+    result = registry.sync(saved, None)
+    result["connector_revision"] = provisioning_row.desired_revision
+    return ConnectorState(**result)
 
 
 @router.post("/{source_id}/collect", response_model=ManualSyncResult, status_code=202)
@@ -104,8 +120,19 @@ async def trigger_collection(
     settings = request.app.state.settings
     if source.status != "active" or source.type not in {"rss", "web", "api"}:
         raise HTTPException(status_code=409, detail="Active packaged connector required")
-    if settings.n8n_source_id != str(source_id):
-        raise HTTPException(status_code=409, detail="Configure this source ID and collector credential in n8n first")
+    provisioned = await provisioning.activation_status(session, source_id)
+    if (
+        provisioned is None
+        or provisioned.state != "active"
+        or provisioned.applied_revision != provisioned.desired_revision
+        or provisioned.source_generation != source.generation
+    ):
+        raise HTTPException(status_code=409, detail="Enable this source from connector settings before collecting")
+    if not await provisioning.require_collection_fence(
+        session, source, source.generation, provisioned.desired_revision, lock=True
+    ):
+        raise HTTPException(status_code=409, detail="Connector collection fence is stale")
+    await session.rollback()
     token = settings.n8n_webhook_token.get_secret_value()
     if not token:
         raise HTTPException(status_code=503, detail="Manual n8n trigger authentication is not configured")
@@ -114,12 +141,15 @@ async def trigger_collection(
         await validate_public_url(data["url"])
     except (KeyError, ValueError, TypeError) as exc:
         raise HTTPException(status_code=409, detail="Configure and validate the connector before syncing") from exc
-    path = {"rss": "rss", "web": "url", "api": "rest"}[source.type]
     try:
         async with httpx.AsyncClient(timeout=75, trust_env=False) as client:
             response = await client.post(
-                f"{str(settings.n8n_service_url).rstrip('/')}/webhook/bbd-collect-{path}",
-                json={"source_id": str(source_id)},
+                f"{str(settings.n8n_service_url).rstrip('/')}/webhook/{workflow_webhook_path(source_id, source.type)}",
+                json={
+                    "source_id": str(source_id),
+                    "source_generation": source.generation,
+                    "connector_revision": provisioned.desired_revision,
+                },
                 headers={"X-BBD-Webhook-Token": token},
             )
             response.raise_for_status()
@@ -136,9 +166,17 @@ async def trigger_collection(
 async def validate_source(
     source_id: UUID,
     session: Session,
+    payload: CollectionFence,
     authorization: Annotated[str | None, Header()] = None,
 ) -> ConnectorState:
     await _collector(session, source_id, authorization)
+    source = await _source(session, source_id)
+    if not await provisioning.require_validation_fence(
+        session, source, payload.source_generation, payload.connector_revision
+    ):
+        raise HTTPException(status_code=409, detail="Connector validation fence is stale")
+    await _collector(session, source_id, authorization)
+    await session.rollback()
     source = await _source(session, source_id)
     try:
         data = registry.validate(source)
@@ -146,7 +184,15 @@ async def validate_source(
     except ValueError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     cursor = await ingestion.get_source_cursor(session, source_id)
-    return ConnectorState(**registry.sync(source, cursor))
+    current = await _source(session, source_id)
+    if not await provisioning.require_validation_fence(
+        session, current, payload.source_generation, payload.connector_revision
+    ):
+        raise HTTPException(status_code=409, detail="Connector validation fence changed during validation")
+    await _collector(session, source_id, authorization)
+    result = registry.sync(source, cursor)
+    result["connector_revision"] = payload.connector_revision
+    return ConnectorState(**result)
 
 
 @router.get("/{source_id}/rss", response_model=ConnectorPreview)
@@ -154,9 +200,18 @@ async def preview_rss(
     source_id: UUID,
     session: Session,
     request: Request,
+    source_generation: int,
+    connector_revision: int,
     authorization: Annotated[str | None, Header()] = None,
 ) -> ConnectorPreview:
     await _collector(session, source_id, authorization)
+    source = await _source(session, source_id)
+    if not await provisioning.require_collection_fence(
+        session, source, source_generation, connector_revision, lock=True
+    ):
+        raise HTTPException(status_code=409, detail="Connector collection fence is stale")
+    await _collector(session, source_id, authorization)
+    await session.rollback()
     source = await _source(session, source_id)
     try:
         data = registry.validate(source)
@@ -176,6 +231,15 @@ async def preview_rss(
             )
             response.raise_for_status()
         result = response.json()
+        result["source_generation"] = source_generation
+        result["connector_revision"] = connector_revision
+        current = await _source(session, source_id)
+        if not await provisioning.require_collection_fence(
+            session, current, source_generation, connector_revision, lock=True
+        ):
+            raise HTTPException(status_code=409, detail="Connector collection fence changed during collection")
+        await _collector(session, source_id, authorization)
+        await session.rollback()
         return ConnectorPreview.model_validate(result)
     except (ValueError, httpx.HTTPError) as exc:
         raise HTTPException(status_code=422, detail="RSS source could not be collected") from exc
@@ -188,14 +252,21 @@ async def receive_connector_batch(
     session: Session,
     authorization: Annotated[str | None, Header()] = None,
 ) -> Receipt:
-    await _collector(session, source_id, authorization)
+    collector_token = await _collector(session, source_id, authorization)
     source = await _source(session, source_id)
+    if not await provisioning.require_collection_fence(
+        session, source, payload.source_generation, payload.connector_revision, lock=True
+    ):
+        raise HTTPException(status_code=409, detail="Connector collection fence is stale")
+    await _collector(session, source_id, authorization)
     try:
         registry.validate(source)
     except ValueError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     batch = ReceiveBatch(
         source_id=source_id,
+        source_generation=payload.source_generation,
+        connector_revision=payload.connector_revision,
         batch_key="connector:" + hashlib.sha256(
             payload.model_dump_json().encode()
         ).hexdigest(),
@@ -203,22 +274,26 @@ async def receive_connector_batch(
         cursor_after=payload.cursor_after,
         records=[record.model_dump() for record in payload.records],
     )
-    return await ingestion.receive_connector_batch(session, batch)
+    return await ingestion.receive_connector_batch(session, batch, collector_token)
 
 
 @router.post("/{source_id}/no-changes", response_model=ManualSyncResult)
 async def acknowledge_no_changes(
     source_id: UUID,
+    payload: CollectionFence,
     session: Session,
     authorization: Annotated[str | None, Header()] = None,
 ) -> ManualSyncResult:
     await _collector(session, source_id, authorization)
     source = await _source(session, source_id)
-    if source.status != "active":
-        raise HTTPException(status_code=409, detail="Source is not active")
+    if not await provisioning.require_collection_fence(
+        session, source, payload.source_generation, payload.connector_revision, lock=True
+    ):
+        raise HTTPException(status_code=409, detail="Connector collection fence is stale")
+    await _collector(session, source_id, authorization)
     now = datetime.now(UTC)
     if not await sources.record_collection_result(
-        session, source_id, source.generation, now, None, no_changes=True
+        session, source_id, payload.source_generation, now, None, no_changes=True
     ):
         raise HTTPException(status_code=409, detail="Source is no longer active")
     await session.commit()
@@ -236,8 +311,11 @@ async def submit_crawl(
     await _collector(session, source_id, authorization)
     settings = request.app.state.settings
     source = await _source(session, source_id)
-    if source.type != "web" or source.status != "active":
+    if source.type != "web" or not await provisioning.require_collection_fence(
+        session, source, payload.source_generation, payload.connector_revision, lock=True
+    ):
         raise HTTPException(status_code=409, detail="Active web source required")
+    await _collector(session, source_id, authorization)
     try:
         config = registry.configuration(source)
         if config.url is None:
@@ -261,6 +339,8 @@ async def submit_crawl(
     receipt = await ingestion.queue_connector_crawl(
         session,
         source_id,
+        payload.source_generation,
+        payload.connector_revision,
         cursor,
         {
             "url": url,
