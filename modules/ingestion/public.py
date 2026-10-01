@@ -7,7 +7,7 @@ from typing import Literal
 from uuid import UUID, uuid4
 
 from fastapi import HTTPException
-from sqlalchemy import String, cast, delete, select, tuple_, update
+from sqlalchemy import String, case, cast, delete, func, select, tuple_, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.events import DomainEvent
@@ -20,6 +20,7 @@ from modules.ingestion.models import (
     IngestionBatch,
     IngestionRun,
     IngestionStage,
+    ObservationNormalization,
     SourceIngestionState,
     SourceObservation,
 )
@@ -92,6 +93,62 @@ async def publish_event(session: AsyncSession, event: DomainEvent) -> None:
         payload=event.payload,
         status="pending",
     ))
+
+
+NORMALIZATION_VERSION = 1
+
+
+async def schedule_normalization(
+    session: AsyncSession, run: IngestionRun, batch: IngestionBatch, source_generation: int,
+    received_at: datetime,
+) -> IngestionStage | None:
+    observations = list((await session.scalars(
+        select(SourceObservation).where(SourceObservation.batch_id == batch.id).order_by(SourceObservation.id)
+    )).all())
+    if not observations:
+        return None
+    stage = await session.scalar(
+        select(IngestionStage).where(IngestionStage.run_id == run.id, IngestionStage.stage_key == "normalize")
+    )
+    if stage is None:
+        stage = IngestionStage(run_id=run.id, stage_key="normalize", status="pending")
+        session.add(stage)
+        await session.flush()
+        event = DomainEvent(
+            id=uuid4(), type="ingestion.normalize.requested", version=1,
+            occurred_at=received_at, producer="modules.ingestion",
+            payload={
+                "run_id": str(run.id), "stage_id": str(stage.id),
+                "source_generation": source_generation, "normalization_version": NORMALIZATION_VERSION,
+            },
+        )
+        await publish_event(session, event)
+    existing_ids = set((await session.scalars(
+        select(ObservationNormalization.observation_id).where(
+            ObservationNormalization.stage_id == stage.id,
+            ObservationNormalization.normalization_version == NORMALIZATION_VERSION,
+        )
+    )).all())
+    for observation in observations:
+        if observation.id not in existing_ids:
+            session.add(ObservationNormalization(
+                observation_id=observation.id, source_id=observation.source_id,
+                run_id=run.id, stage_id=stage.id, source_generation=source_generation,
+                normalization_version=NORMALIZATION_VERSION,
+            ))
+        if observation.received_at is None:
+            observation.received_at = received_at
+    await session.flush()
+    return stage
+
+
+async def tombstone_document_materializations(session: AsyncSession, document_id: UUID) -> None:
+    """Make already accepted work terminal when its normalized document is deleted."""
+    await session.execute(
+        update(ObservationNormalization)
+        .where(ObservationNormalization.document_id == document_id)
+        .values(disposition="skipped", error_code="document_deleted", document_id=None, document_version_id=None)
+    )
 
 
 async def get_event_delivery(session: AsyncSession, event_id: UUID) -> EventDelivery | None:
@@ -223,7 +280,10 @@ async def receive_batch(
     if state.cursor != payload.cursor_before:
         raise HTTPException(status_code=409, detail="Collection cursor is stale")
 
-    batch = IngestionBatch(source_id=payload.source_id, batch_key=payload.batch_key, payload_hash=payload_hash)
+    batch = IngestionBatch(
+        source_id=payload.source_id, batch_key=payload.batch_key, payload_hash=payload_hash,
+        source_generation=source.generation,
+    )
     session.add(batch)
     await session.flush()
     run = IngestionRun(batch_id=batch.id, source_id=payload.source_id, status="queued")
@@ -263,8 +323,12 @@ async def receive_batch(
                 record_hash=record_hash,
                 payload=data,
                 observed_at=record.observed_at,
+                received_at=now,
+                collected_at=None,
             )
         )
+    await session.flush()
+    normalize_stage = await schedule_normalization(session, run, batch, source.generation, now)
     result = await session.execute(
         update(SourceIngestionState)
         .where(
@@ -275,10 +339,13 @@ async def receive_batch(
     )
     if result.rowcount != 1:
         raise HTTPException(status_code=409, detail="Collection cursor changed")
-    await commit_with_replay(session, [
+    changes = [
         make_source_change(source.id, source.generation, source.status),
         make_ingestion_change(source.id, run.id, run.status, stage.stage_key, stage.status),
-    ])
+    ]
+    if normalize_stage is not None:
+        changes.append(make_ingestion_change(source.id, run.id, run.status, normalize_stage.stage_key, normalize_stage.status))
+    await commit_with_replay(session, changes)
     await session.refresh(batch)
     await session.refresh(run)
     return batch, run
@@ -347,7 +414,10 @@ async def queue_connector_crawl(
     if state.lease_expires_at is not None and state.lease_expires_at > now:
         raise HTTPException(status_code=409, detail="Source already has an active collection run")
 
-    batch = IngestionBatch(source_id=source_id, batch_key=key, payload_hash=_digest(configuration))
+    batch = IngestionBatch(
+        source_id=source_id, batch_key=key, payload_hash=_digest(configuration),
+        source_generation=source.generation,
+    )
     session.add(batch)
     await session.flush()
     run = IngestionRun(batch_id=batch.id, source_id=source_id, status="queued")
@@ -415,7 +485,10 @@ async def receive_file(
     now = datetime.now(UTC)
     if not await sources.record_collection_started(session, source_id, source.generation, now):
         raise HTTPException(status_code=409, detail="Source is not active")
-    batch = IngestionBatch(source_id=source_id, batch_key=batch_key, payload_hash=digest)
+    batch = IngestionBatch(
+        source_id=source_id, batch_key=batch_key, payload_hash=digest,
+        source_generation=source.generation,
+    )
     session.add(batch)
     await session.flush()
     run = IngestionRun(batch_id=batch.id, source_id=source_id, status="queued")
@@ -446,7 +519,40 @@ async def receive_file(
     return run, True
 
 
-async def get_run(session: AsyncSession, run_id: UUID) -> tuple[IngestionRun, list[IngestionStage]] | None:
+async def _read_stages(session: AsyncSession, stages: list[IngestionStage]) -> list[StageRead]:
+    if not stages:
+        return []
+    counts = await session.execute(
+        select(
+            ObservationNormalization.stage_id,
+            func.sum(case((ObservationNormalization.disposition == "normalized", 1), else_=0)),
+            func.sum(case((ObservationNormalization.disposition == "duplicate", 1), else_=0)),
+            func.sum(case((ObservationNormalization.disposition == "skipped", 1), else_=0)),
+            func.sum(case((ObservationNormalization.disposition == "failed", 1), else_=0)),
+            func.sum(case((ObservationNormalization.disposition == "pending", 1), else_=0)),
+        )
+        .where(ObservationNormalization.stage_id.in_([stage.id for stage in stages]))
+        .group_by(ObservationNormalization.stage_id)
+    )
+    by_stage = {
+        row[0]: tuple(int(value or 0) for value in row[1:])
+        for row in counts
+    }
+    return [
+        StageRead(
+            stage_key=stage.stage_key, status=stage.status, attempts=stage.attempts,
+            error_code=stage.error_code, result_count=stage.result_count, updated_at=stage.updated_at,
+            normalized_count=by_stage.get(stage.id, (0, 0, 0, 0, 0))[0],
+            duplicate_count=by_stage.get(stage.id, (0, 0, 0, 0, 0))[1],
+            skipped_count=by_stage.get(stage.id, (0, 0, 0, 0, 0))[2],
+            failed_count=by_stage.get(stage.id, (0, 0, 0, 0, 0))[3],
+            pending_count=by_stage.get(stage.id, (0, 0, 0, 0, 0))[4],
+        )
+        for stage in stages
+    ]
+
+
+async def get_run(session: AsyncSession, run_id: UUID) -> tuple[IngestionRun, list[StageRead]] | None:
     run = await session.get(IngestionRun, run_id)
     if run is None:
         return None
@@ -457,7 +563,7 @@ async def get_run(session: AsyncSession, run_id: UUID) -> tuple[IngestionRun, li
             )
         ).all()
     )
-    return run, stages
+    return run, await _read_stages(session, stages)
 
 
 async def list_source_runs(
@@ -488,34 +594,32 @@ async def list_source_runs(
         if len(rows) > limit and page_rows
         else None
     )
-    state = await session.get(SourceIngestionState, source_id)
-    current = None
-    if (
-        source.status == "active"
-        and state is not None
-        and state.lease_run_id is not None
-        and state.lease_expires_at is not None
-        and state.lease_expires_at > datetime.now(UTC)
-    ):
-        lease_run = await session.get(IngestionRun, state.lease_run_id)
-        if lease_run is not None and lease_run.source_id == source_id and lease_run.status in {"queued", "running"}:
-            current = lease_run
+    current = await session.scalar(
+        select(IngestionRun)
+        .where(IngestionRun.source_id == source_id, IngestionRun.status.in_(("queued", "running")))
+        .order_by(IngestionRun.created_at.desc(), IngestionRun.id.desc())
+        .limit(1)
+    )
     run_rows = list({run.id: run for run in [*page_rows, *([current] if current else [])]}.values())
     stage_rows = list((await session.scalars(
         select(IngestionStage)
         .where(IngestionStage.run_id.in_([run.id for run in run_rows]))
         .order_by(IngestionStage.stage_key)
     )).all()) if run_rows else []
-    stages_by_run: dict[UUID, list[StageRead]] = {run.id: [] for run in run_rows}
+    stages_by_run: dict[UUID, list[IngestionStage]] = {run.id: [] for run in run_rows}
     for stage in stage_rows:
-        stages_by_run[stage.run_id].append(StageRead.model_validate(stage, from_attributes=True))
+        stages_by_run[stage.run_id].append(stage)
+    stage_reads = {
+        run_id: await _read_stages(session, stages)
+        for run_id, stages in stages_by_run.items()
+    }
 
     def detach(run: IngestionRun) -> RunRead:
         return RunRead(
             run_id=run.id,
             source_id=run.source_id,
             status=run.status,
-            stages=stages_by_run[run.id],
+            stages=stage_reads[run.id],
             error_code=run.error_code,
             created_at=run.created_at,
             updated_at=run.updated_at,
@@ -528,7 +632,9 @@ async def list_source_runs(
     )
 
 
-async def retry_run(session: AsyncSession, run_id: UUID) -> IngestionRun | None:
+async def retry_run(
+    session: AsyncSession, run_id: UUID, requested_stage_key: str | None = None
+) -> IngestionRun | None:
     run_hint = await session.get(IngestionRun, run_id)
     if run_hint is None:
         return None
@@ -541,15 +647,49 @@ async def retry_run(session: AsyncSession, run_id: UUID) -> IngestionRun | None:
     )
     if run is None:
         return None
-    stage = await session.scalar(
-        select(IngestionStage).where(IngestionStage.run_id == run_id).with_for_update()
-    )
-    if stage is None:
+    stages = list((await session.scalars(
+        select(IngestionStage).where(IngestionStage.run_id == run_id)
+        .order_by(IngestionStage.stage_key).with_for_update()
+    )).all())
+    if not stages:
         raise RuntimeError("Ingestion run has no stage")
-    if stage.status in {"pending", "queued", "running", "retrying"}:
+    if any(stage.status in {"pending", "queued", "running", "retrying"} for stage in stages):
+        if requested_stage_key is not None:
+            raise HTTPException(status_code=409, detail="Ingestion run still has an active stage")
         return run
-    if stage.status == "succeeded":
+    if all(stage.status == "succeeded" for stage in stages):
         return run
+    retry_order = {"receive": 0, "collect_web": 1, "normalize": 2, "parse_file": 3}
+    failed = sorted(
+        (stage for stage in stages if stage.status == "failed"),
+        key=lambda stage: (retry_order.get(stage.stage_key, 100), stage.stage_key),
+    )
+    if not failed:
+        return run
+    stage = next((item for item in failed if item.stage_key == requested_stage_key), None) if requested_stage_key else failed[0]
+    if stage is None:
+        raise HTTPException(status_code=409, detail="Requested stage is not retryable")
+    prior_event = await session.scalar(
+        select(EventOutbox)
+        .where(EventOutbox.payload["stage_id"].astext == str(stage.id))
+        .order_by(EventOutbox.created_at.desc())
+        .limit(1)
+        .with_for_update()
+    )
+    if prior_event is None:
+        raise HTTPException(status_code=409, detail="Failed stage has no durable retry event")
+    captured_generation = prior_event.payload.get("source_generation")
+    if not isinstance(captured_generation, int) or captured_generation != source.generation:
+        raise HTTPException(status_code=409, detail="Failed stage belongs to an obsolete source generation")
+    if stage.stage_key == "normalize":
+        failed_progress = await session.scalar(
+            select(ObservationNormalization.id).where(
+                ObservationNormalization.stage_id == stage.id,
+                ObservationNormalization.disposition == "failed",
+            ).limit(1)
+        )
+        if failed_progress is not None:
+            raise HTTPException(status_code=409, detail="Invalid observations require correction before normalization retry")
     stage.status = "pending"
     stage.attempts = 0
     stage.error_code = None
@@ -557,21 +697,14 @@ async def retry_run(session: AsyncSession, run_id: UUID) -> IngestionRun | None:
     stage.lease_expires_at = None
     run.status = "queued"
     run.error_code = None
-    prior_event = await session.scalar(
-        select(EventOutbox)
-        .where(EventOutbox.payload["stage_id"].astext == str(stage.id))
-        .order_by(EventOutbox.created_at.desc())
-        .limit(1)
-    )
     event = DomainEvent(
         id=uuid4(),
-        type=prior_event.type if prior_event is not None else "ingestion.stage.requested",
+        type=prior_event.type,
         version=1,
         occurred_at=datetime.now(UTC),
         producer="modules.ingestion",
         payload={
-            **(prior_event.payload if prior_event is not None else {"run_id": str(run.id), "stage_id": str(stage.id)}),
-            "source_generation": source.generation,
+            **prior_event.payload,
         },
     )
     session.add(
@@ -585,12 +718,14 @@ async def retry_run(session: AsyncSession, run_id: UUID) -> IngestionRun | None:
         )
     )
     state = await session.get(SourceIngestionState, run.source_id, with_for_update=True)
-    if state is not None:
+    if stage.stage_key in {"receive", "collect_web"} and state is not None:
         now = datetime.now(UTC)
         if state.lease_run_id not in (None, run.id) and state.lease_expires_at and state.lease_expires_at > now:
             raise HTTPException(status_code=409, detail="Source already has an active collection run")
         state.lease_run_id = run.id
         state.lease_expires_at = now + COLLECTION_LEASE
+    run.status = "queued"
+    run.error_code = None
     await commit_with_replay(
         session,
         [make_ingestion_change(source.id, run.id, run.status, stage.stage_key, stage.status)],

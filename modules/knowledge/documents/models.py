@@ -78,6 +78,44 @@ class DocumentVersion(Base):
     )
 
 
+class NormalizedDocumentIdentity(Base):
+    __tablename__ = "normalized_document_identities"
+    __table_args__ = (UniqueConstraint("source_id", "external_id", name="uq_normalized_document_identities_source_external"),)
+
+    id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid4)
+    source_id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), ForeignKey("sources.id", ondelete="CASCADE"), nullable=False)
+    external_id: Mapped[str] = mapped_column(String(512), nullable=False)
+    document_id: Mapped[UUID | None] = mapped_column(Uuid(as_uuid=True), ForeignKey("documents.id", ondelete="SET NULL"))
+    tombstoned_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class NormalizedVersionProvenance(Base):
+    __tablename__ = "normalized_version_provenance"
+    __table_args__ = (
+        UniqueConstraint("document_id", "accepted_record_hash", "normalization_version", name="uq_normalized_version_provenance_identity"),
+        Index("ix_normalized_version_provenance_version", "document_version_id"),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid4)
+    document_id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), ForeignKey("documents.id", ondelete="CASCADE"), nullable=False)
+    document_version_id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), ForeignKey("document_versions.id", ondelete="CASCADE"), nullable=False)
+    provider_id: Mapped[str] = mapped_column(String(512), nullable=False)
+    provider_version: Mapped[str | None] = mapped_column(String(255))
+    accepted_record_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    normalization_version: Mapped[int] = mapped_column(Integer, nullable=False)
+    source_generation: Mapped[int] = mapped_column(Integer, nullable=False)
+    observed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    received_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    collected_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    selection_observed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    title: Mapped[str] = mapped_column(String(500), nullable=False)
+    canonical_url: Mapped[str | None] = mapped_column(Text)
+    published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    content_type: Mapped[str | None] = mapped_column(String(64))
+    provenance_json: Mapped[dict[str, object]] = mapped_column("provenance", JSONB, nullable=False, server_default="{}")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+
 class DocumentChunk(Base):
     __tablename__ = "document_chunks"
     __table_args__ = (

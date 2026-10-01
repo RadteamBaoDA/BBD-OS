@@ -12,7 +12,7 @@
 
 **Entry gate:** Phase 3 validated structured-output alias, search and public library.
 
-**Implementation status:** P04-T1 has uncommitted code in D:/Project/BBD-OS-phase-4. Preserve and inspect before resuming; no completion claimed.
+**Implementation status:** P04-T1.1–T1.3 production code, prescribed build and independent reviews are complete on `codex/bbd-p04`; the phase remains in progress while T2–T4 continue. Runtime/provider acceptance is deferred.
 
 Code stage: implement production code and run affected production builds only. Do not create, modify or run tests, lint, or standalone typecheck until production code for all Phase 1-12 is complete. Behavioral acceptance is listed separately in the deferred test-stage section.
 
@@ -44,7 +44,7 @@ Module ownership: **knowledge/entities, knowledge/relationships**. Backend domai
 
 **Interfaces — consumes/produces:** CRUD /entities, /relationships; GET /entities/{id}/neighbors?limit<=100; EntityRef(id,type,name), EvidenceRef(document_version_id,chunk_id,observed_at,extracted_at,confidence); EntityAlias includes source_id. Public get_entity/get_neighbors return DTOs, never ORM rows.
 
-- [ ] **P04-T1.1 - Implement production behavior.** Match canonical entity types and relationship fields. Manual authoring records owner provenance rather than fabricated document citations. Derived relationships require at least one valid evidence reference and confidence in [0,1]. Use separate evidence links so a shared fact survives removal of one supporting document. Add indexed names/types and both relationship directions. Update deletion consumers and seed examples for real entity/relationship functionality.
+- [x] **P04-T1.1 - Implement production behavior.** Match canonical entity types and relationship fields. Manual authoring records owner provenance rather than fabricated document citations. Derived relationships require at least one valid evidence reference and confidence in [0,1]. Use separate evidence links so a shared fact survives removal of one supporting document. Add indexed names/types and both relationship directions. Update deletion consumers and seed examples for real entity/relationship functionality. T1 implementation is complete; T2 consumes the noncommitting exact-field evidence publication command.
 
 Concrete contract/configuration shape (illustrative IDs/timestamps are test data, not production defaults):
 
@@ -52,9 +52,9 @@ Concrete contract/configuration shape (illustrative IDs/timestamps are test data
 {"source_entity_id":"uuid","target_entity_id":"uuid","type":"WORKS_AT","origin":"derived","evidence":[{"document_version_id":"uuid","chunk_id":"uuid","confidence":0.9}]}
 ```
 
-- [ ] **P04-T1.2 - Build the affected deliverable.** Run `./scripts/dev.ps1 build` (or `make build`) and fix production build failures before proceeding.
+- [x] **P04-T1.2 - Build the affected deliverable.** Run `./scripts/dev.ps1 build` (or `make build`) and fix production build failures before proceeding. The final combined build passed Next.js 16.3.6, integrated TypeScript, all 16 routes, and all four Docker images; process-only SWC cache/password overrides were restored.
 
-- [ ] **P04-T1.3 - Record build evidence, commit and continue.** Record changed files, the exact production build command/result, review findings and unresolved gates in `EXECUTION.md`; commit the completed task and continue to the next ready task.
+- [x] **P04-T1.3 - Record build evidence, commit and continue.** Record changed files, the exact production build command/result, review findings and unresolved gates in `EXECUTION.md`; commit the completed task and continue to the next ready task. Feature commit: `10fcab7`; local integration commit and independent reviews are recorded in `EXECUTION.md`. Runtime, migration-application, provider, capacity, and browser acceptance remain deferred; no tests, lint, or standalone typecheck were run.
 
 ## Task P04-T2: Bounded extraction and conservative resolution
 

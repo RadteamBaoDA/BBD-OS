@@ -9,6 +9,13 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from modules.ingestion.models import EventOutbox
 
 DISPATCH_STALE_AFTER = timedelta(seconds=30)
+WORKER_BY_EVENT = {
+    "document.file.uploaded": "process_uploaded_file",
+    "source.purge.requested": "process_source_purge",
+    "ingestion.stage.requested": "process_ingestion_event",
+    "connector.crawl.requested": "process_ingestion_event",
+    "ingestion.normalize.requested": "process_normalize_event",
+}
 
 
 async def dispatch_pending_work(ctx: dict[str, object]) -> int:
@@ -21,6 +28,8 @@ async def dispatch_pending_work(ctx: dict[str, object]) -> int:
                 await session.scalars(
                     select(EventOutbox)
                     .where(
+                        # Keep unsupported durable events out of the bounded dispatcher window.
+                        EventOutbox.type.in_(WORKER_BY_EVENT),
                         or_(
                             and_(EventOutbox.status == "pending", EventOutbox.next_attempt_at <= now),
                             and_(
@@ -37,10 +46,7 @@ async def dispatch_pending_work(ctx: dict[str, object]) -> int:
         )
         enqueued = 0
         for event in events:
-            job = {
-                "document.file.uploaded": "process_uploaded_file",
-                "source.purge.requested": "process_source_purge",
-            }.get(event.type, "process_ingestion_event")
+            job = WORKER_BY_EVENT[event.type]
             await redis.enqueue_job(
                 job,
                 str(event.id),

@@ -17,6 +17,7 @@ from core.system.health import ARQ_WORKER_HEALTH_KEY
 from modules.ingestion.dispatcher import dispatch_pending_work
 from modules.ingestion.worker import (
     cleanup_storage_orphans,
+    process_normalize_event,
     process_ingestion_event,
     process_uploaded_file,
 )
@@ -57,7 +58,7 @@ async def purge_expired_sessions(ctx: dict[str, object]) -> int:
 
 class WorkerSettings:
     functions: ClassVar[list[object]] = [
-        purge_expired_sessions, process_ingestion_event, process_uploaded_file, process_source_purge,
+        purge_expired_sessions, process_ingestion_event, process_normalize_event, process_uploaded_file, process_source_purge,
         reconcile_connectors,
     ]
     cron_jobs: ClassVar[list[object]] = [

@@ -1,6 +1,6 @@
 import json
-from datetime import datetime
-from typing import Any
+from datetime import UTC, datetime
+from typing import Any, Literal
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
@@ -42,6 +42,59 @@ class DocumentCreate(BaseModel):
     @classmethod
     def bounded_metadata(cls, value: dict[str, Any]) -> dict[str, Any]:
         return validate_metadata(value)
+
+
+class NormalizedDocumentInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    source_id: UUID
+    expected_source_generation: int = Field(ge=1)
+    observation_id: UUID
+    provider_id: str = Field(min_length=1, max_length=512)
+    provider_version: str | None = Field(default=None, max_length=255)
+    accepted_record_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    normalization_version: int = Field(ge=1)
+    observed_at: datetime
+    received_at: datetime | None = None
+    collected_at: datetime | None = None
+    title: str = Field(min_length=1, max_length=500)
+    canonical_url: str | None = None
+    published_at: datetime | None = None
+    content_type: str | None = Field(default=None, max_length=64)
+    content: str
+    provenance: dict[str, Any] = Field(default_factory=dict)
+
+    @field_validator("content")
+    @classmethod
+    def bounded_content(cls, value: str) -> str:
+        return validate_content(value)
+
+    @field_validator("observed_at", "received_at", "collected_at", "published_at")
+    @classmethod
+    def require_aware_times(cls, value: datetime | None) -> datetime | None:
+        if value is not None:
+            if value.tzinfo is None or value.utcoffset() is None:
+                raise ValueError("normalized timestamps must include a timezone")
+            return value.astimezone(UTC)
+        return value
+
+    @field_validator("provenance")
+    @classmethod
+    def bounded_provenance(cls, value: dict[str, Any]) -> dict[str, Any]:
+        allowed = {"title", "canonical_url", "published_at", "content_type", "author", "language", "metadata"}
+        if value.keys() - allowed:
+            raise ValueError("provenance contains unsupported fields")
+        return validate_metadata(value)
+
+
+class NormalizedDocumentResult(BaseModel):
+    disposition: Literal["normalized", "duplicate", "tombstoned"]
+    document_id: UUID | None
+    document_version_id: UUID | None
+    version_number: int | None
+    created_version: bool
+    selected_current: bool
+    chunk_count: int
 
 
 class DocumentPatch(BaseModel):

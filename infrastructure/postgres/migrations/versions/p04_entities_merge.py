@@ -3,7 +3,7 @@
 from collections.abc import Sequence
 
 revision: str = "p04_entities_merge"
-down_revision: str | Sequence[str] | None = ("r06_realtime_replay", "0007_entities")
+down_revision: str | Sequence[str] | None = ("0007_receipt_normalization", "0007_entities")
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
