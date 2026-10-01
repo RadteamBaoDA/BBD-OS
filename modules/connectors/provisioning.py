@@ -1,4 +1,5 @@
 import copy
+from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Any
 from uuid import UUID, uuid4
@@ -6,9 +7,147 @@ from uuid import UUID, uuid4
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from core.realtime import ReplayDraft, commit_with_replay, make_source_change
 from modules.connectors.models import ConnectorManagedCredential, ConnectorProvisioning
 from modules.sources import public as sources
 from modules.sources.schemas import ConnectorSource, SourceFence
+
+_ALL_CREDENTIAL_SLOTS = ("collector", "manual_trigger", "provider")
+
+
+@dataclass(frozen=True)
+class ConnectorObservation:
+    fence: SourceFence
+    desired_revision: int
+    applied_revision: int
+    state: str
+    error_code: str | None
+    credential_recovery: str
+    desired_enabled: bool
+    credential_presence: tuple[tuple[str, bool], ...]
+    header_auth_configured: bool
+
+
+def _connector_observation(
+    source: SourceFence | None,
+    row: ConnectorProvisioning | None,
+    slots: dict[str, ConnectorManagedCredential],
+) -> ConnectorObservation | None:
+    if source is None:
+        return None
+    if row is None:
+        return ConnectorObservation(
+            fence=source, desired_revision=0, applied_revision=0,
+            state="saved_not_active", error_code=None, credential_recovery="supported",
+            desired_enabled=False, credential_presence=(), header_auth_configured=False,
+        )
+    unresolved = any(
+        credential.state in {"dispatching", "reconciliation_required", "delete_pending"}
+        for credential in slots.values()
+    )
+    state = row.state
+    error_code = row.error_code
+    if unresolved:
+        error_code = "credential_operation_pending"
+        if state != "disabled":
+            state = "reconciliation_required"
+    desired_configuration = row.desired_configuration
+    return ConnectorObservation(
+        fence=source,
+        desired_revision=row.desired_revision,
+        applied_revision=row.applied_revision,
+        state=state,
+        error_code=error_code,
+        credential_recovery="unsupported_operation" if unresolved else "supported",
+        desired_enabled=row.desired_enabled,
+        credential_presence=tuple(
+            (slot, bool(slots.get(slot) and slots[slot].credential_id))
+            for slot in _ALL_CREDENTIAL_SLOTS
+        ),
+        header_auth_configured=bool(
+            isinstance(desired_configuration, dict)
+            and desired_configuration.get("auth_method") == "http_header"
+        ),
+    )
+
+
+async def capture_connector_observation(
+    session: AsyncSession, source_id: UUID
+) -> ConnectorObservation | None:
+    source, row, slots = await lock_connector(session, source_id, _ALL_CREDENTIAL_SLOTS)
+    return _connector_observation(source, row, slots)
+
+
+async def commit_connector_observation(
+    session: AsyncSession,
+    before: ConnectorObservation | None,
+    *,
+    operation_id: UUID | None = None,
+) -> None:
+    await session.flush()
+    drafts: list[ReplayDraft] = []
+    if before is not None:
+        result = await session.execute(
+            select(
+                ConnectorProvisioning.desired_revision,
+                ConnectorProvisioning.applied_revision,
+                ConnectorProvisioning.state,
+                ConnectorProvisioning.error_code,
+                ConnectorProvisioning.desired_enabled,
+                ConnectorProvisioning.desired_configuration,
+            ).where(ConnectorProvisioning.source_id == before.fence.id)
+        )
+        row = result.one_or_none()
+        credential_rows = list((await session.execute(
+            select(
+                ConnectorManagedCredential.slot,
+                ConnectorManagedCredential.credential_id.is_not(None),
+                ConnectorManagedCredential.state,
+            ).where(ConnectorManagedCredential.source_id == before.fence.id)
+        )).all())
+        if row is None:
+            after = ConnectorObservation(
+                fence=before.fence, desired_revision=0, applied_revision=0,
+                state="saved_not_active", error_code=None, credential_recovery="supported",
+                desired_enabled=False, credential_presence=(), header_auth_configured=False,
+            )
+        else:
+            values = {slot: (present, state) for slot, present, state in credential_rows}
+            unresolved = any(state in {"dispatching", "reconciliation_required", "delete_pending"}
+                             for _present, state in values.values())
+            state = row.state
+            error_code = row.error_code
+            if unresolved:
+                error_code = "credential_operation_pending"
+                if state != "disabled":
+                    state = "reconciliation_required"
+            desired_configuration = row.desired_configuration
+            after = ConnectorObservation(
+                fence=before.fence,
+                desired_revision=row.desired_revision,
+                applied_revision=row.applied_revision,
+                state=state,
+                error_code=error_code,
+                credential_recovery="unsupported_operation" if unresolved else "supported",
+                desired_enabled=row.desired_enabled,
+                credential_presence=tuple(
+                    (slot, bool(values.get(slot, (False, "queued"))[0]))
+                    for slot in _ALL_CREDENTIAL_SLOTS
+                ),
+                header_auth_configured=bool(
+                    isinstance(desired_configuration, dict)
+                    and desired_configuration.get("auth_method") == "http_header"
+                ),
+            )
+        if after != before:
+            drafts.append(make_source_change(
+                before.fence.id,
+                before.fence.generation,
+                before.fence.status,
+                connector_state=after.state,
+                operation_id=operation_id,
+            ))
+    await commit_with_replay(session, drafts)
 
 
 async def lock_connector(
@@ -545,6 +684,7 @@ async def claim_credential_operation(
     slot: str,
     operation_id: UUID,
 ) -> dict[str, object] | None:
+    before = await capture_connector_observation(session, source_id)
     source, desired, slots = await lock_connector(
         session, source_id, ("collector", "manual_trigger", "provider")
     )
@@ -598,13 +738,13 @@ async def claim_credential_operation(
                 desired.desired_enabled = False
                 desired.state = "disabled" if source is None or source.status != "active" else "saved_not_active"
                 desired.error_code = "activation_intent_stale"
-        await session.commit()
+        await commit_connector_observation(session, before)
         return None
     envelope["state"] = "dispatched"
     envelope["dispatch_started_at"] = datetime.now(UTC).isoformat()
     row.operation_envelope = envelope
     row.state = "dispatching"
-    await session.commit()
+    await commit_connector_observation(session, before)
     return envelope
 
 
@@ -660,23 +800,32 @@ async def drive_credential_operation(
         else:
             raise CredentialEncryptionUnavailable("Stored connector credential operation is invalid")
     except CredentialRequestRejected:
-        await fail_credential_operation(
+        before = await capture_connector_observation(session, source_id)
+        changed = await fail_credential_operation(
             session, source_id, slot, operation_id, "n8n_credential_rejected", unknown=False
         )
-        await session.commit()
+        if changed:
+            await commit_connector_observation(session, before, operation_id=operation_id)
+        else:
+            await session.rollback()
         return False
     except (CredentialOutcomeUnknown, CredentialUpdateOutcomeUnknown, CredentialEncryptionUnavailable):
-        await fail_credential_operation(
+        before = await capture_connector_observation(session, source_id)
+        changed = await fail_credential_operation(
             session, source_id, slot, operation_id, "credential_operation_outcome_unknown", unknown=True
         )
-        await session.commit()
+        if changed:
+            await commit_connector_observation(session, before, operation_id=operation_id)
+        else:
+            await session.rollback()
         return False
+    before = await capture_connector_observation(session, source_id)
     if not await complete_credential_operation(
         session, source_id, slot, operation_id, credential_id=credential_id, binding=binding
     ):
         await session.rollback()
         return False
-    await session.commit()
+    await commit_connector_observation(session, before, operation_id=operation_id)
     return True
 
 
@@ -872,6 +1021,7 @@ async def acknowledge_credential_delete(
 async def claim_workflow_step(
     session: AsyncSession, source_id: UUID
 ) -> dict[str, object] | None:
+    before = await capture_connector_observation(session, source_id)
     existing = await activation_status(session, source_id)
     required = (
         existing.workflow_operation.get("required_credentials", {})
@@ -895,7 +1045,7 @@ async def claim_workflow_step(
         row.workflow_operation = operation
         row.state = "reconciliation_required"
         row.error_code = "required_credential_binding_unresolved"
-        await session.commit()
+        await commit_connector_observation(session, before)
         return None
     if operation.get("kind") == "enable" and (
         not row.desired_enabled or source.status != "active"
@@ -913,13 +1063,13 @@ async def claim_workflow_step(
         row.desired_enabled = False
         if isinstance(row.activation_intent, dict) and row.activation_intent.get("id") == operation.get("activation_id"):
             row.activation_intent = None
-        await session.flush()
+        await commit_connector_observation(session, before)
         return None
     step["state"] = "dispatched"
     step["dispatch_started_at"] = datetime.now(UTC).isoformat()
     operation["step"] = step
     row.workflow_operation = operation
-    await session.commit()
+    await commit_connector_observation(session, before)
     return operation
 
 
@@ -1218,19 +1368,24 @@ async def drive_workflow_operation(
                 and 400 <= response.status_code < 500
                 and response.status_code != 408
             )
-            await fail_workflow_step(
+            before = await capture_connector_observation(session, source_id)
+            changed = await fail_workflow_step(
                 session, source_id, operation_id, step_id,
                 "n8n_request_rejected" if known_rejection else "n8n_outcome_unknown",
                 unknown=not known_rejection and kind != "lookup",
             )
-            await session.commit()
+            if changed:
+                await commit_connector_observation(session, before, operation_id=operation_id)
+            else:
+                await session.rollback()
             return False
+        before = await capture_connector_observation(session, source_id)
         if not await acknowledge_workflow_step(
             session, source_id, operation_id, step_id, workflow_id=workflow_id
         ):
             await session.rollback()
             return False
-        await session.commit()
+        await commit_connector_observation(session, before, operation_id=operation_id)
     return False
 
 

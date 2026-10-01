@@ -24,6 +24,7 @@ from modules.connectors.models import ConnectorManagedCredential, ConnectorProvi
 from modules.sources.models import Source, SourcePurgeOperation
 from modules.search.models import IndexGeneration, SearchIndexItem
 from modules.settings.models import AISettingsRecord, OwnerPreferencesRecord
+from core.realtime import ReplayHead, ReplayRecord
 
 _auth_models = (AuthSession, Owner)
 _library_models = (Source, SourcePurgeOperation, Document, DocumentVersion, DocumentChunk)
@@ -38,6 +39,7 @@ _ingestion_models = (
 )
 _search_models = (IndexGeneration, SearchIndexItem)
 _connector_models = (ConnectorProvisioning, ConnectorManagedCredential)
+_realtime_models = (ReplayHead, ReplayRecord)
 config = context.config
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)

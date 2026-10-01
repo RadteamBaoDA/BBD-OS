@@ -109,7 +109,7 @@ async def drive_activation(
         required = intent.get("required_credentials", {}) if isinstance(intent, dict) else {}
         slots_to_lock = tuple(required.keys()) if isinstance(required, dict) else ()
         source_fence, row, slots = await provisioning.lock_connector(
-            session, source_id, slots_to_lock
+            session, source_id, provisioning._ALL_CREDENTIAL_SLOTS
         )
         if source_fence is None or row is None or not isinstance(row.activation_intent, dict):
             await session.rollback()
@@ -129,6 +129,7 @@ async def drive_activation(
         if not current:
             await session.rollback()
             return False
+        before = provisioning._connector_observation(source_fence, row, slots)
 
         pending: tuple[str, UUID] | None = None
         ready_ids: dict[str, str] = {}
@@ -136,7 +137,7 @@ async def drive_activation(
             if not isinstance(value, dict):
                 row.state = "reconciliation_required"
                 row.error_code = "activation_credential_intent_invalid"
-                await session.commit()
+                await provisioning.commit_connector_observation(session, before)
                 return False
             credential = slots.get(slot)
             operation_id = value.get("operation_id")
@@ -146,7 +147,7 @@ async def drive_activation(
                 except ValueError:
                     row.state = "reconciliation_required"
                     row.error_code = "activation_credential_intent_invalid"
-                    await session.commit()
+                    await provisioning.commit_connector_observation(session, before)
                     return False
                 envelope = credential.operation_envelope if credential is not None else None
                 if (
@@ -178,7 +179,7 @@ async def drive_activation(
             ):
                 row.state = "reconciliation_required"
                 row.error_code = "activation_credential_binding_unresolved"
-                await session.commit()
+                await provisioning.commit_connector_observation(session, before)
                 return False
             if operation_id is not None:
                 envelope = credential.operation_envelope
@@ -190,7 +191,7 @@ async def drive_activation(
                 ):
                     row.state = "reconciliation_required"
                     row.error_code = "activation_credential_binding_unresolved"
-                    await session.commit()
+                    await provisioning.commit_connector_observation(session, before)
                     return False
             ready_ids[slot] = credential.credential_id
 
@@ -240,5 +241,5 @@ async def drive_activation(
         if prepared is None:
             await session.rollback()
             return False
-        await session.commit()
+        await provisioning.commit_connector_observation(session, before, operation_id=operation_id)
     return await provisioning.drive_workflow_operation(session, source_id, api)

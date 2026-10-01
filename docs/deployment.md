@@ -4,6 +4,10 @@ The production Compose stack contains PostgreSQL with pgvector installed, Redis,
 
 The web port binds to loopback by default. For remote access, terminate HTTPS at a trusted reverse proxy and set `PUBLIC_ORIGIN` to the exact browser origin and `SECURE_COOKIES=true` in `.env`. Keep the API, Redis, PostgreSQL, and Docker socket private. Do not deploy with the example placeholder values.
 
+## Realtime event stream
+
+The dashboard uses an authenticated Server-Sent Events connection at `/api/v1/realtime/events`. Configure the HTTPS reverse proxy to disable response buffering and caching for this route, preserve `Last-Event-ID`, and permit long-lived responses. Use an idle/read timeout of at least 75 seconds (the server sends a heartbeat every 15 seconds); do not apply a short response-body timeout. For Nginx, the location should include `proxy_buffering off`, `proxy_cache off`, `proxy_read_timeout 75s`, and `proxy_http_version 1.1`. Retain the normal request size limits and forward the original host/protocol headers. The browser reconnects with its last event ID and fetches a fresh snapshot when replay is no longer available.
+
 To apply migrations separately, run `./scripts/dev.ps1 migrate` or `make migrate`. Compose prevents API/worker startup if migrations fail. `docker compose ps` reports health and one-shot migration state; inspect `docker compose logs migrate api worker` for failures without publishing secret-bearing configuration.
 
 ## Google sign-in

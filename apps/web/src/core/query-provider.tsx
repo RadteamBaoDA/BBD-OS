@@ -7,6 +7,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import { AppLocaleId, normalizeFormattingLocale } from '@/core/i18n';
 import { messages } from '@/core/messages';
 import { OwnerPreferences, PreferenceValues } from '@/core/preferences';
+import { RealtimeProvider } from '@/core/realtime-provider';
 
 function englishMessageFallback(namespace: string | undefined, key: string): string {
   let value: unknown = messages['en-us'];
@@ -48,7 +49,7 @@ export function QueryProvider({ children }: { children: ReactNode }) {
   );
   return <QueryClientProvider client={client}>
     <ThemeProvider attribute="class" defaultTheme="system" enableSystem disableTransitionOnChange>
-      <DisplayPreferencesProvider>{children}</DisplayPreferencesProvider>
+      <DisplayPreferencesProvider><RealtimeProvider>{children}</RealtimeProvider></DisplayPreferencesProvider>
     </ThemeProvider>
   </QueryClientProvider>;
 }
