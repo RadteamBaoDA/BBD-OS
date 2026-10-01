@@ -32,3 +32,5 @@ See [development](docs/development.md), [deployment](docs/deployment.md), [priva
 Optional Google sign-in uses server-side OAuth credentials. The account menu and its Google-link dialog use locally owned Radix-based shadcn source under `apps/web/src/components/ui`; run `npm ci` and `uv sync` to install the locked frontend and backend dependencies. See the [Google OAuth setup](docs/deployment.md#google-sign-in) and [open-source inventory](OSS_USED.md) for configuration and license details.
 
 User display preferences (theme, interface language, and IANA time zone) are stored in the owner preferences row. The shell provides English (US) and Vietnamese UI catalogs; source and user-authored content remain unchanged.
+
+The knowledge entity page uses React Flow for a bounded interactive graph and keeps a relationship-list fallback. See the [open-source inventory](OSS_USED.md) and [third-party license notices](THIRD_PARTY_NOTICES.md) for its locked dependencies and attribution.
