@@ -392,3 +392,11 @@ Sol task-R06-review-1.md: source/spec+quality CHANGES REQUIRED,7findings. Existi
 R04 repair1 exact prescribed full build exit0 after consolidating duplicate locale keys caught by first attempt; Next16pages and web/API/worker/migrate images. Production/report frozen snapshot2 review-R04-2.diff SHA256DA8C58ADB93EA124D9D0ABE90D9DAF42BB2CBE57C1D920F671CA1A7C18E3E543,21functional/report files incl shared navigation owner. Fresh explicit-worktree detection CRITICAL107symbols/28flows, owner warned; generated metadata excluded. Seven dispositions in R04 report, Sol scoped rereview1 active. No feature approval/commit/merge yet.
 
 R06 repair source pass covers7findings plus accepted global-index/owned-fetch ruling; initial build evidence superseded by production repairs. Postrepair full prescribed build now reserved/granted R06; report numbered dispositions present, source not yet build-approved/frozen. Stable same-auth stream, head-last index projection and malformed-snapshot initial barrier retained. Builds serialized; no tests/lint/standalone typecheck/runtime/services/migrations/provider activation.
+
+### Cleanup verification and R06 repair1 frozen package — 2026-10-01
+
+Current artifacts and git worktree list confirm R01/R02/R03/R05/R09 archived; only active reasoning/R04/R06 and preserved dirty historical Phase4 remain registered. P01–P03 residual directories remain after prior automatic deletion rejection; do not bypass it. No additional completed registered worktree is eligible today.
+
+R06 repair1 prescribed full build exit0; source frozen, documentation-only evidence updated afterward. Controller snapshot2 review-R06-2.diff SHA2561758A069B93E05820D27DDA6C3DFD8278548F7C02FE01A1A080E9850AD20AA2F covers25functional/report files including actual connector routes and search index producers. Explicit absolute-tree staged detection CRITICAL140symbols/96flows; owner warned. Scoped rereview queued after current R04 report; no approval/commit/merge yet.
+
+R04 rereview identified residual source-boundary history and out-of-order configuration refetch issues; final report pending, then narrow repair2 in existing Luna tree. Build lock free. No tests/lint/standalone typecheck/runtime/services/migrations/provider activation. Full goal remains active.
