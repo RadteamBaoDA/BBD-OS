@@ -20,6 +20,7 @@ class IngestionBatch(Base):
     source_id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), ForeignKey("sources.id", ondelete="RESTRICT"), nullable=False)
     batch_key: Mapped[str] = mapped_column(String(255), nullable=False)
     payload_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    source_generation: Mapped[int | None] = mapped_column(Integer)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 
 
@@ -76,6 +77,31 @@ class SourceObservation(Base):
     record_hash: Mapped[str] = mapped_column(String(64), nullable=False)
     payload: Mapped[dict[str, object]] = mapped_column(JSONB, nullable=False)
     observed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    received_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    collected_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class ObservationNormalization(Base):
+    __tablename__ = "observation_normalizations"
+    __table_args__ = (
+        UniqueConstraint("observation_id", "normalization_version", name="uq_observation_normalizations_identity"),
+        CheckConstraint("disposition IN ('pending', 'normalized', 'duplicate', 'skipped', 'failed')", name="ck_observation_normalizations_disposition"),
+        Index("ix_observation_normalizations_stage", "stage_id", "disposition"),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid4)
+    observation_id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), ForeignKey("source_observations.id", ondelete="CASCADE"), nullable=False)
+    source_id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), ForeignKey("sources.id", ondelete="CASCADE"), nullable=False)
+    run_id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), ForeignKey("ingestion_runs.id", ondelete="CASCADE"), nullable=False)
+    stage_id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), ForeignKey("ingestion_stages.id", ondelete="CASCADE"), nullable=False)
+    source_generation: Mapped[int] = mapped_column(Integer, nullable=False)
+    normalization_version: Mapped[int] = mapped_column(Integer, nullable=False)
+    disposition: Mapped[str] = mapped_column(String(16), nullable=False, server_default="pending")
+    error_code: Mapped[str | None] = mapped_column(String(64))
+    document_id: Mapped[UUID | None] = mapped_column(Uuid(as_uuid=True), ForeignKey("documents.id", ondelete="SET NULL"))
+    document_version_id: Mapped[UUID | None] = mapped_column(Uuid(as_uuid=True), ForeignKey("document_versions.id", ondelete="SET NULL"))
+    chunk_count: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
 
 
 class SourceIngestionState(Base):

@@ -10,13 +10,16 @@ from sqlalchemy.ext.asyncio import async_engine_from_config
 import modules  # noqa: F401  # Domain model packages are imported here as they are added.
 from core.auth.models import AuthSession, Owner
 from core.database import Base
-from modules.knowledge.documents.models import Document, DocumentChunk, DocumentVersion
+from modules.knowledge.documents.models import (
+    Document, DocumentChunk, DocumentVersion, NormalizedDocumentIdentity, NormalizedVersionProvenance,
+)
 from modules.ingestion.models import (
     CollectorCredential,
     EventOutbox,
     IngestionBatch,
     IngestionRun,
     IngestionStage,
+    ObservationNormalization,
     SourceIngestionState,
     SourceObservation,
 )
@@ -27,13 +30,17 @@ from modules.settings.models import AISettingsRecord, OwnerPreferencesRecord
 from core.realtime import ReplayHead, ReplayRecord
 
 _auth_models = (AuthSession, Owner)
-_library_models = (Source, SourcePurgeOperation, Document, DocumentVersion, DocumentChunk)
+_library_models = (
+    Source, SourcePurgeOperation, Document, DocumentVersion, DocumentChunk,
+    NormalizedDocumentIdentity, NormalizedVersionProvenance,
+)
 _ingestion_models = (
     CollectorCredential,
     EventOutbox,
     IngestionBatch,
     IngestionRun,
     IngestionStage,
+    ObservationNormalization,
     SourceIngestionState,
     SourceObservation,
 )

@@ -252,6 +252,7 @@ async def read_rss(url: str, cursor: str | None) -> dict[str, object]:
     floor = overlap_floor(cursor)
     visited: set[str] = set()
     records: list[dict[str, object]] = []
+    cursor_times: list[str] = []
     total_bytes = 0
     current_url: str | None = url
     async with httpx.AsyncClient(timeout=15, follow_redirects=False) as client:
@@ -276,7 +277,6 @@ async def read_rss(url: str, cursor: str | None) -> dict[str, object]:
                         raise ValueError("RSS pagination exceeded the 25 MiB limit")
                     body.extend(chunk)
             root = ElementTree.fromstring(bytes(body))
-
             def text(element: ElementTree.Element, names: set[str]) -> str:
                 for child in element.iter():
                     if child.tag.rsplit("}", 1)[-1].lower() in names:
@@ -287,28 +287,46 @@ async def read_rss(url: str, cursor: str | None) -> dict[str, object]:
                 identifier = text(item, {"guid", "id", "link"})
                 title = text(item, {"title"})
                 content = text(item, {"encoded", "content", "summary", "description"}) or title
-                raw_date = text(item, {"updated", "published", "pubdate", "date"})
+                raw_date = text(item, {"published", "pubdate", "date"})
+                raw_updated = text(item, {"updated"})
                 observed_at = datetime.now(UTC)
-                if raw_date:
+                def parse_feed_time(raw_value: str) -> datetime | None:
+                    if not raw_value:
+                        return None
                     try:
-                        observed_at = datetime.fromisoformat(raw_date.replace("Z", "+00:00"))
+                        parsed = datetime.fromisoformat(raw_value.replace("Z", "+00:00"))
                     except ValueError:
                         try:
-                            observed_at = parsedate_to_datetime(raw_date)
+                            parsed = parsedate_to_datetime(raw_value)
                         except (TypeError, ValueError):
-                            pass
-                if observed_at.tzinfo is None:
-                    observed_at = observed_at.replace(tzinfo=UTC)
-                observed_at = observed_at.astimezone(UTC)
-                if floor is None or observed_at >= floor:
+                            return None
+                    if parsed.tzinfo is None:
+                        parsed = parsed.replace(tzinfo=UTC)
+                    return parsed.astimezone(UTC)
+
+                published_at = parse_feed_time(raw_date)
+                updated_at = parse_feed_time(raw_updated)
+                cursor_at = published_at or updated_at or observed_at
+                link = next(
+                    (str(node.attrib.get("href")) for node in item.iter()
+                     if node.tag.rsplit("}", 1)[-1].lower() == "link" and node.attrib.get("href")),
+                    text(item, {"link"}),
+                )
+                canonical_url = urljoin(current_url, link) if link else None
+                if floor is None or cursor_at >= floor:
+                    cursor_times.append(cursor_at.isoformat())
                     records.append(
                         normalize(
                             {
                                 "provider_id": identifier or url,
                                 "content": content[:4_000],
-                                "observed_at": observed_at.isoformat(),
-                                "version": raw_date or None,
-                                "metadata": {"title": title[:1_000]},
+                                "observed_at": datetime.now(UTC).isoformat(),
+                                "version": (raw_date or raw_updated or None),
+                                "metadata": {
+                                    "title": title[:500],
+                                    "canonical_url": canonical_url,
+                                    "published_at": published_at.isoformat() if published_at else None,
+                                },
                             }
                         )
                     )
@@ -324,6 +342,6 @@ async def read_rss(url: str, cursor: str | None) -> dict[str, object]:
                 break
     return {
         "cursor_before": cursor,
-        "cursor_after": max((str(row["observed_at"]) for row in records), default=cursor),
+        "cursor_after": max(cursor_times, default=cursor),
         "records": records,
     }

@@ -8,6 +8,7 @@ import random
 from datetime import UTC, datetime, timedelta
 from email.utils import parsedate_to_datetime
 from typing import cast
+from urllib.parse import urlsplit
 from uuid import UUID
 
 import httpx
@@ -28,17 +29,23 @@ from modules.ingestion.models import (
     IngestionBatch,
     IngestionRun,
     IngestionStage,
+    ObservationNormalization,
     SourceIngestionState,
     SourceObservation,
 )
 from modules.ingestion.parsers import parse_file_bounded
 from modules.knowledge.documents import public as documents
+from modules.knowledge.documents.schemas import NormalizedDocumentInput
+from modules.ingestion.schemas import IngestionRecord
 from modules.sources import public as sources
 from core.chunking import chunk_text
 
 logger = logging.getLogger("bbd.worker")
 STAGE_TIMEOUT_SECONDS = 120
 MAX_STAGE_ATTEMPTS = 5
+NORMALIZATION_VERSION = 1
+NORMALIZATION_BATCH_RECORDS = 32
+NORMALIZATION_BATCH_BYTES = 4 * 1024 * 1024
 
 
 async def _commit_ingestion_change(
@@ -51,6 +58,21 @@ async def _commit_ingestion_change(
         session,
         [make_ingestion_change(run.source_id, run.id, run.status, stage.stage_key, stage.status), *extras],
     )
+
+
+async def _refresh_run_status(session: AsyncSession, run: IngestionRun) -> None:
+    stages = list((await session.scalars(
+        select(IngestionStage).where(IngestionStage.run_id == run.id)
+    )).all())
+    if any(stage.status == "failed" for stage in stages):
+        run.status = "failed"
+        run.error_code = next((stage.error_code for stage in stages if stage.status == "failed"), "stage_failed")
+    elif stages and all(stage.status == "succeeded" for stage in stages):
+        run.status = "succeeded"
+        run.error_code = None
+    else:
+        run.status = "queued"
+        run.error_code = None
 
 
 class ConnectorRetryError(OSError):
@@ -121,12 +143,11 @@ async def _collect_web_job(
     if not records or len(records) > 500:
         raise ValueError("Browser job returned no pages or too many records")
 
-    observed_at = event.occurred_at
     canonical_records = []
     for record in records:
         data = record.model_dump(mode="json")
-        data["observed_at"] = observed_at.isoformat()
         canonical_records.append(data)
+    collected_at = datetime.now(UTC)
     payload_hash = hashlib.sha256(
         json.dumps(canonical_records, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
     ).hexdigest()
@@ -136,6 +157,7 @@ async def _collect_web_job(
         source = await sources.lock_source(session, source_id)
         source_view = await sources.get_connector_source(session, source_id)
         from modules.connectors import public as connectors
+        from modules.ingestion import public as ingestion
 
         event_revision = event.payload.get("connector_revision")
         fence_current = bool(
@@ -162,8 +184,13 @@ async def _collect_web_job(
         ):
             raise ValueError("Crawl job is no longer active")
 
+        received_at = datetime.now(UTC)
         observations = []
         for data in canonical_records:
+            record_observed_at = datetime.fromisoformat(str(data["observed_at"]).replace("Z", "+00:00"))
+            if record_observed_at.tzinfo is None:
+                raise ValueError("Browser collector returned a naive observation time")
+            record_observed_at = record_observed_at.astimezone(UTC)
             record_hash = hashlib.sha256(
                 json.dumps(
                     {"version": data.get("version"), "content": data["content"], "metadata": data["metadata"]},
@@ -179,7 +206,9 @@ async def _collect_web_job(
                     "provider_id": data["provider_id"],
                     "record_hash": record_hash,
                     "payload": data,
-                    "observed_at": observed_at,
+                    "observed_at": record_observed_at,
+                    "received_at": received_at,
+                    "collected_at": collected_at,
                 }
             )
         await session.execute(
@@ -188,16 +217,31 @@ async def _collect_web_job(
             .on_conflict_do_nothing(constraint="uq_source_observations_batch_record_observed")
         )
         batch.payload_hash = payload_hash
-        cursor_after = observed_at.isoformat()
+        batch.source_generation = source.generation
+        cursor_after = max(
+            (datetime.fromisoformat(str(data["observed_at"]).replace("Z", "+00:00")).astimezone(UTC).isoformat()
+             for data in canonical_records),
+            default=state.cursor,
+        )
         if state.cursor:
             try:
                 prior_cursor = datetime.fromisoformat(state.cursor.replace("Z", "+00:00"))
-                if prior_cursor.tzinfo is not None and prior_cursor > observed_at:
+                latest = datetime.fromisoformat(cursor_after.replace("Z", "+00:00"))
+                if prior_cursor.tzinfo is not None and prior_cursor > latest:
                     cursor_after = state.cursor
             except ValueError:
                 pass
         state.cursor = cursor_after
-        await session.commit()
+        await session.flush()
+        normalize_stage = await ingestion.schedule_normalization(
+            session, run, batch, source.generation, received_at
+        )
+        drafts = []
+        if normalize_stage is not None:
+            drafts.append(make_ingestion_change(
+                source.id, run.id, run.status, normalize_stage.stage_key, normalize_stage.status
+            ))
+        await commit_with_replay(session, drafts)
 
 
 async def _fail_ingestion_stage(
@@ -425,8 +469,7 @@ async def process_ingestion_event(ctx: dict[str, object], event_id: str) -> None
         stage.status = "succeeded"
         stage.error_code = None
         stage.lease_expires_at = None
-        run.status = "succeeded"
-        run.error_code = None
+        await _refresh_run_status(session, run)
         source_changed = await sources.record_collection_result(
             session,
             source.id,
@@ -444,6 +487,280 @@ async def process_ingestion_event(ctx: dict[str, object], event_id: str) -> None
         logger.info("Ingestion stage completed run_id=%s stage_id=%s", run.id, stage.id)
         extras = (make_source_change(source.id, source.generation, source.status),) if source_changed else ()
         await _commit_ingestion_change(session, run, stage, extras)
+
+
+async def process_normalize_event(ctx: dict[str, object], event_id: str) -> None:
+    """Materialize one bounded slice of accepted observations, resuming from PostgreSQL progress."""
+    factory = cast(async_sessionmaker[AsyncSession], ctx["session_factory"])
+    identifier = UUID(event_id)
+    run_id: UUID | None = None
+    stage_id: UUID | None = None
+    delay = 60.0
+    try:
+        async with factory() as session:
+            event = await session.get(EventOutbox, identifier)
+            if event is None or event.status == "delivered":
+                return
+            if event.type != "ingestion.normalize.requested":
+                raise ValueError("Unexpected event type for normalization worker")
+            run_id = UUID(str(event.payload["run_id"]))
+            stage_id = UUID(str(event.payload["stage_id"]))
+            run_hint = await session.get(IngestionRun, run_id)
+            if run_hint is None:
+                event.status = "failed"
+                await session.commit()
+                return
+            source = await sources.lock_source(session, run_hint.source_id)
+            run = await session.scalar(
+                select(IngestionRun).where(IngestionRun.id == run_id).with_for_update()
+            )
+            stage = await session.scalar(
+                select(IngestionStage).where(IngestionStage.id == stage_id).with_for_update()
+            )
+            event = await session.scalar(
+                select(EventOutbox).where(EventOutbox.id == identifier)
+                .with_for_update().execution_options(populate_existing=True)
+            )
+            generation = int(event.payload.get("source_generation", -1)) if event is not None else -1
+            if (
+                source is None or source.status != "active" or source.generation != generation
+                or run is None or stage is None or event is None
+                or stage.stage_key != "normalize" or run.id != stage.run_id
+            ):
+                if stage is not None:
+                    stage.status = "failed"
+                    stage.error_code = "source_generation_changed"
+                if run is not None:
+                    run.status = "failed"
+                    run.error_code = "source_generation_changed"
+                if event is not None:
+                    event.status = "failed"
+                if run is not None and stage is not None:
+                    await _commit_ingestion_change(session, run, stage)
+                else:
+                    await session.commit()
+                return
+            if stage.status == "succeeded":
+                event.status = "delivered"
+                await session.commit()
+                return
+
+            stage.status = "running"
+            stage.lease_expires_at = datetime.now(UTC) + timedelta(seconds=STAGE_TIMEOUT_SECONDS)
+            stage.error_code = None
+            run.status = "running"
+            rows = list((await session.execute(
+                select(ObservationNormalization, SourceObservation)
+                .join(SourceObservation, SourceObservation.id == ObservationNormalization.observation_id)
+                .where(
+                    ObservationNormalization.stage_id == stage.id,
+                    ObservationNormalization.disposition == "pending",
+                )
+                .order_by(SourceObservation.provider_id, SourceObservation.id)
+                .limit(NORMALIZATION_BATCH_RECORDS)
+                .with_for_update(of=ObservationNormalization)
+            )).all())
+            used_bytes = 0
+            processed = 0
+            knowledge_changes = []
+            from modules.ingestion import public as ingestion_api
+            for progress, observation in rows:
+                data_bytes = len(json.dumps(observation.payload, ensure_ascii=False, separators=(",", ":")).encode("utf-8"))
+                if processed and used_bytes + data_bytes > NORMALIZATION_BATCH_BYTES:
+                    break
+                if data_bytes > NORMALIZATION_BATCH_BYTES:
+                    progress.disposition = "failed"
+                    progress.error_code = "record_exceeds_normalization_limit"
+                    processed += 1
+                    continue
+                used_bytes += data_bytes
+                try:
+                    if progress.source_generation != generation:
+                        progress.disposition = "skipped"
+                        progress.error_code = "source_generation_changed"
+                        processed += 1
+                        continue
+                    record = IngestionRecord.model_validate(observation.payload)
+                    if record.provider_id != observation.provider_id:
+                        raise ValueError("Provider identity does not match accepted observation")
+                    accepted_hash = hashlib.sha256(json.dumps(
+                        {"version": record.version, "content": record.content, "metadata": record.metadata},
+                        sort_keys=True, separators=(",", ":"), ensure_ascii=False,
+                    ).encode("utf-8")).hexdigest()
+                    if accepted_hash != observation.record_hash:
+                        raise ValueError("Accepted observation hash does not match its payload")
+                    raw_metadata = record.metadata
+                    title_value = raw_metadata.get("title")
+                    title = title_value.strip()[:500] if isinstance(title_value, str) and title_value.strip() else record.provider_id[:500]
+                    raw_url = raw_metadata.get("canonical_url", raw_metadata.get("url"))
+                    canonical_url = None
+                    if isinstance(raw_url, str):
+                        parsed = urlsplit(raw_url)
+                        if parsed.scheme in {"http", "https"} and parsed.netloc and not parsed.username and not parsed.password:
+                            canonical_url = raw_url[:2048]
+                    published_at = None
+                    published_value = raw_metadata.get("published_at")
+                    if isinstance(published_value, str) and published_value:
+                        try:
+                            published_at = datetime.fromisoformat(published_value.replace("Z", "+00:00"))
+                            if published_at.tzinfo is None:
+                                published_at = published_at.replace(tzinfo=UTC)
+                            published_at = published_at.astimezone(UTC)
+                        except ValueError:
+                            published_at = None
+                    content_type = raw_metadata.get("content_type")
+                    content_type = content_type[:64] if isinstance(content_type, str) else None
+                    safe_metadata: dict[str, object] = {}
+                    for key, limit in (("author", 500), ("language", 32), ("summary", 10_000), ("description", 10_000)):
+                        value = raw_metadata.get(key)
+                        if isinstance(value, str):
+                            safe_metadata[key] = value[:limit]
+                    for key in ("tags", "categories"):
+                        value = raw_metadata.get(key)
+                        if isinstance(value, str):
+                            safe_metadata[key] = value[:2_000]
+                        elif isinstance(value, list):
+                            safe_metadata[key] = [item[:500] for item in value[:100] if isinstance(item, str)]
+                    provenance = {
+                        "title": title, "canonical_url": canonical_url,
+                        "published_at": published_at.isoformat() if published_at else None,
+                        "content_type": content_type, "metadata": safe_metadata,
+                    }
+                    result = await documents.upsert_normalized_document(
+                        session,
+                        NormalizedDocumentInput(
+                            source_id=observation.source_id,
+                            expected_source_generation=generation,
+                            observation_id=observation.id,
+                            provider_id=record.provider_id,
+                            provider_version=record.version,
+                            accepted_record_hash=observation.record_hash,
+                            normalization_version=NORMALIZATION_VERSION,
+                            observed_at=observation.observed_at,
+                            received_at=observation.received_at,
+                            collected_at=observation.collected_at,
+                            title=title,
+                            canonical_url=canonical_url,
+                            published_at=published_at,
+                            content_type=content_type,
+                            content=record.content,
+                            provenance=provenance,
+                        ),
+                    )
+                    progress.disposition = {
+                        "normalized": "normalized", "duplicate": "duplicate", "tombstoned": "skipped",
+                    }[result.disposition]
+                    progress.error_code = "document_deleted" if result.disposition == "tombstoned" else None
+                    progress.document_id = result.document_id
+                    progress.document_version_id = result.document_version_id
+                    progress.chunk_count = result.chunk_count if result.created_version else 0
+                    if result.created_version and result.chunk_count:
+                        ready = DomainEvent(
+                            id=uuid4(), type="document.version.ready", version=1,
+                            occurred_at=datetime.now(UTC), producer="modules.ingestion",
+                            payload={
+                                "source_id": str(observation.source_id),
+                                "document_id": str(result.document_id),
+                                "document_version_id": str(result.document_version_id),
+                                "source_generation": generation,
+                                "version_number": result.version_number,
+                            },
+                        )
+                        await ingestion_api.publish_event(session, ready)
+                    if result.selected_current and result.created_version:
+                        knowledge_changes.append(make_knowledge_change(
+                            observation.source_id, result.document_id, result.version_number
+                        ))
+                except (ValueError, TypeError):
+                    progress.disposition = "failed"
+                    progress.error_code = "invalid_normalization_record"
+                processed += 1
+
+            pending_count = int(await session.scalar(
+                select(func.count()).select_from(ObservationNormalization).where(
+                    ObservationNormalization.stage_id == stage.id,
+                    ObservationNormalization.disposition == "pending",
+                )
+            ) or 0)
+            failed_count = int(await session.scalar(
+                select(func.count()).select_from(ObservationNormalization).where(
+                    ObservationNormalization.stage_id == stage.id,
+                    ObservationNormalization.disposition == "failed",
+                )
+            ) or 0)
+            chunk_total = int(await session.scalar(
+                select(func.coalesce(func.sum(ObservationNormalization.chunk_count), 0))
+                .where(ObservationNormalization.stage_id == stage.id)
+            ) or 0)
+            stage.result_count = chunk_total
+            stage.lease_expires_at = None
+            if pending_count:
+                stage.status = "pending"
+                run.status = "queued"
+                event.status = "pending"
+                event.next_attempt_at = datetime.now(UTC) + timedelta(seconds=1)
+            else:
+                stage.status = "failed" if failed_count else "succeeded"
+                stage.error_code = "normalization_failed" if failed_count else None
+                stages = list((await session.scalars(
+                    select(IngestionStage).where(IngestionStage.run_id == run.id)
+                )).all())
+                if any(item.status == "failed" for item in stages):
+                    run.status = "failed"
+                    run.error_code = next((item.error_code for item in stages if item.status == "failed"), "stage_failed")
+                elif all(item.status == "succeeded" for item in stages):
+                    run.status = "succeeded"
+                    run.error_code = None
+                else:
+                    run.status = "queued"
+                    run.error_code = None
+                event.status = "failed" if failed_count else "delivered"
+                if failed_count:
+                    await sources.record_processing_result(
+                        session, source.id, source.generation, datetime.now(UTC), "normalization_failed"
+                    )
+                else:
+                    await sources.record_processing_result(
+                        session, source.id, source.generation, datetime.now(UTC), None
+                    )
+            extras = [*knowledge_changes]
+            if processed or not pending_count:
+                await _commit_ingestion_change(session, run, stage, tuple(extras))
+            else:
+                await _commit_ingestion_change(session, run, stage)
+    except OperationalError as exc:
+        if run_id is None or stage_id is None:
+            raise Retry(defer=delay) from exc
+        async with factory() as session:
+            hint = await session.get(IngestionRun, run_id)
+            if hint is not None:
+                source = await sources.lock_source(session, hint.source_id)
+                run = await session.scalar(select(IngestionRun).where(IngestionRun.id == run_id).with_for_update())
+                stage = await session.scalar(select(IngestionStage).where(IngestionStage.id == stage_id).with_for_update())
+                event = await session.scalar(
+                    select(EventOutbox).where(EventOutbox.id == identifier)
+                    .with_for_update().execution_options(populate_existing=True)
+                )
+                if source is not None and run is not None and stage is not None and event is not None:
+                    if stage.attempts + 1 >= MAX_STAGE_ATTEMPTS:
+                        stage.attempts += 1
+                        stage.status = "failed"
+                        stage.error_code = "retry_exhausted"
+                        run.status = "failed"
+                        run.error_code = "retry_exhausted"
+                        event.status = "failed"
+                    else:
+                        stage.attempts += 1
+                        delay = random.uniform(0.5, min(60.0, 2.0 ** stage.attempts))
+                        stage.status = "retrying"
+                        stage.error_code = "transient_failure"
+                        stage.next_attempt_at = datetime.now(UTC) + timedelta(seconds=delay)
+                        event.status = "pending"
+                        event.next_attempt_at = stage.next_attempt_at
+                        run.status = "queued"
+                    stage.lease_expires_at = None
+                    await _commit_ingestion_change(session, run, stage)
+        raise Retry(defer=delay) from exc
 
 
 async def process_uploaded_file(ctx: dict[str, object], event_id: str) -> None:
