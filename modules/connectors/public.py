@@ -6,6 +6,9 @@ from uuid import UUID
 import asyncio
 
 from pydantic import BaseModel, ConfigDict, Field, HttpUrl, field_validator
+from sqlalchemy.ext.asyncio import AsyncSession
+from modules.sources.schemas import ConnectorSource, SourceFence
+from modules.connectors.models import ConnectorProvisioning
 
 DEFAULT_TIMEZONE = "Asia/Ho_Chi_Minh"
 DEFAULT_OVERLAP = timedelta(days=1)
@@ -54,6 +57,8 @@ class ConnectorReceipt(BaseModel):
 
     cursor_before: str | None = Field(default=None, max_length=4096)
     cursor_after: str | None = Field(default=None, max_length=4096)
+    source_generation: int = Field(ge=1)
+    connector_revision: int = Field(ge=1)
     records: list[ConnectorRecord] = Field(min_length=1, max_length=500)
 
 
@@ -62,7 +67,133 @@ class ConnectorPreview(BaseModel):
 
     cursor_before: str | None = Field(default=None, max_length=4096)
     cursor_after: str | None = Field(default=None, max_length=4096)
+    source_generation: int = Field(ge=1)
+    connector_revision: int = Field(ge=1)
     records: list[ConnectorRecord] = Field(max_length=500)
+
+
+class CollectionFence(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    source_generation: int = Field(ge=1)
+    connector_revision: int = Field(ge=1)
+
+
+class ConnectorConfigurationRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    expected_revision: int = Field(ge=0)
+    configuration: ConnectorConfig
+
+
+async def collection_allowed(
+    session: AsyncSession,
+    source_id: UUID,
+    source_status: str,
+    source_generation: int,
+    fence: CollectionFence,
+    *,
+    lock: bool = False,
+) -> bool:
+    from modules.connectors import provisioning
+
+    source = ConnectorSource(
+        id=source_id,
+        type="api",
+        status=source_status,
+        generation=source_generation,
+        configuration={},
+    )
+    return await provisioning.require_collection_fence(
+        session, source, fence.source_generation, fence.connector_revision, lock=lock
+    )
+
+
+async def require_collection_fence(
+    session: AsyncSession,
+    source: ConnectorSource,
+    fence: CollectionFence,
+    *,
+    lock: bool = False,
+) -> bool:
+    from modules.connectors import provisioning
+
+    return await provisioning.require_collection_fence(
+        session,
+        source,
+        fence.source_generation,
+        fence.connector_revision,
+        lock=lock,
+    )
+
+
+async def require_batch_fence(
+    session: AsyncSession,
+    source: ConnectorSource,
+    source_generation: int,
+    connector_revision: int | None,
+) -> bool:
+    """Require a revision for managed connector sources while preserving native ingestion."""
+    from modules.connectors import provisioning
+
+    row = await provisioning.activation_status(session, source.id)
+    if row is None:
+        return connector_revision is None and source.generation == source_generation
+    if connector_revision is None:
+        return False
+    return await provisioning.require_collection_fence(
+        session, source, source_generation, connector_revision, lock=True
+    )
+
+
+async def fence_source_collection(session: AsyncSession, source: SourceFence) -> bool:
+    """Persist connector-owned deactivation after the source owner has fenced a source."""
+    from modules.connectors import provisioning
+
+    return await provisioning.fence_source_collection(session, source)
+
+
+async def save_connector_configuration(
+    session: AsyncSession,
+    source: ConnectorSource,
+    expected_revision: int,
+    source_configuration: dict[str, object],
+    desired_configuration: dict[str, object],
+    *,
+    allow_paused: bool = False,
+) -> tuple[ConnectorSource, ConnectorProvisioning] | None:
+    from modules.connectors import provisioning
+    from modules.sources import public as source_public
+
+    saved = await source_public.set_connector_configuration(
+        session, source.id, source.generation, source_configuration,
+        allow_paused=allow_paused,
+    )
+    if saved is None:
+        return None
+    row = await provisioning.save_desired(
+        session,
+        source.id,
+        saved.generation,
+        expected_revision,
+        desired_configuration,
+    )
+    if row is None:
+        await session.rollback()
+        return None
+    return saved, row
+
+
+async def allow_external_collector_credential_issue(
+    session: AsyncSession, source_id: UUID
+) -> bool:
+    from modules.connectors import provisioning
+
+    source, row, _ = await provisioning.lock_connector(session, source_id)
+    return bool(
+        source is not None and source.status == "active"
+        and (row is None or (not row.desired_enabled and row.state != "provisioning"))
+    )
 
 
 class RSSRequest(BaseModel):
@@ -76,6 +207,8 @@ class CrawlRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     source_id: UUID
+    source_generation: int = Field(ge=1)
+    connector_revision: int = Field(ge=1)
     url: HttpUrl
     mode: str = Field(default="http", pattern="^(http|playwright)$")
     max_pages: int = Field(default=10, ge=1, le=10)
@@ -85,6 +218,10 @@ class CrawlRequest(BaseModel):
 
 class CrawlResult(BaseModel):
     run_id: UUID
+
+
+class NoChangeRequest(CollectionFence):
+    pass
 
 
 async def validate_public_url(value: str) -> str:

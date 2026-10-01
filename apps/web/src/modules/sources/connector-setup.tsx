@@ -18,6 +18,8 @@ export function ConnectorSetup({ onSaved }: { onSaved: () => void }) {
   const [contentField, setContentField] = useState('content');
   const [token, setToken] = useState('');
   const [sourceId, setSourceId] = useState('');
+  const [sourceGeneration, setSourceGeneration] = useState(0);
+  const [connectorRevision, setConnectorRevision] = useState(0);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [validated, setValidated] = useState(false);
@@ -30,11 +32,13 @@ export function ConnectorSetup({ onSaved }: { onSaved: () => void }) {
       const config = type === 'rss' ? { feed_url: url } : type === 'web' ? { url } : {
         url, items_path: itemsPath, id_field: idField, content_field: contentField,
       };
-      await configureConnector(source.id, config, csrfToken);
+      const configured = await configureConnector(source.id, config, csrfToken);
       const credential = await issueCollectorCredential(source.id, csrfToken);
       setSourceId(source.id);
+      setSourceGeneration(configured.source_generation);
+      setConnectorRevision(configured.connector_revision);
       setToken(credential.token);
-      await validateConnector(source.id, credential.token);
+      await validateConnector(source.id, credential.token, configured.source_generation, configured.connector_revision);
       setValidated(true);
     } catch (cause) {
       setError(cause instanceof ApiError ? cause.message : 'Could not configure this connector.');
@@ -47,7 +51,7 @@ export function ConnectorSetup({ onSaved }: { onSaved: () => void }) {
     setBusy(true);
     setError('');
     try {
-      await validateConnector(sourceId, token);
+      await validateConnector(sourceId, token, sourceGeneration, connectorRevision);
       setValidated(true);
     } catch (cause) {
       setError(cause instanceof ApiError ? cause.message : 'Could not validate this source.');
@@ -57,19 +61,19 @@ export function ConnectorSetup({ onSaved }: { onSaved: () => void }) {
   }
 
   if (token) return <section className="sub-panel" aria-live="polite">
-    <h2>Finish setup in n8n</h2>
+    <h2>Managed connector setup</h2>
     {validated ? <p role="status">Source validation succeeded.</p> : <p className="error" role="alert">Source validation failed. The one-time token is still shown below; correct the connector or provider setup and validate again. {error}</p>}
-    <p>Set <code>BBD_SOURCE_ID</code> to this source ID and set the “BBD-OS source collector” Header Auth credential to the collector token.</p>
+    <p>This panel validates a source and issues its scoped collector token, but does not yet connect to managed activation.</p>
     <p><strong>Source ID</strong></p><pre>{sourceId}</pre>
-    <p><strong>Collector token · shown once</strong></p><pre>{token}</pre>
-    <p>For Sync now, configure the “BBD-OS manual trigger” Header Auth credential with header <code>X-BBD-Webhook-Token</code> and the local <code>N8N_WEBHOOK_TOKEN</code>, then import and activate the matching workflow.</p>
+    <p><strong>Collector token · shown once; no workflow is active yet</strong></p><pre>{token}</pre>
+    <p>Do not configure a global source ID or create credentials and workflows directly in n8n. Use the BBD-OS source editor when its activation controls are available.</p>
     {error && <p className="error" role="alert">{error}</p>}
     <div className="form-actions">{!validated && <Button disabled={busy} onClick={retryValidation}>Retry validation</Button>}<Button onClick={onSaved}>Done</Button></div>
   </section>;
 
   return <section className="sub-panel">
     <h2>Set up a connector</h2>
-    <p className="muted">n8n owns provider credentials and schedules. Keep provider tokens in n8n credentials.</p>
+    <p className="muted">n8n stores provider credentials securely; BBD-OS manages their references and workflow activation.</p>
     <div className="form">
       <div className="field"><Label htmlFor="connector-type">Type</Label><select id="connector-type" className="input" value={type} onChange={(event) => setType(event.target.value as typeof type)}><option value="rss">RSS / Atom</option><option value="web">Web page</option><option value="api">REST API</option></select></div>
       <div className="field"><Label htmlFor="connector-name">Name</Label><Input id="connector-name" maxLength={200} value={name} onChange={(event) => setName(event.target.value)} /></div>

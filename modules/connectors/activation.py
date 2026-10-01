@@ -1,0 +1,244 @@
+from typing import Any
+from uuid import UUID, uuid4
+
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from modules.connectors import provisioning
+from modules.connectors.credentials import (
+    CredentialEncryptionUnavailable,
+    encrypt_credential_input,
+    secret_fingerprint,
+)
+from modules.connectors.n8n import N8nApi, N8nCredentials, build_workflow, workflow_name
+from modules.sources import public as sources
+
+
+def prepare_credential_assignment(
+    *,
+    source_id: UUID,
+    activation_id: UUID,
+    slot: str,
+    credential_name: str,
+    header_name: str,
+    secret: str | None,
+    binding: dict[str, object],
+    existing: Any,
+    encryption_key: str,
+) -> tuple[dict[str, object], dict[str, object] | None]:
+    if existing is not None and existing.state in {
+        "dispatching", "reconciliation_required", "delete_pending"
+    }:
+        raise ValueError("Credential operation is unresolved")
+    existing_binding = existing.resolved_binding if existing is not None else None
+    if secret is None:
+        if (
+            existing is None or existing.state != "ready" or not existing.credential_id
+            or not isinstance(existing_binding, dict)
+            or existing_binding.get("header_name") != header_name
+        ):
+            raise ValueError("A replacement credential is required for the current binding")
+        return (
+            {"binding": dict(existing_binding), "credential_id": existing.credential_id},
+            None,
+        )
+
+    expected = {
+        **binding,
+        "header_name": header_name,
+        "secret_fingerprint": secret_fingerprint(encryption_key, secret),
+    }
+    if (
+        existing is not None and existing.state == "ready" and existing.credential_id
+        and isinstance(existing_binding, dict) and existing_binding == expected
+    ):
+        return ({"binding": expected, "credential_id": existing.credential_id}, None)
+
+    operation_id = uuid4()
+    target_id = existing.credential_id if existing is not None else None
+    request = {
+        "name": credential_name,
+        "type": "httpHeaderAuth",
+        "data": {"name": header_name, "value": secret},
+    }
+    ciphertext = encrypt_credential_input(
+        encryption_key,
+        source_id=source_id,
+        slot=slot,
+        operation_id=operation_id,
+        request=request,
+        binding=expected,
+    )
+    return (
+        {
+            "binding": expected,
+            "credential_id": target_id,
+            "operation_id": str(operation_id),
+        },
+        {
+            "operation_id": str(operation_id),
+            "kind": "update" if target_id else "create",
+            "target_id": target_id,
+            "credential_type": "httpHeaderAuth",
+            "binding": expected,
+            "input_ciphertext": ciphertext,
+            "activation_id": str(activation_id),
+        },
+    )
+
+
+async def drive_activation(
+    session: AsyncSession,
+    source_id: UUID,
+    api: N8nApi,
+    credentials: N8nCredentials,
+    encryption_key: str,
+) -> bool:
+    """Shared HTTP/worker progression for a fully persisted activation intent."""
+    if not encryption_key:
+        await session.rollback()
+        return False
+    try:
+        secret_fingerprint(encryption_key, "connector-key-validation")
+    except CredentialEncryptionUnavailable:
+        await session.rollback()
+        return False
+
+    for _ in range(8):
+        observed = await provisioning.activation_status(session, source_id)
+        intent = observed.activation_intent if observed is not None else None
+        required = intent.get("required_credentials", {}) if isinstance(intent, dict) else {}
+        slots_to_lock = tuple(required.keys()) if isinstance(required, dict) else ()
+        source_fence, row, slots = await provisioning.lock_connector(
+            session, source_id, slots_to_lock
+        )
+        if source_fence is None or row is None or not isinstance(row.activation_intent, dict):
+            await session.rollback()
+            return False
+        intent = row.activation_intent
+        required = intent.get("required_credentials")
+        current = bool(
+            isinstance(required, dict)
+            and row.desired_enabled
+            and row.state == "provisioning"
+            and source_fence.status == "active"
+            and source_fence.generation == intent.get("source_generation")
+            and row.source_generation == intent.get("source_generation")
+            and row.desired_revision == intent.get("revision")
+            and intent.get("state") == "prepared"
+        )
+        if not current:
+            await session.rollback()
+            return False
+
+        pending: tuple[str, UUID] | None = None
+        ready_ids: dict[str, str] = {}
+        for slot, value in required.items():
+            if not isinstance(value, dict):
+                row.state = "reconciliation_required"
+                row.error_code = "activation_credential_intent_invalid"
+                await session.commit()
+                return False
+            credential = slots.get(slot)
+            operation_id = value.get("operation_id")
+            if operation_id is not None:
+                try:
+                    expected_operation_id = UUID(str(operation_id))
+                except ValueError:
+                    row.state = "reconciliation_required"
+                    row.error_code = "activation_credential_intent_invalid"
+                    await session.commit()
+                    return False
+                envelope = credential.operation_envelope if credential is not None else None
+                if (
+                    isinstance(envelope, dict)
+                    and envelope.get("id") == str(expected_operation_id)
+                    and envelope.get("activation_id") == intent.get("id")
+                    and envelope.get("state") == "prepared"
+                ):
+                    pending = (slot, expected_operation_id)
+                    break
+                if (
+                    credential is not None
+                    and credential.state == "dispatching"
+                    and credential.operation_id == expected_operation_id
+                    and isinstance(envelope, dict)
+                    and envelope.get("id") == str(expected_operation_id)
+                    and envelope.get("activation_id") == intent.get("id")
+                    and envelope.get("revision") == intent.get("revision")
+                    and envelope.get("source_generation") == intent.get("source_generation")
+                    and envelope.get("state") == "dispatched"
+                ):
+                    await session.rollback()
+                    return False
+            if (
+                credential is None or credential.state != "ready"
+                or not credential.credential_id
+                or credential.resolved_binding != value.get("binding")
+                or (value.get("credential_id") is not None and credential.credential_id != value.get("credential_id"))
+            ):
+                row.state = "reconciliation_required"
+                row.error_code = "activation_credential_binding_unresolved"
+                await session.commit()
+                return False
+            if operation_id is not None:
+                envelope = credential.operation_envelope
+                if (
+                    not isinstance(envelope, dict)
+                    or envelope.get("id") != str(operation_id)
+                    or envelope.get("state") != "succeeded"
+                    or envelope.get("activation_id") != intent.get("id")
+                ):
+                    row.state = "reconciliation_required"
+                    row.error_code = "activation_credential_binding_unresolved"
+                    await session.commit()
+                    return False
+            ready_ids[slot] = credential.credential_id
+
+        if pending is not None:
+            await session.rollback()
+            progressed = await provisioning.drive_credential_operation(
+                session, source_id, pending[0], credentials, encryption_key
+            )
+            if progressed:
+                continue
+            return False
+
+        if row.workflow_operation is not None:
+            await session.rollback()
+            return await provisioning.drive_workflow_operation(session, source_id, api)
+
+        source = await sources.get_connector_source(session, source_id)
+        if source is None:
+            await session.rollback()
+            return False
+        operation_id = uuid4()
+        name = (
+            row.workflow_name if row.workflow_id and row.workflow_name
+            else workflow_name(source_id, operation_id)
+        )
+        body = build_workflow(
+            source,
+            desired_revision=int(intent["revision"]),
+            workflow_operation_id=operation_id,
+            workflow_name_value=name,
+            collector_credential_id=ready_ids["collector"],
+            manual_credential_id=ready_ids["manual_trigger"],
+            provider_credential_id=ready_ids.get("provider"),
+        )
+        prepared = await provisioning.begin_enable(
+            session,
+            source_id,
+            int(intent["source_generation"]),
+            int(intent["revision"]),
+            dict(intent.get("configuration", {})),
+            name,
+            body,
+            operation_id,
+            required_credentials=required,
+            activation_id=UUID(str(intent["id"])),
+        )
+        if prepared is None:
+            await session.rollback()
+            return False
+        await session.commit()
+    return await provisioning.drive_workflow_operation(session, source_id, api)

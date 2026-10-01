@@ -121,6 +121,19 @@ async def _collect_web_job(
     async with factory() as session:
         source_id = UUID(str(event.payload["source_id"]))
         source = await sources.lock_source(session, source_id)
+        source_view = await sources.get_connector_source(session, source_id)
+        from modules.connectors import public as connectors
+
+        event_revision = event.payload.get("connector_revision")
+        fence_current = bool(
+            source_view is not None
+            and await connectors.require_batch_fence(
+                session,
+                source_view,
+                int(event.payload.get("source_generation", -1)),
+                event_revision if isinstance(event_revision, int) else None,
+            )
+        )
         run = await session.scalar(
             select(IngestionRun).where(IngestionRun.id == run_id, IngestionRun.source_id == source_id).with_for_update()
         )
@@ -130,6 +143,7 @@ async def _collect_web_job(
         if (
             source is None or source.status != "active"
             or source.generation != int(event.payload.get("source_generation", -1))
+            or not fence_current
             or run is None or stage is None or batch is None
             or state is None or state.lease_run_id != run.id
         ):
