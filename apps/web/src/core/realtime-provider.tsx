@@ -59,8 +59,9 @@ type IngestionEvent = ReplayEnvelope & {
   stage_key?: string | null; stage_status?: string | null;
 };
 type KnowledgeEvent = ReplayEnvelope & {
-  scope?: 'source' | 'index'; source_id?: string | null; document_id?: string | null; version?: number | null;
+  scope?: 'source' | 'index' | 'graph'; source_id?: string | null; document_id?: string | null; version?: number | null;
   deleted: boolean; index_generation_id?: string | null;
+  entity_id?: string | null; relationship_id?: string | null;
   index_status?: 'queued' | 'running' | 'active' | 'failed' | 'retired' | null;
   indexed_items?: number | null; failed_items?: number | null;
 };
@@ -142,6 +143,9 @@ export function RealtimeProvider({ children }: { children: ReactNode }) {
       client.invalidateQueries({ queryKey: ['connector-activation'] }),
       client.invalidateQueries({ queryKey: ['operation'] }),
       client.invalidateQueries({ queryKey: ['search-index'] }),
+      client.invalidateQueries({ queryKey: ['entities'] }),
+      client.invalidateQueries({ queryKey: ['relationships'] }),
+      client.invalidateQueries({ queryKey: ['search'] }),
     ]);
   }, [client]);
 
@@ -344,8 +348,26 @@ export function RealtimeProvider({ children }: { children: ReactNode }) {
             || !Number.isSafeInteger(value.indexed_items) || (value.indexed_items ?? -1) < 0
             || !Number.isSafeInteger(value.failed_items) || (value.failed_items ?? -1) < 0
             || value.source_id != null || value.document_id != null || value.version != null || value.deleted !== false
+            || value.entity_id != null || value.relationship_id != null
           ) { resync(true); return; }
           void client.invalidateQueries({ queryKey: ['search-index'] });
+          return;
+        }
+        if (value.scope === 'graph') {
+          if (
+            (value.entity_id == null) === (value.relationship_id == null)
+            || (value.entity_id != null && !UUID_RE.test(value.entity_id))
+            || (value.relationship_id != null && !UUID_RE.test(value.relationship_id))
+            || typeof value.deleted !== 'boolean'
+            || value.source_id != null || value.document_id != null || value.version != null
+            || value.index_generation_id != null || value.index_status != null
+            || value.indexed_items != null || value.failed_items != null
+          ) { resync(true); return; }
+          void Promise.all([
+            client.invalidateQueries({ queryKey: ['entities'] }),
+            client.invalidateQueries({ queryKey: ['relationships'] }),
+            client.invalidateQueries({ queryKey: ['search'] }),
+          ]);
           return;
         }
         if (
@@ -354,7 +376,16 @@ export function RealtimeProvider({ children }: { children: ReactNode }) {
           || (value.document_id && !UUID_RE.test(value.document_id))
           || value.index_generation_id != null || value.index_status != null
           || value.indexed_items != null || value.failed_items != null
+          || value.entity_id != null || value.relationship_id != null
+          || typeof value.deleted !== 'boolean'
         ) { resync(true); return; }
+        if (value.deleted) {
+          void Promise.all([
+            client.invalidateQueries({ queryKey: ['entities'] }),
+            client.invalidateQueries({ queryKey: ['relationships'] }),
+            client.invalidateQueries({ queryKey: ['search'] }),
+          ]);
+        }
         if (value.document_id) queueDocumentUpdate(value.document_id);
         else queueDocumentUpdate(null);
       });

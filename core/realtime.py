@@ -46,11 +46,13 @@ class IngestionChanged(_Payload):
 
 class KnowledgeChanged(_Payload):
     type: Literal["knowledge.changed"] = "knowledge.changed"
-    scope: Literal["source", "index"] = "source"
+    scope: Literal["source", "index", "graph"] = "source"
     source_id: UUID | None = None
     document_id: UUID | None = None
     version: int | None = Field(default=None, ge=1)
     deleted: bool = False
+    entity_id: UUID | None = None
+    relationship_id: UUID | None = None
     index_generation_id: UUID | None = None
     index_status: Literal["queued", "running", "active", "failed", "retired"] | None = None
     indexed_items: int | None = Field(default=None, ge=0)
@@ -60,6 +62,8 @@ class KnowledgeChanged(_Payload):
     def validate_scope(self) -> "KnowledgeChanged":
         if self.scope == "source":
             if self.source_id is None or any((
+                self.entity_id is not None,
+                self.relationship_id is not None,
                 self.index_generation_id is not None,
                 self.index_status is not None,
                 self.indexed_items is not None,
@@ -68,11 +72,21 @@ class KnowledgeChanged(_Payload):
                 raise ValueError("Source knowledge events require a source identity only")
             return self
         if (
-            self.source_id is not None or self.document_id is not None or self.version is not None
-            or self.deleted or self.index_generation_id is None or self.index_status is None
-            or self.indexed_items is None or self.failed_items is None
+            self.scope == "index" and (
+                self.source_id is not None or self.document_id is not None or self.version is not None
+                or self.deleted or self.entity_id is not None or self.relationship_id is not None
+                or self.index_generation_id is None or self.index_status is None
+                or self.indexed_items is None or self.failed_items is None
+            )
         ):
             raise ValueError("Index knowledge events require only a generation identity and progress")
+        if self.scope == "graph" and (
+            (self.entity_id is None) == (self.relationship_id is None)
+            or self.source_id is not None or self.document_id is not None or self.version is not None
+            or self.index_generation_id is not None or self.index_status is not None
+            or self.indexed_items is not None or self.failed_items is not None
+        ):
+            raise ValueError("Graph knowledge events require exactly one entity or relationship identity")
         return self
 
 
@@ -176,6 +190,14 @@ def make_index_change(
         index_status=status,
         indexed_items=indexed_items,
         failed_items=failed_items,
+    )
+
+
+def make_graph_change(
+    *, entity_id: UUID | None = None, relationship_id: UUID | None = None, deleted: bool = False
+) -> KnowledgeChanged:
+    return KnowledgeChanged(
+        scope="graph", entity_id=entity_id, relationship_id=relationship_id, deleted=deleted
     )
 
 

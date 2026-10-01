@@ -23,6 +23,15 @@ from modules.ingestion.models import (
 from modules.connectors.models import ConnectorManagedCredential, ConnectorProvisioning
 from modules.sources.models import Source, SourcePurgeOperation
 from modules.search.models import IndexGeneration, SearchIndexItem
+from modules.knowledge.entities.models import (
+    Entity,
+    EntityAlias,
+    EntityEvidenceMembership,
+    EntityAliasEvidence,
+    EntityFieldEvidence,
+    EntityOwnerAction,
+)
+from modules.knowledge.relationships.models import Relationship, RelationshipEvidence
 from modules.settings.models import AISettingsRecord, OwnerPreferencesRecord
 from core.realtime import ReplayHead, ReplayRecord
 
@@ -40,6 +49,16 @@ _ingestion_models = (
 _search_models = (IndexGeneration, SearchIndexItem)
 _connector_models = (ConnectorProvisioning, ConnectorManagedCredential)
 _realtime_models = (ReplayHead, ReplayRecord)
+_knowledge_models = (
+    Entity,
+    EntityAlias,
+    EntityEvidenceMembership,
+    EntityAliasEvidence,
+    EntityFieldEvidence,
+    EntityOwnerAction,
+    Relationship,
+    RelationshipEvidence,
+)
 config = context.config
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)

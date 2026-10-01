@@ -12,13 +12,31 @@ from core.pagination import decode_cursor, encode_cursor
 from core.chunking import chunk_text
 from core.realtime import commit_with_replay, make_knowledge_change
 from modules.knowledge.documents.models import Document, DocumentChunk, DocumentVersion
-from modules.knowledge.documents.schemas import DocumentCreate, DocumentPatch
+from modules.knowledge.documents.schemas import DocumentCreate, DocumentPatch, EvidenceReferenceRead
 from modules.sources import public as sources
 from modules.sources.models import Source
 
 
 def content_hash(content: str) -> str:
     return hashlib.sha256(content.encode("utf-8")).hexdigest()
+
+
+async def list_evidence_ref_keys(
+    session: AsyncSession, *, document_id: UUID | None = None, source_id: UUID | None = None,
+    limit: int = 10_000,
+) -> list[tuple[UUID, UUID]]:
+    if (document_id is None) == (source_id is None) or not 1 <= limit <= 10_000:
+        raise ValueError("Specify one document or source and a bounded limit")
+    statement = (
+        select(DocumentVersion.id, DocumentChunk.id)
+        .join(DocumentChunk, DocumentChunk.document_version_id == DocumentVersion.id)
+        .join(Document, Document.id == DocumentVersion.document_id)
+    )
+    statement = statement.where(Document.id == document_id) if document_id else statement.where(Document.source_id == source_id)
+    rows = list((await session.execute(statement.order_by(DocumentVersion.id, DocumentChunk.id).limit(limit + 1))).all())
+    if len(rows) > limit:
+        raise ValueError("Evidence cleanup exceeds its atomic support limit")
+    return [(version_id, chunk_id) for version_id, chunk_id in rows]
 
 
 async def add_content_chunks(session: AsyncSession, version: DocumentVersion) -> None:
@@ -263,6 +281,12 @@ async def delete_document(session: AsyncSession, document_id: UUID) -> bool:
     if source_id is None:
         return False
     await sources.lock_source(session, source_id)
+    document = await session.scalar(
+        select(Document).where(Document.id == document_id, Document.source_id == source_id).with_for_update()
+    )
+    if document is None:
+        return False
+    await _remove_graph_support(session, document_id=document_id)
     result = await session.scalars(
         delete(Document)
         .where(Document.id == document_id, Document.source_id == source_id)
@@ -276,7 +300,43 @@ async def delete_document(session: AsyncSession, document_id: UUID) -> bool:
 
 async def delete_source_documents(session: AsyncSession, source_id: UUID) -> None:
     """Delete owned data inside the caller's source-locked transaction; do not commit."""
+    document_ids = list((await session.scalars(
+        select(Document.id).where(Document.source_id == source_id).order_by(Document.id).limit(10_001).with_for_update()
+    )).all())
+    if len(document_ids) > 10_000:
+        raise ValueError("Source graph cleanup exceeds its atomic document limit")
+    await _remove_graph_support(session, source_id=source_id)
     await session.execute(delete(Document).where(Document.source_id == source_id))
+
+
+async def _remove_graph_support(
+    session: AsyncSession, *, document_id: UUID | None = None, source_id: UUID | None = None
+) -> None:
+    if (document_id is None) == (source_id is None):
+        raise ValueError("Specify one document or source for graph cleanup")
+    from modules.knowledge.entities import public as entities
+    from modules.knowledge.relationships import public as relationships
+
+    refs = await list_evidence_ref_keys(session, document_id=document_id, source_id=source_id)
+    membership_ids, entity_ids = await entities.support_cleanup_ids(
+        session, document_id=document_id, source_id=source_id
+    )
+    relationship_ids, relationship_entity_ids = await relationships.support_cleanup_ids(
+        session, refs=refs, document_id=document_id, source_id=source_id, membership_ids=membership_ids
+    )
+    all_entity_ids = sorted(set(entity_ids) | set(relationship_entity_ids), key=str)
+    await entities.lock_entity_ids(session, all_entity_ids)
+    await relationships.lock_relationship_ids(session, relationship_ids)
+    if document_id is not None:
+        await relationships.remove_document_support(
+            session, document_id=document_id, refs=refs, membership_ids=membership_ids
+        )
+        await entities.remove_document_support(session, document_id)
+    else:
+        await relationships.remove_source_support(
+            session, source_id=source_id, refs=refs, membership_ids=membership_ids
+        )
+        await entities.remove_source_support(session, source_id)
 
 
 async def append_content(
@@ -368,3 +428,58 @@ async def get_version(
             DocumentVersion.version_number == number,
         )
     )
+
+
+async def read_evidence_refs(
+    session: AsyncSession, refs: list[tuple[UUID, UUID]], *, for_write: bool = False
+) -> list[EvidenceReferenceRead]:
+    if len(refs) > 100 or len(set(refs)) != len(refs):
+        raise ValueError("Evidence references must be unique and contain at most 100 items")
+    if not refs:
+        return []
+    result = await _read_evidence_ref_rows(session, refs)
+    if for_write:
+        from modules.sources import public as sources_public
+
+        for source_id in sorted({item.source_id for item in result}, key=str):
+            if await sources_public.lock_source(session, source_id) is None:
+                raise ValueError("Evidence source no longer exists")
+        document_ids = sorted({item.document_id for item in result}, key=str)
+        await session.scalars(
+            select(Document)
+            .where(Document.id.in_(document_ids))
+            .order_by(Document.id)
+            .with_for_update()
+        )
+        result = await _read_evidence_ref_rows(session, refs)
+    return result
+
+
+async def _read_evidence_ref_rows(
+    session: AsyncSession, refs: list[tuple[UUID, UUID]]
+) -> list[EvidenceReferenceRead]:
+    rows = (await session.execute(
+        select(Document, DocumentVersion, DocumentChunk, Source.id)
+        .join(DocumentVersion, DocumentVersion.document_id == Document.id)
+        .join(DocumentChunk, DocumentChunk.document_version_id == DocumentVersion.id)
+        .join(Source, Source.id == Document.source_id)
+        .where(tuple_(DocumentVersion.id, DocumentChunk.id).in_(refs))
+    )).all()
+    by_ref = {
+        (version.id, chunk.id): EvidenceReferenceRead(
+            document_id=document.id,
+            document_version_id=version.id,
+            version_number=version.version_number,
+            chunk_id=chunk.id,
+            source_id=source_id,
+            title=document.title,
+            canonical_url=document.canonical_url,
+            metadata_is_version_snapshot=False,
+            observed_at=version.observed_at,
+            excerpt=chunk.content[:1000],
+        )
+        for document, version, chunk, source_id in rows
+    }
+    if set(by_ref) != set(refs):
+        raise ValueError("Evidence reference is missing or does not match its document revision")
+    return [by_ref[ref] for ref in refs]

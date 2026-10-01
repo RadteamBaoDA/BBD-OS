@@ -1,0 +1,59 @@
+from datetime import datetime
+from uuid import UUID, uuid4
+
+from sqlalchemy import CheckConstraint, DateTime, ForeignKey, Index, String, UniqueConstraint, func
+from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.types import Uuid
+
+from core.database import Base
+
+
+class Relationship(Base):
+    __tablename__ = "relationships"
+    __table_args__ = (
+        CheckConstraint("source_entity_id <> target_entity_id", name="ck_relationships_distinct_entities"),
+        CheckConstraint("origin IN ('owner', 'derived')", name="ck_relationships_origin"),
+        CheckConstraint("confidence IS NULL OR (confidence >= 0 AND confidence <= 1)", name="ck_relationships_confidence"),
+        Index("ix_relationships_source_type", "source_entity_id", "type"),
+        Index("ix_relationships_target_type", "target_entity_id", "type"),
+        Index("ix_relationships_created_at_id", "created_at", "id"),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid4)
+    source_entity_id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), ForeignKey("entities.id", ondelete="CASCADE"), nullable=False)
+    target_entity_id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), ForeignKey("entities.id", ondelete="CASCADE"), nullable=False)
+    type: Mapped[str] = mapped_column(String(64), nullable=False)
+    origin: Mapped[str] = mapped_column(String(16), nullable=False)
+    confidence: Mapped[float | None]
+    valid_from: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    valid_to: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    metadata_json: Mapped[dict[str, object]] = mapped_column("metadata", JSONB, nullable=False, server_default="{}")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now())
+
+
+class RelationshipEvidence(Base):
+    __tablename__ = "relationship_evidence"
+    __table_args__ = (
+        UniqueConstraint("relationship_id", "document_version_id", "chunk_id", name="uq_relationship_evidence_fact_chunk"),
+        CheckConstraint("confidence >= 0 AND confidence <= 1", name="ck_relationship_evidence_confidence"),
+        Index("ix_relationship_evidence_version", "document_version_id"),
+        Index("ix_relationship_evidence_chunk", "chunk_id"),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid4)
+    relationship_id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), ForeignKey("relationships.id", ondelete="CASCADE"), nullable=False)
+    document_version_id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), ForeignKey("document_versions.id", ondelete="CASCADE"), nullable=False)
+    chunk_id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), ForeignKey("document_chunks.id", ondelete="CASCADE"), nullable=False)
+    document_id: Mapped[UUID | None] = mapped_column(Uuid(as_uuid=True), ForeignKey("documents.id", ondelete="CASCADE"))
+    source_id: Mapped[UUID | None] = mapped_column(Uuid(as_uuid=True), ForeignKey("sources.id", ondelete="SET NULL"))
+    observed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    extracted_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    confidence: Mapped[float] = mapped_column(nullable=False)
+    source_membership_id: Mapped[UUID | None] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("entity_evidence_memberships.id", ondelete="SET NULL")
+    )
+    target_membership_id: Mapped[UUID | None] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("entity_evidence_memberships.id", ondelete="SET NULL")
+    )

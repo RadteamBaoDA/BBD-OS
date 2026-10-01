@@ -1,0 +1,129 @@
+from datetime import datetime
+from uuid import UUID, uuid4
+
+from sqlalchemy import CheckConstraint, DateTime, ForeignKey, Index, Integer, String, Text, UniqueConstraint, func
+from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.types import Uuid
+
+from core.database import Base
+
+
+class Entity(Base):
+    __tablename__ = "entities"
+    __table_args__ = (
+        CheckConstraint(
+            "type IN ('person', 'organization', 'company', 'project', 'repository', 'place', 'country', 'product', 'topic', 'technology', 'asset', 'device', 'website', 'event_subject', 'other')",
+            name="ck_entities_type",
+        ),
+        CheckConstraint("revision >= 1", name="ck_entities_revision"),
+        Index("ix_entities_type_canonical_name", "type", "canonical_name"),
+        Index("ix_entities_created_at_id", "created_at", "id"),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid4)
+    type: Mapped[str] = mapped_column(String(32), nullable=False)
+    name: Mapped[str | None] = mapped_column(String(300))
+    canonical_name: Mapped[str | None] = mapped_column(String(300))
+    description: Mapped[str | None] = mapped_column(Text)
+    name_origin: Mapped[str | None] = mapped_column(String(16))
+    description_origin: Mapped[str | None] = mapped_column(String(16))
+    metadata_json: Mapped[dict[str, object]] = mapped_column("metadata", JSONB, nullable=False, server_default="{}")
+    revision: Mapped[int] = mapped_column(Integer, nullable=False, server_default="1")
+    first_seen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_seen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now())
+
+
+class EntityAlias(Base):
+    __tablename__ = "entity_aliases"
+    __table_args__ = (
+        UniqueConstraint("entity_id", "normalized_alias", name="uq_entity_aliases_entity_normalized"),
+        Index("ix_entity_aliases_normalized", "normalized_alias"),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid4)
+    entity_id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), ForeignKey("entities.id", ondelete="CASCADE"), nullable=False)
+    alias: Mapped[str] = mapped_column(String(300), nullable=False)
+    normalized_alias: Mapped[str] = mapped_column(String(300), nullable=False)
+    source_id: Mapped[UUID | None] = mapped_column(Uuid(as_uuid=True), ForeignKey("sources.id", ondelete="SET NULL"))
+    confirmed: Mapped[bool] = mapped_column(nullable=False, server_default="false")
+    origin: Mapped[str | None] = mapped_column(String(16))
+    confidence: Mapped[float | None]
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+
+
+class EntityEvidenceMembership(Base):
+    __tablename__ = "entity_evidence_memberships"
+    __table_args__ = (
+        CheckConstraint("confidence >= 0 AND confidence <= 1", name="ck_entity_evidence_confidence"),
+        UniqueConstraint("extraction_identity", "candidate_key", "chunk_id", name="uq_entity_evidence_retry"),
+        Index("ix_entity_evidence_entity", "entity_id", "id"),
+        Index("ix_entity_evidence_version", "document_version_id"),
+        Index("ix_entity_evidence_chunk", "chunk_id"),
+        Index("ix_entity_evidence_document", "document_id"),
+        Index("ix_entity_evidence_source", "source_id"),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid4)
+    entity_id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), ForeignKey("entities.id", ondelete="CASCADE"), nullable=False)
+    document_id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), ForeignKey("documents.id", ondelete="CASCADE"), nullable=False)
+    source_id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), ForeignKey("sources.id", ondelete="CASCADE"), nullable=False)
+    document_version_id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), ForeignKey("document_versions.id", ondelete="CASCADE"), nullable=False)
+    chunk_id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), ForeignKey("document_chunks.id", ondelete="CASCADE"), nullable=False)
+    extraction_identity: Mapped[str | None] = mapped_column(String(256))
+    candidate_key: Mapped[str | None] = mapped_column(String(256))
+    observed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    extracted_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    confidence: Mapped[float] = mapped_column(nullable=False)
+
+
+class EntityAliasEvidence(Base):
+    __tablename__ = "entity_alias_evidence"
+    __table_args__ = (
+        UniqueConstraint("alias_id", "membership_id", name="uq_entity_alias_evidence"),
+        CheckConstraint("confidence >= 0 AND confidence <= 1", name="ck_entity_alias_evidence_confidence"),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid4)
+    alias_id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), ForeignKey("entity_aliases.id", ondelete="CASCADE"), nullable=False)
+    membership_id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), ForeignKey("entity_evidence_memberships.id", ondelete="CASCADE"), nullable=False)
+    confidence: Mapped[float] = mapped_column(nullable=False)
+
+
+class EntityFieldEvidence(Base):
+    """Memberships supporting the exact currently published derived field value."""
+
+    __tablename__ = "entity_field_evidence"
+    __table_args__ = (
+        CheckConstraint("field_name IN ('name', 'description')", name="ck_entity_field_evidence_field"),
+        UniqueConstraint(
+            "entity_id", "field_name", "value_hash", "membership_id",
+            name="uq_entity_field_evidence_support",
+        ),
+        Index("ix_entity_field_evidence_current", "entity_id", "field_name", "value_hash"),
+        Index("ix_entity_field_evidence_membership", "membership_id"),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid4)
+    entity_id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), ForeignKey("entities.id", ondelete="CASCADE"), nullable=False)
+    field_name: Mapped[str] = mapped_column(String(16), nullable=False)
+    value_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    membership_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("entity_evidence_memberships.id", ondelete="CASCADE"), nullable=False
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+
+
+class EntityOwnerAction(Base):
+    __tablename__ = "entity_owner_actions"
+    __table_args__ = (Index("ix_entity_owner_actions_created", "created_at", "id"),)
+
+    id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid4)
+    actor_id: Mapped[int] = mapped_column(ForeignKey("owner.id", ondelete="CASCADE"), nullable=False)
+    operation: Mapped[str] = mapped_column(String(32), nullable=False)
+    reason: Mapped[str] = mapped_column(String(300), nullable=False)
+    affected_ids: Mapped[list[str]] = mapped_column(JSONB, nullable=False)
+    revisions: Mapped[dict[str, int | None]] = mapped_column(JSONB, nullable=False, server_default="{}")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())

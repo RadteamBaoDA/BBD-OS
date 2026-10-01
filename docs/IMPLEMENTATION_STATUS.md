@@ -14,7 +14,7 @@ Markers: `[ ]` not started; `[~]` in progress; `[x]` complete; `[!]` blocked.
 - [x] Phase 1: core data platform code/build and whole-branch review complete; merged to `main` (`d425057`). Behavioral acceptance remains deferred.
 - [x] Phase 2: ingestion and packaged collection workflows (code/build and independent review complete; merged to `main` as `2f7c409`; behavioral acceptance deferred).
 - [x] Phase 3: search and embeddings production code/build/whole-branch review complete; behavioral acceptance deferred to the post-code test stage.
-- [~] Phase 4: uncommitted P04-T1 entities/relationships in D:/Project/BBD-OS-phase-4; preserve/reconcile before resuming. No completion claimed.
+- [~] Phase 4: P04-T1 owner foundation in isolated `codex/bbd-p04` worktree at `6f7d50a`; selective transfer preserved original migration `0007_entities` bytes and the historical checkout remains untouched. Build/review pending; no completion claimed.
 - [ ] Phase 5: temporal knowledge and Graphiti.
 - [ ] Phase 6: Ask/RAG and citations.
 - [ ] Phase 7: agents, tools, and approvals.

@@ -104,6 +104,19 @@ class VersionList(BaseModel):
     next_cursor: str | None
 
 
+class EvidenceReferenceRead(BaseModel):
+    document_id: UUID
+    document_version_id: UUID
+    version_number: int
+    chunk_id: UUID
+    source_id: UUID
+    title: str
+    canonical_url: str | None
+    metadata_is_version_snapshot: bool
+    observed_at: datetime
+    excerpt: str
+
+
 class DocumentList(BaseModel):
     items: list[DocumentRead]
     next_cursor: str | None
