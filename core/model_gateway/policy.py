@@ -19,4 +19,10 @@ def may_send(
         or destination_id not in policy.permitted_destinations
     ):
         return False
-    return policy.embeddings_allowed if capability in {"embeddings", "reranking"} else policy.reasoning_allowed
+    if capability in {"embeddings", "reranking"}:
+        destinations = policy.embedding_destinations or policy.permitted_destinations
+        return policy.embeddings_allowed and destination_id in destinations
+    if capability in {"web_search", "search"}:
+        return policy.web_search_allowed and destination_id in policy.web_search_destinations
+    destinations = policy.reasoning_destinations or policy.permitted_destinations
+    return policy.reasoning_allowed and destination_id in destinations

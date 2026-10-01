@@ -23,6 +23,7 @@ from modules.ingestion.models import (
 from modules.connectors.models import ConnectorManagedCredential, ConnectorProvisioning
 from modules.sources.models import Source, SourcePurgeOperation
 from modules.search.models import IndexGeneration, SearchIndexItem
+from modules.settings.models import AISettingsRecord
 
 _auth_models = (AuthSession, Owner)
 _library_models = (Source, SourcePurgeOperation, Document, DocumentVersion, DocumentChunk)

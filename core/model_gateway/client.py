@@ -1,18 +1,20 @@
 import asyncio
 import json
+import logging
 import secrets
 from collections.abc import Awaitable, Callable
 from contextlib import asynccontextmanager
 from collections.abc import AsyncIterator
-from typing import Any
+from typing import Any, cast
 
-import httpx
+from openai import APIConnectionError, APIStatusError, APITimeoutError, AsyncOpenAI
 from redis.asyncio import Redis
 from redis.exceptions import RedisError
 
 from core.model_gateway.cache import capability_key
 from core.model_gateway.policy import may_send
 from core.model_gateway.schemas import ModelMapping, RequestPolicy
+from core.model_gateway.transport import EndpointNetworkPolicyError, approved_http_client
 
 _LEASE_PREFIX = "bbd:model-gateway:slot:"
 _RELEASE = "if redis.call('get', KEYS[1]) == ARGV[1] then return redis.call('del', KEYS[1]) else return 0 end"
@@ -38,12 +40,27 @@ class ModelGateway:
         api_key: str,
         destination_id: str,
         timeout_seconds: float = 20.0,
+        gateway_identity: str = "legacy",
+        before_send: Callable[[], Awaitable[None]] | None = None,
+        approved_endpoint_cidrs: tuple[str, ...] = (),
     ) -> None:
+        # The SDK DEBUG request log contains JSON request bodies. Keep prompts
+        # and indexed source text out of logs even when OPENAI_LOG=debug is set.
+        logging.getLogger("openai").setLevel(logging.WARNING)
         self.redis = redis
         self.base_url = base_url.rstrip("/") if base_url else None
         self.api_key = api_key
         self.destination_id = destination_id
         self.timeout_seconds = timeout_seconds
+        self.gateway_identity = gateway_identity
+        self.before_send = before_send
+        self.approved_endpoint_cidrs = approved_endpoint_cidrs
+
+    def _http_client(self, base_url: str):
+        try:
+            return approved_http_client(base_url, self.approved_endpoint_cidrs)
+        except EndpointNetworkPolicyError as exc:
+            raise ModelGatewayError("Model gateway network policy is unavailable") from exc
 
     @asynccontextmanager
     async def _slot(self) -> AsyncIterator[None]:
@@ -88,45 +105,81 @@ class ModelGateway:
         if self.base_url is None or mapping is None:
             raise ModelGatewayError("Model gateway is not configured")
         if not probe:
-            key = capability_key(alias, mapping.model, mapping.version, capability)
+            key = capability_key(alias, mapping.model, mapping.version, capability, self.gateway_identity)
             stored = await self.redis.get(key)
             try:
                 capability_result = json.loads(stored) if stored else {}
             except (TypeError, json.JSONDecodeError):
                 capability_result = {}
-            if capability_result.get("result") != "supported":
+            if (capability_result.get("result") != "supported"
+                    or capability_result.get("gateway_identity") != self.gateway_identity
+                    or capability_result.get("model") != mapping.model
+                    or capability_result.get("version") != mapping.version):
                 raise ModelGatewayError("Model capability is not supported")
-        endpoint = f"{self.base_url}/{path.lstrip('/')}" if self.base_url.endswith("/v1") else f"{self.base_url}/v1/{path.lstrip('/')}"
         body = {**payload, "model": mapping.model}
-
-        headers = {"Authorization": f"Bearer {self.api_key}"} if self.api_key else {}
+        base_url = self.base_url if self.base_url.endswith("/v1") else f"{self.base_url}/v1"
 
         async def send() -> Any:
-            async with httpx.AsyncClient(timeout=httpx.Timeout(self.timeout_seconds)) as client:
+            async with AsyncOpenAI(
+                base_url=base_url,
+                api_key=self.api_key or "not-configured",
+                timeout=self.timeout_seconds,
+                max_retries=0,
+                http_client=self._http_client(base_url),
+            ) as client:
                 for attempt in range(2):
                     try:
-                        response = await client.post(
-                            endpoint,
-                            json=body,
-                            headers=headers,
-                        )
-                    except (httpx.TimeoutException, httpx.NetworkError) as exc:
+                        if self.before_send is not None:
+                            await self.before_send()
+                        if path == "chat/completions":
+                            response = await client.chat.completions.create(**body)
+                        elif path == "embeddings":
+                            response = await client.embeddings.create(**body)
+                        elif path == "rerank":
+                            response = await client.post("/rerank", cast_to=dict, body=body)
+                        else:
+                            raise ModelGatewayError("Unsupported model gateway operation")
+                    except (APITimeoutError, APIConnectionError) as exc:
                         if attempt == 0:
                             continue
                         raise ModelGatewayError("Model gateway request failed") from exc
-                    if response.status_code in {408, 425, 429} or response.status_code >= 500:
-                        if attempt == 0:
-                            await asyncio.sleep(0.1)
-                            continue
-                    if response.status_code >= 400:
-                        if response.status_code in {400, 404, 405, 422}:
-                            raise CapabilityUnsupported("The configured gateway rejected this capability")
-                        raise ModelGatewayError(f"Model gateway returned HTTP {response.status_code}")
-                    try:
-                        return response.json()
-                    except ValueError as exc:
-                        raise ModelGatewayError("Model gateway returned invalid JSON") from exc
+                    except APIStatusError as exc:
+                        if exc.status_code in {408, 425, 429} or exc.status_code >= 500:
+                            if attempt == 0:
+                                await asyncio.sleep(0.1)
+                                continue
+                        if exc.status_code in {400, 404, 405, 422}:
+                            raise CapabilityUnsupported("The configured gateway rejected this capability") from exc
+                        raise ModelGatewayError(f"Model gateway returned HTTP {exc.status_code}") from exc
+                    except EndpointNetworkPolicyError as exc:
+                        raise ModelGatewayError("Model gateway network policy denied the destination") from exc
+                    if hasattr(response, "model_dump"):
+                        return response.model_dump(mode="json", exclude_none=True)
+                    if isinstance(response, dict):
+                        return response
+                    raise ModelGatewayError("Model gateway returned an invalid response")
             raise ModelGatewayError("Model gateway request failed")
+
+        return await self._with_slot(send)
+
+    async def discover_models(self) -> list[str]:
+        if self.base_url is None or not self.api_key:
+            raise ModelGatewayError("Model gateway is not configured")
+        base_url = self.base_url if self.base_url.endswith("/v1") else f"{self.base_url}/v1"
+
+        async def send() -> list[str]:
+            if self.before_send is not None:
+                await self.before_send()
+            async with AsyncOpenAI(base_url=base_url, api_key=self.api_key,
+                                   timeout=self.timeout_seconds, max_retries=0,
+                                   http_client=self._http_client(base_url)) as client:
+                try:
+                    page = await client.models.list()
+                except (APIConnectionError, APITimeoutError, APIStatusError) as exc:
+                    raise ModelGatewayError("Model gateway discovery failed") from exc
+                except EndpointNetworkPolicyError as exc:
+                    raise ModelGatewayError("Model gateway network policy denied the destination") from exc
+                return [item.id for item in page.data if isinstance(item.id, str) and item.id]
 
         return await self._with_slot(send)
 
@@ -137,36 +190,53 @@ class ModelGateway:
         if not may_send(policy, alias, mapping, self.destination_id, bool(self.api_key), "streaming") or self.base_url is None or mapping is None:
             raise PrivacyPolicyDenied("Model request denied by privacy policy")
         if not probe:
-            stored = await self.redis.get(capability_key(alias, mapping.model, mapping.version, "streaming"))
+            stored = await self.redis.get(capability_key(alias, mapping.model, mapping.version, "streaming", self.gateway_identity))
             try:
                 capability_result = json.loads(stored) if stored else {}
             except (TypeError, json.JSONDecodeError):
                 capability_result = {}
-            if capability_result.get("result") != "supported":
+            if (capability_result.get("result") != "supported"
+                    or capability_result.get("gateway_identity") != self.gateway_identity
+                    or capability_result.get("model") != mapping.model
+                    or capability_result.get("version") != mapping.version):
                 raise ModelGatewayError("Streaming capability has not been verified")
-        endpoint = f"{self.base_url}/chat/completions" if self.base_url.endswith("/v1") else f"{self.base_url}/v1/chat/completions"
         async with self._slot():
-            async with httpx.AsyncClient(timeout=httpx.Timeout(self.timeout_seconds)) as client:
+            base_url = self.base_url if self.base_url.endswith("/v1") else f"{self.base_url}/v1"
+            async with AsyncOpenAI(
+                base_url=base_url,
+                api_key=self.api_key or "not-configured",
+                timeout=self.timeout_seconds,
+                max_retries=0,
+                http_client=self._http_client(base_url),
+            ) as client:
                 emitted = False
                 for attempt in range(2):
                     try:
-                        headers = {"Authorization": f"Bearer {self.api_key}"} if self.api_key else {}
-                        async with client.stream("POST", endpoint, json={"model": mapping.model, "messages": messages, "stream": True}, headers=headers) as response:
-                            if response.status_code in {408, 425, 429} or response.status_code >= 500:
-                                if attempt == 0:
-                                    continue
-                            if response.status_code >= 400:
-                                if response.status_code in {400, 404, 405, 422}:
-                                    raise CapabilityUnsupported("The configured gateway rejected streaming")
-                                raise ModelGatewayError(f"Model gateway returned HTTP {response.status_code}")
-                            async for line in response.aiter_lines():
-                                if line:
-                                    emitted = True
-                                    yield line
-                            return
-                    except (httpx.TimeoutException, httpx.NetworkError) as exc:
+                        if self.before_send is not None:
+                            await self.before_send()
+                        stream = await client.chat.completions.create(
+                            model=mapping.model,
+                            messages=messages,
+                            stream=True,
+                        )
+                        async for chunk in stream:
+                            emitted = True
+                            yield f"data: {json.dumps(chunk.model_dump(mode='json', exclude_none=True))}"
+                        yield "data: [DONE]"
+                        return
+                    except (APITimeoutError, APIConnectionError) as exc:
                         if attempt == 1 or emitted:
                             raise ModelGatewayError("Model gateway stream failed") from exc
+                    except APIStatusError as exc:
+                        if exc.status_code in {408, 425, 429} or exc.status_code >= 500:
+                            if attempt == 0:
+                                await asyncio.sleep(0.1)
+                                continue
+                        if exc.status_code in {400, 404, 405, 422}:
+                            raise CapabilityUnsupported("The configured gateway rejected streaming") from exc
+                        raise ModelGatewayError(f"Model gateway returned HTTP {exc.status_code}") from exc
+                    except EndpointNetworkPolicyError as exc:
+                        raise ModelGatewayError("Model gateway network policy denied the destination") from exc
 
     async def embed(self, alias: str, mapping: ModelMapping | None, policy: RequestPolicy, inputs: list[str], probe: bool = False) -> Any:
         return await self._request(alias, mapping, policy, "embeddings", "embeddings", {"input": inputs}, probe)

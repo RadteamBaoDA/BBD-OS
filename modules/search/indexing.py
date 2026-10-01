@@ -9,12 +9,13 @@ from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from core.config import Settings
-from core.model_gateway.client import ModelGateway, ModelGatewayError
+from core.model_gateway.client import ModelGateway, ModelGatewayError, PrivacyPolicyDenied
+from core.model_gateway.policy import may_send
 from core.model_gateway.schemas import ModelMapping, RequestPolicy
 from modules.knowledge.documents.models import Document, DocumentChunk, DocumentVersion
 from modules.knowledge.documents.public import backfill_current_chunks
 from modules.search.models import IndexGeneration, SearchIndexItem
-from modules.settings import models as settings_models
+from modules.settings import public as ai_settings
 from modules.sources import public as sources
 from modules.sources.models import Source
 
@@ -40,20 +41,24 @@ def embedding_values(response: object, expected_dimensions: int | None = None) -
     return [float(value) for value in values], returned_model
 
 
-def gateway(settings: Settings, redis: Redis) -> ModelGateway:
-    return ModelGateway(
-        redis, str(settings.omniroute_base_url) if settings.omniroute_base_url else None,
-        settings.omniroute_api_key.get_secret_value(), "omniroute",
-    )
+def gateway(config, redis: Redis, before_send=None) -> ModelGateway:
+    return ModelGateway(redis, config.omniroute_base_url, config.omniroute_api_key,
+        config.endpoint_destination_id or "omniroute", config.request_timeout_seconds,
+        gateway_identity=config.gateway_identity, before_send=before_send,
+        approved_endpoint_cidrs=config.endpoint_allowed_cidrs)
 
 
-async def configured_embedding(redis: Redis, settings: Settings) -> tuple[ModelMapping | None, RequestPolicy]:
-    mappings = await settings_models.get_mappings(redis, settings)
-    privacy = await settings_models.get_privacy(redis)
-    return mappings.get("embedding"), RequestPolicy(
+async def configured_embedding(session: AsyncSession, settings: Settings, redis: Redis):
+    config = await ai_settings.get_ai_execution_config(session, settings, redis)
+    destination = config.endpoint_destination_id
+    privacy = config.privacy
+    policy = RequestPolicy(
         embeddings_allowed=privacy.allow_remote_embeddings,
-        permitted_destinations=frozenset({"omniroute"}),
+        permitted_destinations=frozenset({destination} if destination else set()),
+        embedding_destinations=frozenset(privacy.embedding_destinations),
+        configuration_revision=config.configuration_revision,
     )
+    return config, config.aliases.get("embedding"), policy
 
 
 def eligible_chunks():
@@ -70,15 +75,17 @@ def eligible_chunks():
     )
 
 
-async def create_generation(session: AsyncSession, mapping: ModelMapping) -> IndexGeneration:
+async def create_generation(session: AsyncSession, mapping: ModelMapping, gateway_identity: str) -> IndexGeneration:
     await session.execute(text("SELECT pg_advisory_xact_lock(4603201)"))
     existing = await session.scalar(select(IndexGeneration).where(
         IndexGeneration.status.in_(("queued", "running")),
     ).order_by(IndexGeneration.created_at).limit(1))
     if existing is not None:
+        if existing.gateway_identity != gateway_identity:
+            raise ValueError("An index generation for another gateway is still running")
         await session.commit()
         return existing
-    generation = IndexGeneration(model_id=mapping.model, model_version=mapping.version)
+    generation = IndexGeneration(model_id=mapping.model, model_version=mapping.version, gateway_identity=gateway_identity)
     session.add(generation)
     await session.commit()
     await session.refresh(generation)
@@ -105,12 +112,12 @@ async def index_pending_chunks(ctx: dict[str, object]) -> int:
         generation_id = generation.id
 
     try:
-        mapping, policy = await configured_embedding(redis, settings)
+        async with factory() as session:
+            config, mapping, policy = await configured_embedding(session, settings, redis)
         if not policy.embeddings_allowed:
             return 0
-        if mapping is None or mapping.model != generation.model_id or mapping.version != generation.model_version:
-            raise ValueError("Embedding model mapping changed")
-        client = gateway(settings, redis)
+        if mapping is None or mapping.model != generation.model_id or mapping.version != generation.model_version or config.gateway_identity != generation.gateway_identity:
+            raise ValueError("Embedding model or gateway identity changed")
     except Exception:
         async with factory() as session:
             generation = await session.get(IndexGeneration, generation_id, with_for_update=True)
@@ -189,15 +196,25 @@ async def index_pending_chunks(ctx: dict[str, object]) -> int:
                         await session.delete(item)
                         await session.commit()
                     continue
-                mapping, policy = await configured_embedding(redis, settings)
+                config, mapping, policy = await configured_embedding(session, settings, redis)
                 if not policy.embeddings_allowed:
                     break
                 if (
                     mapping is None or mapping.model != generation.model_id
                     or mapping.version != generation.model_version
+                    or config.gateway_identity != generation.gateway_identity
                 ):
-                    raise ValueError("Embedding model mapping changed")
-                response = await client.embed("embedding", mapping, policy, [content])
+                    raise ValueError("Embedding model or gateway identity changed")
+
+                async def recheck_send() -> None:
+                    latest, latest_mapping, latest_policy = await configured_embedding(session, settings, redis)
+                    if (latest.gateway_identity != config.gateway_identity or latest_mapping != mapping
+                            or not may_send(latest_policy, "embedding", latest_mapping,
+                                            latest.endpoint_destination_id or "omniroute",
+                                            bool(latest.omniroute_api_key), "embeddings")):
+                        raise PrivacyPolicyDenied("Embedding send denied by current settings")
+
+                response = await gateway(config, redis, recheck_send).embed("embedding", mapping, policy, [content])
                 values, returned_model = embedding_values(response, dimensions)
                 generation = await session.get(IndexGeneration, generation_id, with_for_update=True)
                 item = await session.get(SearchIndexItem, item_id, with_for_update=True)

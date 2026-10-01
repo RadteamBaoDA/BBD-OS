@@ -1,4 +1,6 @@
 from pathlib import Path
+import ipaddress
+from urllib.parse import urlsplit
 
 from pydantic import AnyHttpUrl, Field, SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -33,6 +35,53 @@ class Settings(BaseSettings):
     omniroute_base_url: AnyHttpUrl | None = Field(default=None, repr=False)
     omniroute_api_key: SecretStr = SecretStr("")
     omniroute_models: dict[str, str] = Field(default_factory=dict, repr=False)
+    ai_credential_encryption_key: SecretStr = Field(
+        default=SecretStr(""), validation_alias="AI_CREDENTIAL_ENCRYPTION_KEY", repr=False
+    )
+    ai_allowed_endpoint_hosts: set[str] = Field(
+        default_factory=set, validation_alias="AI_ALLOWED_ENDPOINT_HOSTS", repr=False
+    )
+    ai_allowed_endpoint_cidrs: list[str] = Field(
+        default_factory=list, validation_alias="AI_ALLOWED_ENDPOINT_CIDRS", repr=False
+    )
+
+    @field_validator("ai_allowed_endpoint_hosts")
+    @classmethod
+    def normalize_endpoint_hosts(cls, values: set[str]) -> set[str]:
+        normalized = set()
+        for value in values:
+            parts = urlsplit(f"//{value}")
+            if not parts.hostname or parts.username or parts.password or parts.path or parts.query or parts.fragment:
+                raise ValueError("AI_ALLOWED_ENDPOINT_HOSTS entries must be hostnames or host:port pairs")
+            try:
+                address = ipaddress.ip_address(parts.hostname)
+            except ValueError:
+                host = parts.hostname.encode("idna").decode("ascii").lower()
+                authority_host = host
+            else:
+                if isinstance(address, ipaddress.IPv6Address) and address.scope_id is not None:
+                    raise ValueError("Scoped IPv6 endpoint hosts are not supported")
+                host = address.compressed.lower()
+                authority_host = f"[{host}]" if isinstance(address, ipaddress.IPv6Address) else host
+            try:
+                port = parts.port
+            except ValueError as exc:
+                raise ValueError("AI_ALLOWED_ENDPOINT_HOSTS contains an invalid port") from exc
+            if port == 0:
+                raise ValueError("AI_ALLOWED_ENDPOINT_HOSTS ports must be between 1 and 65535")
+            normalized.add(f"{authority_host}:{port}" if port is not None else authority_host)
+        return normalized
+
+    @field_validator("ai_allowed_endpoint_cidrs")
+    @classmethod
+    def normalize_endpoint_cidrs(cls, values: list[str]) -> list[str]:
+        networks = []
+        for value in values:
+            network = ipaddress.ip_network(value, strict=False)
+            if isinstance(network, ipaddress.IPv6Network) and network.network_address.ipv4_mapped is not None:
+                raise ValueError("IPv4-mapped IPv6 CIDRs must use the equivalent IPv4 CIDR")
+            networks.append(network.with_prefixlen)
+        return sorted(set(networks))
 
     @field_validator("omniroute_base_url", mode="before")
     @classmethod

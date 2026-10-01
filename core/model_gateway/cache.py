@@ -9,10 +9,8 @@ def _component(value: str) -> str:
     return base64.urlsafe_b64encode(value.encode("utf-8")).decode("ascii").rstrip("=")
 
 
-def capability_key(alias: str, model: str, version: str | None, capability: str) -> str:
-    return ":".join(
-        (_CAPABILITIES.rstrip(":"), _component(alias), _model_identity(model, version), _component(capability))
-    )
+def capability_key(alias: str, model: str, version: str | None, capability: str, gateway_identity: str = "legacy") -> str:
+    return ":".join((_CAPABILITIES.rstrip(":"), _component(alias), _model_identity(model, version), _component(capability), gateway_identity))
 
 
 def capability_alias_pattern(alias: str) -> str:

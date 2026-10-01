@@ -1,90 +1,77 @@
 from datetime import UTC, datetime, timedelta
 
+from sqlalchemy import CheckConstraint, DateTime, ForeignKey, Integer, String, Text, func
+from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.orm import Mapped, mapped_column
+
 from redis.asyncio import Redis
 
 from core.config import Settings
-from core.model_gateway.cache import capability_alias_pattern, capability_key, capability_model_pattern
-from core.model_gateway.schemas import CapabilityResult, ModelMapping, PrivacySettings
+from core.model_gateway.cache import capability_alias_pattern, capability_key
+from core.model_gateway.schemas import CapabilityResult, ModelMapping
+from core.database import Base
+
+
+class AISettingsRecord(Base):
+    __tablename__ = "ai_settings"
+    __table_args__ = (
+        CheckConstraint("owner_id = 1", name="ck_ai_settings_single_owner"),
+        CheckConstraint("configuration_revision > 0", name="ck_ai_settings_revision_positive"),
+        CheckConstraint("request_timeout_seconds BETWEEN 5 AND 180", name="ck_ai_settings_timeout"),
+    )
+
+    owner_id: Mapped[int] = mapped_column(ForeignKey("owner.id", ondelete="CASCADE"), primary_key=True)
+    configuration_revision: Mapped[int] = mapped_column(Integer, nullable=False, server_default="1")
+    omniroute_base_url: Mapped[str | None] = mapped_column(Text)
+    omniroute_api_key_ciphertext: Mapped[str | None] = mapped_column(Text)
+    aliases: Mapped[dict] = mapped_column(JSONB, nullable=False, server_default="{}")
+    privacy: Mapped[dict] = mapped_column(JSONB, nullable=False, server_default="{}")
+    chat_alias: Mapped[str] = mapped_column(String(32), nullable=False, server_default="reasoning-large")
+    brief_alias: Mapped[str] = mapped_column(String(32), nullable=False, server_default="reasoning-small")
+    web_search_provider: Mapped[str] = mapped_column(String(32), nullable=False, server_default="none")
+    web_search_endpoint: Mapped[str | None] = mapped_column(Text)
+    web_search_api_key_ciphertext: Mapped[str | None] = mapped_column(Text)
+    request_timeout_seconds: Mapped[int] = mapped_column(Integer, nullable=False, server_default="20")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now())
 
 ALIASES = ("reasoning-large", "reasoning-small", "fast", "embedding", "reranker", "vision", "local-private")
 _MAPPINGS = "bbd:settings:model-mappings"
-_PRIVACY = "bbd:settings:privacy"
-CAPABILITY_TTL_SECONDS = 86400
 
 
-async def get_mappings(redis: Redis, settings: Settings) -> dict[str, ModelMapping]:
-    configured = {name: ModelMapping(model=model) for name, model in settings.omniroute_models.items() if name in ALIASES}
-    stored = await redis.hgetall(_MAPPINGS)
-    for alias, value in stored.items():
-        try:
-            if isinstance(alias, bytes):
-                alias = alias.decode("utf-8")
-            if alias not in ALIASES:
+async def legacy_aliases(redis: Redis | None, settings: Settings) -> dict[str, ModelMapping]:
+    configured = {name: ModelMapping(model=model, destination="remote") for name, model in settings.omniroute_models.items() if name in ALIASES}
+    if redis is not None:
+        for alias, value in (await redis.hgetall(_MAPPINGS)).items():
+            try:
+                if alias in ALIASES:
+                    configured[alias] = ModelMapping.model_validate_json(value)
+            except ValueError:
                 continue
-            configured[alias] = ModelMapping.model_validate_json(value)
-        except (ValueError, UnicodeDecodeError):
-            continue
     return configured
 
 
-async def update_mappings(redis: Redis, settings: Settings, updates: dict[str, ModelMapping]) -> dict[str, ModelMapping]:
-    current = await get_mappings(redis, settings)
-    pipe = redis.pipeline(transaction=True)
-    for alias, mapping in updates.items():
-        if alias not in ALIASES:
-            continue
-        if current.get(alias) != mapping:
-            async for key in redis.scan_iter(match=capability_alias_pattern(alias)):
-                pipe.delete(key)
-        pipe.hset(_MAPPINGS, alias, mapping.model_dump_json())
-    await pipe.execute()
-    current.update(updates)
-    return current
-
-
-async def get_privacy(redis: Redis) -> PrivacySettings:
-    value = await redis.get(_PRIVACY)
-    if value:
-        try:
-            return PrivacySettings.model_validate_json(value)
-        except ValueError:
-            pass
-    return PrivacySettings()
-
-
-async def save_privacy(redis: Redis, value: PrivacySettings) -> None:
-    await redis.set(_PRIVACY, value.model_dump_json())
-
-
 async def save_capability(redis: Redis, result: CapabilityResult) -> None:
-    await redis.set(
-        capability_key(result.alias, result.model, result.version, result.capability),
-        result.model_dump_json(),
-        ex=CAPABILITY_TTL_SECONDS,
-    )
+    ttl = max(1, int((datetime.fromisoformat(result.expires_at) - datetime.now(UTC)).total_seconds()))
+    key = capability_key(result.alias, result.model, result.version, result.capability, result.gateway_identity)
+    await redis.set(key, result.model_dump_json(), ex=ttl)
 
 
-async def list_capabilities(redis: Redis, mappings: dict[str, ModelMapping]) -> list[CapabilityResult]:
-    output = []
+async def list_capabilities(redis: Redis, mappings: dict[str, ModelMapping], gateway_identity: str) -> list[CapabilityResult]:
+    results: list[CapabilityResult] = []
     for alias, mapping in mappings.items():
-        async for key in redis.scan_iter(match=capability_model_pattern(alias, mapping.model, mapping.version)):
-            value = await redis.get(key)
-            if value:
-                try:
-                    output.append(CapabilityResult.model_validate_json(value))
-                except ValueError:
-                    continue
-    return output
+        async for key in redis.scan_iter(match=capability_alias_pattern(alias), count=100):
+            try:
+                value = CapabilityResult.model_validate_json(await redis.get(key))
+            except (ValueError, TypeError):
+                continue
+            if value.gateway_identity == gateway_identity and value.model == mapping.model and value.version == mapping.version:
+                results.append(value)
+    return results
 
 
-def new_capability_result(alias: str, model: str, version: str | None, capability: str, result: str) -> CapabilityResult:
+def new_capability_result(alias: str, mapping: ModelMapping, capability: str, gateway_identity: str, result: str, configuration_revision: int = 0) -> CapabilityResult:
     now = datetime.now(UTC)
-    return CapabilityResult(
-        alias=alias,
-        model=model,
-        version=version,
-        capability=capability,
-        result=result,
-        checked_at=now.isoformat(),
-        expires_at=(now + timedelta(seconds=CAPABILITY_TTL_SECONDS)).isoformat(),
-    )
+    return CapabilityResult(alias=alias, model=mapping.model, version=mapping.version,
+        gateway_identity=gateway_identity, configuration_revision=configuration_revision, capability=capability, result=result,
+        checked_at=now.isoformat(), expires_at=(now + timedelta(hours=24)).isoformat())
