@@ -1,6 +1,6 @@
 # BBD-OS implementation status
 
-Updated: 2026-09-30 (R01 code/build/review integrated; behavioral acceptance deferred).
+Updated: 2026-10-01 (R01/R02 integrated; R03-core/R05 implementation active; behavioral acceptance deferred).
 
 Markers: `[ ]` not started; `[~]` in progress; `[x]` complete; `[!]` blocked.
 
