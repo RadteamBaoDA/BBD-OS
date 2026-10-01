@@ -4,10 +4,10 @@
 
 - Product scope: canonical sections 165–166; original phase plans plus [R01–R16](2026-09-30-bbd-os-spec-reconciliation.md).
 - Method: subagent-driven; code/build first, test stage only after all original and supplemental code/build/review completes.
-- Current action: owner approved continuous subagent-driven execution on 2026-09-30; each agent uses its own worktree and completed reviewed tasks merge locally into develop.
+- Current action: continuous subagent-driven execution; implementation uses the assigned phase worktree, sequential tasks reuse it, and a completed reviewed phase merges locally into develop before archive. Implement/build with gpt-6-luna; reason/review with gpt-6.1-sol.
 - Baseline: original Phases 1–3 code/build/review complete; Phase 3 commit 4d0f774 is present in local main history. Runtime acceptance deferred.
-- Preserved unfinished work: P04-T1 in D:/Project/BBD-OS-phase-4 on codex/bbd-os-phase-4; uncommitted entity/relationship code and 0007_entities.py. Inspect diff/reports before resuming; no completion claimed.
-- Active production task: **R01 — Repository instructions, boundaries and build-stage CI**. Next: R02 after R01 code/build/review and merge into develop.
+- Preserved historical draft: D:/Project/BBD-OS-phase-4 on codex/bbd-os-phase-4, with uncommitted entity/relationship code and 0007_entities.py. Verified backup retained; this is not the active implementation tree.
+- Active production task: **P04-T4 — Knowledge UI and bounded React Flow**, in C:/Users/doana/.codex/worktrees/bbd-p04-entities/BBD-OS at accepted T3 fe6207a. T1/T2/T3 code/build/review complete; T4 implementation active. Next: whole P04 integration/build/review, develop merge/archive, then P05-T1.
 - Report completion immediately and commit/merge scoped completed work per owner authorization. No push/deploy/destructive owner-data operations.
 
 ## Phase checkpoints
@@ -15,10 +15,10 @@
 | Phase | Plan | Implementation | Next task | Evidence |
 | --- | --- | --- | --- | --- |
 | 0 | Existing | Complete | None | See ../../IMPLEMENTATION_STATUS.md |
-| 1 | [Ready](2026-09-25-bbd-os-phase-1-core-data-platform.md) | Code/build and review complete; merged to main | R01/R02 | Build and whole-branch review passed; commit `da2baee`, merge `d425057`; deferred behavioral acceptance remains |
-| 2 | [Ready](2026-09-25-bbd-os-phase-2-ingestion-connectors.md) | Complete; merged to main | R03/R04 | Commit `2f7c409`; T4 build passed and independent review approved; acceptance deferred |
-| 3 | [Ready](2026-09-25-bbd-os-phase-3-search-model-gateway.md) | Original code/build/review complete; supplemental pending | R05/R06 | Commit 4d0f774; recorded review/build; behavior deferred |
-| 4 | [Ready](2026-09-25-bbd-os-phase-4-entity-knowledge.md) | Uncommitted P04-T1 in separate worktree | Reconcile then resume P04-T1 | D:/Project/BBD-OS-phase-4; no completion claimed |
+| 1 | [Ready](2026-09-25-bbd-os-phase-1-core-data-platform.md) | Original code/build/review complete; R01/R02 integrated in develop | Later supplemental consumers | Main merge d425057; R01 d968d89, R02 faeb664; behavioral acceptance deferred |
+| 2 | [Ready](2026-09-25-bbd-os-phase-2-ingestion-connectors.md) | Original complete; R03-core/R04/RN1 integrated in develop | R03-OAuth with P09-T1 | Main 2f7c409; R03-core fb647bb, R04 e9938d8, RN1 e759bb8; acceptance deferred |
+| 3 | [Ready](2026-09-25-bbd-os-phase-3-search-model-gateway.md) | Original code/build/review complete; R05/R06 integrated | Later supplemental consumers | Original 4d0f774; R05 65c5acf, R06 35fc0c5; behavioral acceptance deferred |
+| 4 | [Ready](2026-09-25-bbd-os-phase-4-entity-knowledge.md) | T1/T2/T3 code/build/review complete; T4 active | P04-T4 then whole-phase integration | Active codex/bbd-p04: T1 56b4e0d, T2 4f5ee2e, T3 fe6207a; historical dirty tree preserved |
 | 5 | [Ready](2026-09-25-bbd-os-phase-5-temporal-knowledge.md) | Not started | P05-T1 | Not executed |
 | 6 | [Ready](2026-09-25-bbd-os-phase-6-ask-chat-drawer-memory.md) | Not started | P06-T1 | Not executed |
 | 7 | [Ready](2026-09-25-bbd-os-phase-7-agent-harness-tools.md) | Not started | P07-T1 | Not executed |
