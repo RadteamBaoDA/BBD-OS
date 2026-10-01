@@ -35,7 +35,7 @@ Phase 0 verified on 2026-09-25: Ruff, mypy, pytest (15 passed, 1 integration tes
 - [x] R05 SDK/durable AI settings code/build/review integrated into develop (`65c5acf`; feature `dd9142f`, integration `24982d1`). Combined build/review passed; runtime acceptance deferred.
 - [x] R09 shell/preferences/theme/locales integrated into develop3e98c0f (feature216e135, integrationb170746); code/build/source and integration review approved. Behavioral acceptance deferred; legacy UI localization tracked for R16.
 - [~] R04 embedded source editor: full build passed; scoped rereview found two residual navigation/configuration ordering defects, repair round 2 active.
-- [~] R06 durable replay/SSE/provider: full repair build passed; frozen 25-file package under independent scoped rereview.
+- [~] R06 durable replay/SSE/provider: feature `325d20b` passed scoped source/spec and quality review; combined build with pinned develop `e13bbe6` passed, integration review pending.
 - [ ] P02-RN1 receipt-to-library textual normalization reconciliation; tracked companion plan, required before provider consumers and deferred validation.
 - [ ] Remaining reconciliation production code/build/review and later acceptance.
-- Active production tasks: R04 repair round 2 and R06 scoped rereview. R01/R02/R03/R05/R09 worktrees archived after develop integration; historical dirty Phase 4 draft preserved. Original Phase 1–3 evidence remains; tests are deferred until all original and supplemental code is complete.
+- Active production tasks: R04 repair round 2; R06 integrated and archive pending. R01/R02/R03/R05/R09 worktrees archived after develop integration; historical dirty Phase 4 draft preserved. Original Phase 1–3 evidence remains; tests are deferred until all original and supplemental code is complete.

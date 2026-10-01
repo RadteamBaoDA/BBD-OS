@@ -13,6 +13,7 @@ import { CommandPalette } from '@/core/command-palette';
 import { ConnectionFooter } from '@/core/app-shell/connection-footer';
 import { detailDestinations, mainNavigation, settingsGroups } from '@/core/module-registry';
 import { useDisplayPreferences } from '@/core/query-provider';
+import { useRealtime } from '@/core/realtime-provider';
 import { GoogleLink } from '@/modules/account/google-link';
 import { OwnerPreferences, PreferencesDialog } from '@/modules/account/preferences-dialog';
 
@@ -31,6 +32,7 @@ export function WorkspaceShell({ children }: { children: ReactNode }) {
   const client = useQueryClient();
   const t = useTranslations('shell');
   const display = useDisplayPreferences();
+  const realtime = useRealtime();
   const [accountOpen, setAccountOpen] = useState(false);
   const [preferencesOpen, setPreferencesOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
@@ -107,7 +109,7 @@ export function WorkspaceShell({ children }: { children: ReactNode }) {
       <h1>{expired ? t('expiredTitle') : t('workspaceUnavailable')}</h1>
       <p className="muted">{expired ? t('expiredHelp') : t('workspaceUnavailableHelp')}</p>
       <Button className="secondary" onClick={() => session.refetch()}>{t('retry')}</Button>
-    </section></main><ConnectionFooter apiStatus={expired ? 'expired' : 'unavailable'} onRetry={() => apiHealth.refetch()} retrying={apiHealth.isFetching} /></>;
+    </section></main><ConnectionFooter apiStatus={expired ? 'expired' : 'unavailable'} realtimeStatus={realtime.status} onRetry={() => apiHealth.refetch()} retrying={apiHealth.isFetching} /></>;
   }
 
   const savedPreferences = preferences.data ?? display.confirmedPreferences ?? null;
@@ -159,6 +161,7 @@ export function WorkspaceShell({ children }: { children: ReactNode }) {
       </div>
       <ConnectionFooter
         apiStatus={apiHealth.isFetching && apiHealth.isError ? 'reconnecting' : apiHealth.isPending ? 'connecting' : apiHealth.isError ? 'unavailable' : 'connected'}
+        realtimeStatus={realtime.status}
         onRetry={() => apiHealth.refetch()}
         retrying={apiHealth.isFetching}
       />

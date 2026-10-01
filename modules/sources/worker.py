@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from core.config import Settings
 from core.storage import storage_path
+from core.realtime import commit_with_replay, make_knowledge_change, make_source_change
 from modules.ingestion import public as ingestion
 from modules.knowledge.documents import public as documents
 from modules.sources.models import Source, SourcePurgeOperation
@@ -35,7 +36,8 @@ async def process_source_purge(ctx: dict[str, object], event_id: str) -> None:
             if operation is not None:
                 operation.status = "failed"
                 operation.error_code = "source_generation_changed"
-            await session.commit()
+            drafts = [make_source_change(source.id, source.generation, source.status, operation_id=operation_id)] if source is not None else []
+            await commit_with_replay(session, drafts)
             return
         if operation.status == "succeeded":
             await ingestion.set_event_delivery(session, identifier, "delivered")
@@ -46,7 +48,10 @@ async def process_source_purge(ctx: dict[str, object], event_id: str) -> None:
         raw_uris = list(operation.raw_uris)
         await documents.delete_source_documents(session, source.id)
         await ingestion.cancel_and_purge_source_ingestion(session, source.id)
-        await session.commit()
+        await commit_with_replay(session, [
+            make_source_change(source.id, source.generation, source.status, operation_id=operation_id),
+            make_knowledge_change(source.id, deleted=True),
+        ])
 
     try:
         for raw_uri in raw_uris:
@@ -60,7 +65,9 @@ async def process_source_purge(ctx: dict[str, object], event_id: str) -> None:
             await ingestion.set_event_delivery(
                 session, identifier, "pending", next_attempt_at=datetime.now(UTC) + timedelta(seconds=30)
             )
-            await session.commit()
+            source = await session.get(Source, operation.source_id) if operation is not None else None
+            drafts = [make_source_change(source.id, source.generation, source.status, operation_id=operation_id)] if source is not None else []
+            await commit_with_replay(session, drafts)
         raise
 
     async with factory() as session:
@@ -69,4 +76,6 @@ async def process_source_purge(ctx: dict[str, object], event_id: str) -> None:
             operation.status = "succeeded"
             operation.error_code = None
         await ingestion.set_event_delivery(session, identifier, "delivered")
-        await session.commit()
+        source = await session.get(Source, operation.source_id) if operation is not None else None
+        drafts = [make_source_change(source.id, source.generation, source.status, operation_id=operation_id)] if source is not None else []
+        await commit_with_replay(session, drafts)

@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from core.auth.dependencies import require_owner, require_owner_write
 from core.auth.models import AuthSession
 from core.database import get_session
+from core.realtime import commit_with_replay, make_source_change
 from modules.connectors import catalog, provisioning, registry
 from modules.connectors.activation import drive_activation, prepare_credential_assignment
 from modules.connectors.credentials import (
@@ -121,7 +122,9 @@ async def put_configuration(
     unresolved = await provisioning.unresolved_credential_error(session, source_id)
     row.state = "reconciliation_required" if unresolved else "saved_not_active"
     row.error_code = unresolved
-    await session.commit()
+    await commit_with_replay(session, [
+        make_source_change(saved.id, saved.generation, saved.status, connector_state=row.state),
+    ])
     return await _activation_read(session, source_id, row)
 
 
@@ -289,7 +292,9 @@ async def activate_source(
     ):
         await session.rollback()
         raise HTTPException(status_code=409, detail="Connector activation changed; reload and retry")
-    await session.commit()
+    await commit_with_replay(session, [
+        make_source_change(source.id, source.generation, source.status, connector_state=row.state),
+    ])
 
     credentials = N8nCredentials(str(settings.n8n_service_url), api_key)
     api = N8nApi(str(settings.n8n_service_url), api_key)
@@ -322,7 +327,9 @@ async def deactivate_source(
     row = await provisioning.activation_status(session, source_id)
     if row is None:
         raise HTTPException(status_code=409, detail="No connector provisioning state exists")
-    await session.commit()
+    await commit_with_replay(session, [
+        make_source_change(source.id, source.generation, source.status, connector_state=row.state),
+    ])
     return await _activation_read(session, source_id, row)
 
 
@@ -358,7 +365,7 @@ async def remove_provider_credential(
     )
     if saved is None:
         raise HTTPException(status_code=409, detail="Connector configuration revision changed")
-    _, updated = saved
+    saved_source, updated = saved
     updated.state = "disabled"
     intent = await provisioning.create_delete_intent(
         session, source_id, "provider", updated.desired_revision
@@ -371,7 +378,9 @@ async def remove_provider_credential(
     else:
         updated, _, _ = intent
         updated.error_code = "credential_delete_pending"
-    await session.commit()
+    await commit_with_replay(session, [
+        make_source_change(saved_source.id, saved_source.generation, saved_source.status, connector_state=updated.state),
+    ])
     return await _activation_read(session, source_id, updated)
 
 

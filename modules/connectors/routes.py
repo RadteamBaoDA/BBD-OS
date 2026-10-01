@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from core.auth.dependencies import require_owner_write
 from core.auth.models import AuthSession
 from core.database import get_session
+from core.realtime import commit_with_replay, make_source_change
 from modules.connectors.public import (
     ConnectorConfigurationRequest,
     ConnectorPreview,
@@ -103,9 +104,14 @@ async def configure_source(
     if saved_result is None:
         raise HTTPException(status_code=409, detail="Source or connector revision changed while configuration was validated")
     saved, provisioning_row = saved_result
-    await session.commit()
     result = registry.sync(saved, None)
     result["connector_revision"] = provisioning_row.desired_revision
+    await commit_with_replay(session, [
+        make_source_change(
+            saved.id, saved.generation, saved.status,
+            connector_state=provisioning_row.state,
+        ),
+    ])
     return ConnectorState(**result)
 
 
@@ -158,7 +164,11 @@ async def trigger_collection(
         if await sources.record_collection_result(
             session, source_id, source.generation, datetime.now(UTC), "n8n_unavailable"
         ):
-            await session.commit()
+            current = await sources.lock_source(session, source_id)
+            drafts = [
+                make_source_change(current.id, current.generation, current.status)
+            ] if current is not None else []
+            await commit_with_replay(session, drafts)
         raise HTTPException(status_code=503, detail="n8n collection workflow is unavailable or failed") from exc
 
 
@@ -296,7 +306,11 @@ async def acknowledge_no_changes(
         session, source_id, payload.source_generation, now, None, no_changes=True
     ):
         raise HTTPException(status_code=409, detail="Source is no longer active")
-    await session.commit()
+    current = await sources.lock_source(session, source_id)
+    drafts = [
+        make_source_change(current.id, current.generation, current.status)
+    ] if current is not None else []
+    await commit_with_replay(session, drafts)
     return ManualSyncResult(status="no_changes")
 
 

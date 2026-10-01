@@ -404,3 +404,11 @@ R04 rereview identified residual source-boundary history and out-of-order config
 ### R06 feature source/build/review complete — 2026-10-01
 
 Sol task-R06-rereview-1.md approves source/spec and quality for scoped repair gate; all7findings closed, no new blocking production defect in repaired paths. Controller corrected stale report wording only, fresh explicit staged detection CRITICAL140symbols/96flows/25files and diff check clean. Feature commit325d20b. Luna integration against pinned develope13bbe6 dispatched in same exclusive tree; no integration approval/merge/archive yet. R04 repair2 holds serialized build lock. Preserve QueryProvider compositions at later integration; runtime acceptance deferred. No tests/lint/standalone typecheck/services/migrations/provider activation.
+
+### R06 feature review passed; integration in progress — 2026-10-01
+
+R06 repair1 received scoped source/spec and quality approval in `task-R06-rereview-1.md`; feature commit `325d20b` is on `codex/bbd-r06`. Merged pinned develop `e13bbe6` locally without a merge commit. Resolved the only conflict in the `EXECUTION.md` append while retaining complete pinned develop history and recording the R06 approval/feature checkpoint. Imported P04 entry/normalization plans and current implementation status. R04 production changes are not on this pinned develop. The prescribed combined build passed: Next.js and integrated TypeScript completed, all 16 routes rendered, and Docker built web/API/worker/migrate. Combined source is frozen, pending independent integration review; no integration commit yet. No tests/lint/typecheck/runtime/services/migration execution/provider activation.
+
+### R06 integrated completion — 2026-10-01
+
+Feature325d20b and integrationda4fb8c passed full prescribed combined build and Sol task-R06-integration-review-1 source/spec+quality review with no new findings. Root merge conflict only checkpoint append; retained both histories. Core replay/model/migration/query contracts preserved. Archive after merge; R04 later integration must preserve shared provider composition. Runtime acceptance deferred; no tests/lint/standalone typecheck/services/migrations/provider activation.
