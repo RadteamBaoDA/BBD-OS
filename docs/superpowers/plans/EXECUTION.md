@@ -400,3 +400,7 @@ Current artifacts and git worktree list confirm R01/R02/R03/R05/R09 archived; on
 R06 repair1 prescribed full build exit0; source frozen, documentation-only evidence updated afterward. Controller snapshot2 review-R06-2.diff SHA2561758A069B93E05820D27DDA6C3DFD8278548F7C02FE01A1A080E9850AD20AA2F covers25functional/report files including actual connector routes and search index producers. Explicit absolute-tree staged detection CRITICAL140symbols/96flows; owner warned. Scoped rereview queued after current R04 report; no approval/commit/merge yet.
 
 R04 rereview identified residual source-boundary history and out-of-order configuration refetch issues; final report pending, then narrow repair2 in existing Luna tree. Build lock free. No tests/lint/standalone typecheck/runtime/services/migrations/provider activation. Full goal remains active.
+
+### R06 feature source/build/review complete — 2026-10-01
+
+Sol task-R06-rereview-1.md approves source/spec and quality for scoped repair gate; all7findings closed, no new blocking production defect in repaired paths. Controller corrected stale report wording only, fresh explicit staged detection CRITICAL140symbols/96flows/25files and diff check clean. Feature commit325d20b. Luna integration against pinned develope13bbe6 dispatched in same exclusive tree; no integration approval/merge/archive yet. R04 repair2 holds serialized build lock. Preserve QueryProvider compositions at later integration; runtime acceptance deferred. No tests/lint/standalone typecheck/services/migrations/provider activation.
