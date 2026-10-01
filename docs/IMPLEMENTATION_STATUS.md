@@ -31,8 +31,8 @@ Phase 0 verified on 2026-09-25: Ruff, mypy, pytest (15 passed, 1 integration tes
 - [x] Updated master and Phase 1–12 plans; added [R01–R16](superpowers/plans/2026-09-30-bbd-os-spec-reconciliation.md).
 - [x] R01 production code/build/review integrated into develop (`d968d89`); behavioral acceptance deferred.
 - [x] R02 secure Google login code/build/review integrated into develop (`faeb664`); live Google acceptance deferred.
-- [~] R03-core connector provisioning fix round1 in its isolated Luna worktree. R03-OAuth carried to the actual GitHub consumer in P09-T1; full R03 pending.
+- [~] R03-core connector provisioning fix round3 in its isolated Luna worktree; full app/n8n builds passed, two scoped lifecycle/recovery findings remain. R03-OAuth carried to the actual GitHub consumer in P09-T1; full R03 pending.
 - [x] R05 SDK/durable AI settings code/build/review complete (`dd9142f`); develop integration awaits the R03 migration parent. Runtime acceptance deferred.
-- [~] R09 shell/preferences/theme/locales started in an isolated Luna worktree based on reviewed R05; merge follows R03/R05.
+- [~] R09 shell/preferences/theme/locales fix round1 in an isolated Luna worktree based on reviewed R05; initial full build passed, source review repairs remain; merge follows R03/R05.
 - [ ] Remaining reconciliation production code/build/review and later acceptance.
 - Active production tasks: R03-core and R09 in parallel; R05 waits for ordered develop integration. Original Phase 1–3 evidence remains; tests are deferred until all original and supplemental code is complete.
