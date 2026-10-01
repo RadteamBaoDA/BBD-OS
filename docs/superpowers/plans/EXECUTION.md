@@ -339,3 +339,9 @@ R09 round2 post-edit full build exit0 without compile corrections; source frozen
 
 R09 source/build/review complete pending integration: Sol task-R09-rereview-2.md approves both remaining reload corrections and source/spec+quality with no new findings. Latest prescribed full build exit0. Commit approved feature then integrate current develop R03/R05 before merge; keep frontend/migration owner contracts and checkpoint history. Full goal/acceptance remains open.
 
+
+### R09 integration review and cleanup verified — 2026-10-01
+
+R01/R02/R03/R05 native archives verified complete via artifacts and git worktree list. P01–P03 registrations are removed; residual directories remain after automatic deletion rejection. Retain active R09, reasoning seat and uncommitted Phase4. R09 feature216e135 source/spec+quality approved after two repair rounds; combined merge of develop8a1fa1d full prescribed build exit0, no production conflicts. Integration source frozen; Sol task-R09-integration-review-1 dispatched. Staged detection CRITICAL212symbols/54flows/40files, owner warned; integration remains uncommitted pending review.
+
+Ruling: parallel R04/R06 use connector-catalog, connector-configuration/source_id, connector-activation/source_id and source-ingestion/source_id query contracts. R04 owns new read/editor/schedule contracts, R06 existing mutation finalizers/core stream/document update queue; builds and merges serialized. Dispatch after R09 develop integration. R16 must reconcile remaining legacy English UI/control strings before deferred validation; R09 localized touched shell/login/account/AI surfaces, not the whole application. External/source/user text remains data. No tests/lint/standalone typecheck/runtime/migrations/provider activation.
