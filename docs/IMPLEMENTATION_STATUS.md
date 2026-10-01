@@ -1,6 +1,6 @@
 # BBD-OS implementation status
 
-Updated: 2026-10-01 (R01/R02 integrated; R03-core/R05 integrated; R09 integration review active; behavioral acceptance deferred).
+Updated: 2026-10-01 (R01/R02 integrated; R03-core/R05 integrated; R09 integrated; R04/R06 production in progress; behavioral acceptance deferred).
 
 Markers: `[ ]` not started; `[~]` in progress; `[x]` complete; `[!]` blocked.
 
@@ -34,5 +34,8 @@ Phase 0 verified on 2026-09-25: Ruff, mypy, pytest (15 passed, 1 integration tes
 - [~] R03-core code/build/review integrated into develop (`fb647bb`, feature `a52bc24`); three repair rounds closed all material source findings. R03-OAuth carried to the actual GitHub consumer in P09-T1; full R03 pending.
 - [x] R05 SDK/durable AI settings code/build/review integrated into develop (`65c5acf`; feature `dd9142f`, integration `24982d1`). Combined build/review passed; runtime acceptance deferred.
 - [x] R09 shell/preferences/theme/locales integrated into develop3e98c0f (feature216e135, integrationb170746); code/build/source and integration review approved. Behavioral acceptance deferred; legacy UI localization tracked for R16.
+- [~] R04 embedded source editor production in progress; early lifecycle advisory repairs pending full build/review.
+- [~] R06 durable replay/SSE/provider production in progress; connector commit-owner mapping under Sol reasoning, then Luna resumes final producers/build/review.
+- [ ] P02-RN1 receipt-to-library textual normalization reconciliation; tracked companion plan, required before provider consumers and deferred validation.
 - [ ] Remaining reconciliation production code/build/review and later acceptance.
-- Active production task: R04/R06 ready for parallel implementation after R09 integration; R03-core and R05 integrated. R04/R06 follow the reviewed shell. Original Phase 1–3 evidence remains; tests are deferred until all original and supplemental code is complete.
+- Active production task: R04 lifecycle repairs; R06 remaining connector finalizer ruling; R03-core and R05 integrated. R04/R06 follow the reviewed shell. Original Phase 1–3 evidence remains; tests are deferred until all original and supplemental code is complete.
