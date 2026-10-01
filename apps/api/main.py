@@ -1,4 +1,5 @@
 from collections.abc import AsyncIterator
+import asyncio
 from contextlib import asynccontextmanager
 import secrets
 
@@ -21,6 +22,7 @@ from modules.connectors.provisioning_routes import router as connector_provision
 from modules.settings.routes import router as settings_router
 from modules.model_gateway.routes import router as model_gateway_router
 from modules.search.routes import router as search_router
+from core.realtime_routes import router as realtime_router
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -37,6 +39,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app = FastAPI(title="BBD-OS", lifespan=lifespan)
     app.state.settings = app_settings
     app.state.session_factory = async_sessionmaker(engine, expire_on_commit=False)
+    app.state.realtime_connections = asyncio.Semaphore(4)
     app.state.redis = redis
     app.add_middleware(
         SessionMiddleware,
@@ -59,6 +62,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(settings_router)
     app.include_router(model_gateway_router)
     app.include_router(search_router)
+    app.include_router(realtime_router)
     app.state.modules = register_modules()
 
     @app.get("/health")

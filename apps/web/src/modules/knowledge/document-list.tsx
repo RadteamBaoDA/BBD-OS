@@ -7,13 +7,24 @@ import { Button } from '@/components/ui/button';
 import { DocumentForm } from './document-form';
 import { documentKeys, listDocuments } from './api';
 import { Upload } from '@/modules/ingestion/upload';
+import { useRealtime } from '@/core/realtime-provider';
+import { useTranslations } from 'next-intl';
 
 export function DocumentList() {
+  const t = useTranslations('shell');
+  const realtime = useRealtime();
   const [adding, setAdding] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [refreshingUpdates, setRefreshingUpdates] = useState(false);
   const documents = useInfiniteQuery({ queryKey: documentKeys.all, initialPageParam: undefined as string | undefined, queryFn: ({ pageParam }) => listDocuments(pageParam), getNextPageParam: (last) => last.next_cursor ?? undefined });
   const items = documents.data?.pages.flatMap((page) => page.items) ?? [];
-  return <section className="content-panel"><div className="section-heading"><div><span className="brand">Knowledge</span><h1>Documents</h1><p className="muted">Your private source backed library. Semantic search and AI answers are not available yet.</p></div><div className="form-actions"><Button className="secondary" onClick={() => setUploading((value) => !value)}>Upload file</Button><Button onClick={() => setAdding(true)}>New document</Button></div></div>
+  const consumeUpdates = async () => {
+    setRefreshingUpdates(true);
+    try { await realtime.consumeDocumentUpdates(); } finally { setRefreshingUpdates(false); }
+  };
+  return <section className="content-panel"><div className="section-heading"><div><span className="brand">Knowledge</span><h1>Documents</h1><p className="muted">Your private source backed library. Semantic search and AI answers are not available yet.</p></div><div className="form-actions">{(realtime.newDocumentCount > 0 || realtime.documentRefreshRequired) && <Button className="secondary" disabled={refreshingUpdates} onClick={() => void consumeUpdates()}>{refreshingUpdates ? t('reconnecting') : realtime.newDocumentCount > 0 ? t('newDocumentUpdates', { count: realtime.newDocumentCount }) : t('refreshDocumentList')}</Button>}<Button className="secondary" onClick={() => setUploading((value) => !value)}>Upload file</Button><Button onClick={() => setAdding(true)}>New document</Button></div></div>
+    {realtime.documentRefreshRequired && <p className="muted" role="status">{t('documentRefreshAvailable')}</p>}
+    {realtime.documentRefreshFailed && <p className="error" role="alert">{t('documentRefreshFailed')}</p>}
     {adding && <DocumentForm onCancel={() => setAdding(false)} />}
     {uploading && <Upload />}
     {documents.isPending && <div className="skeleton" aria-label="Loading documents" />}

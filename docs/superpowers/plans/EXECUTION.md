@@ -352,3 +352,87 @@ R09 feature commit `216e135` is integrated with pinned develop `8a1fa1d` in its 
 ### R09 complete and integrated — 2026-10-01
 
 Feature216e135, integrationb170746, develop merge3e98c0f. Two repair rounds and bounded integration review approved source/spec+quality without new findings. Combined prescribed full build exit0; migration chain r02→r03→r05→r09 and model imports preserved. Root conflict only EXECUTION append; retained both histories and newer query/localization rulings. Fresh forced root staged detection MEDIUM62symbols/5flows/36files; diff check clean. R09 native archive next; R04/R06 ready for parallel isolated implementation, builds/merges serialized. Runtime/provider/browser/capacity acceptance deferred; no tests/lint/standalone typecheck/services/migrations.
+
+R09 archive completed and removed from git worktree list. R04 and R06 native worktrees created at6e3bf0b, branches codex/bbd-r04/codex/bbd-r06, exclusively assigned to existing Luna seats. Parallel production implementation active with agreed symbol/query ownership; build lock free, builds/merges serialized. Sol preparing focused P04 entry rulings while source work proceeds. Preserved Phase4 draft remains untouched.
+
+### Source-grounded normalization reconciliation — 2026-10-01
+
+Sol traced P02 receipt-to-library gap: receive_batch/_collect_web_job persist SourceObservation; process_ingestion_event currently verifies observation count and completes receipt without materializing DocumentVersion/chunks. File parser does create real documents/chunks. Preserve historical P02 code/build/review evidence; full product normalization is incomplete. R04/R06 must report collection/receipt distinctly from indexing/extraction.
+
+Ruling: track mandatory P02-RN1 production reconciliation at ingestion/document owners, after integrated R04/R06 and before R13 textual/social/research consumers. Reuse document-owner identity/revision/upsert, immutable provenance and permission/deletion/retry fences; do not put materialization in SSE/editor or entity extraction. R14 separately owns structured world observations. P04 can consume only actually ready document revisions from manual/create/append/file parse plus bounded backfill, with explicit dispatcher mapping; no connector receipt is an extractable document by assumption. Sol preparing focused P02-RN1 implementation brief and P04 entry rulings. All production reconciliation must finish before deferred validation.
+
+P04 entry rulings and mandatory P02-RN1 implementation brief are now preserved as tracked companion plans: 2026-10-01-bbd-os-phase-4-entry-rulings.md and 2026-10-01-bbd-os-receipt-normalization.md. Source-grounded scopes approved for implementation; actual R06 finalizer contract/migration head must be bound after integration. New textual-normalization task runs after R04/R06 before provider consumers; ready manual/file P04 work remains independent. No production completion claimed by these companion plans.
+
+### R04/R06 source implementation and early advisory — 2026-10-01
+
+Live Luna agents and exclusive trees verified. R04 production adds safe configuration/draft validation/source-run read contracts, bounded schedule consumed by n8n, editor and source locale/API wiring in progress. R06 production draft includes typed durable replay/core routes/migration and source/document transaction finalizers; no build/completion yet. GitNexus impacts with UNKNOWN remain incomplete, supplemented by direct caller traces, not called low risk.
+
+Sol R06-core-advisory.md retains accepted design but identifies fresh locked/read head identity-map reload, observed-head-bounded contiguous replay with explicit gap resync, and rollback envelope covering draft validation. Further concrete notes include real needs_ocr run state, versioned envelope/cache and connection budget. Existing Luna implementer acknowledged scoped repairs while finishing production. Advisory is not frozen task approval; full prescribed build and independent complete source/spec+quality review remain mandatory. Build lock free; no tests/lint/standalone typecheck/runtime/migrations/provider calls.
+
+### R04 build complete; frozen review and R06 build next — 2026-10-01
+
+R04 prescribed ./scripts/dev.ps1 build exit0: Next standalone and web/API/worker/migrate Docker images. Process-only SWC cache/password, no local env modification. Production frozen17functional files, full review-R04-1.diff SHA2561FF3C8586FFF299BD059A791C92568DE8FF1C635C1FE82C084D8E2A19E9C894A. New files included; generated metadata excluded. Staged detection CRITICAL53symbols/19flows/17files, owner warned. Sol full source/spec+quality review active; report docs/task-reports/R04.md, five advisory dispositions recorded. No feature commit/merge until approval.
+
+R06 connector finalizer matrix implemented by Luna, including stale-enable durable cleanup and silent bookkeeping; document update identifier queue bounded500 with explicit overflow refresh marker. Final source checks then serialized prescribed build granted to R06. Sol review R04 proceeds independently. No tests/lint/standalone typecheck/runtime/migration/provider acceptance; full objective still active.
+
+### R04 review repairs; R06 frozen build complete — 2026-10-01
+
+R04 task-R04-review-1.md: source/spec+quality CHANGES REQUIRED,7findings. Scoped Luna repair round1 active in same tree: n8n hours/day encoding, consistent source-first GET config/revision snapshot, exact create/save generation fence, explicit guarded conflict/live metadata recovery, unsent-secret dirty state, actual command-palette/history navigation guard, list schedule/timezone. Preserve initial build evidence; no approval/commit/merge.
+
+R06 prescribed full build exit0 (3f3c1c6), Next16routes and web/API/worker/migrate images after dependency/cache/process-placeholder prerequisites; no .env/services. Source frozen, functional review-R06-1.diff SHA256490C627C982321F4A6586955E9F1860BC7F0B7B2A259571A5CBC68AF897F4C36,23files; detectionCRITICAL50symbols/46flows, owner warned. Sol full source/spec+quality review active, including early advisory and concrete connector finalizer matrix. Build lock free, serialize R04 repair rebuild. No tests/lint/standalone typecheck/runtime/migrations/provider activation; full objective remains active.
+
+Ruling: R04 uses one consumed shared leave guard at root/command palette/links, and a scoped full-document Data sources entry/accepted-leave boundary to provide native beforeunload Back/Forward protection. Installed App Router offers no cancellable public history blocker; avoid private history/router monkeypatch and draft/secret serialization. Establish boundary before mounting editable draft if Sources entered through SPA; Cancel stays with exact draft, accepted leave synchronously aborts actions, auth-ending bypasses prompt. Cost: page reload at this source-only boundary; other routes retain current behavior. Exact scratch R04-navigation-ruling.md; behavior/bfcache remain deferred acceptance. R04/R06 query-provider composition overlap must preserve both owners at integration.
+
+### R06 full review requires repairs — 2026-10-01
+
+Sol task-R06-review-1.md: source/spec+quality CHANGES REQUIRED,7findings. Existing Luna seat resumed repair round1 in same exclusive tree. Scope: missing-run unbound locals; stable auth/CSRF refresh lifecycle preserving mounted drafts/replay cursor; owned cancellable snapshot/resync attempts and obsolete401/control callback fences; missing consumed connector route and global index producers; failed document refresh queue acknowledgment; already-succeeded purge no-op replay. Keep accepted durable polling/head-last/privacy design. Sol preparing narrow global-index DTO/commit placement and auth-error read ruling; R04 seven-finding repairs continue. Full postrepair prescribed builds and scoped independent rereviews still required, no completion/commit/merge. Build lock free; no tests/lint/standalone typecheck/runtime/migrations/provider activation.
+
+### R04 repair1 build pass and rereview; R06 repair build next — 2026-10-01
+
+R04 repair1 exact prescribed full build exit0 after consolidating duplicate locale keys caught by first attempt; Next16pages and web/API/worker/migrate images. Production/report frozen snapshot2 review-R04-2.diff SHA256DA8C58ADB93EA124D9D0ABE90D9DAF42BB2CBE57C1D920F671CA1A7C18E3E543,21functional/report files incl shared navigation owner. Fresh explicit-worktree detection CRITICAL107symbols/28flows, owner warned; generated metadata excluded. Seven dispositions in R04 report, Sol scoped rereview1 active. No feature approval/commit/merge yet.
+
+R06 repair source pass covers7findings plus accepted global-index/owned-fetch ruling; initial build evidence superseded by production repairs. Postrepair full prescribed build now reserved/granted R06; report numbered dispositions present, source not yet build-approved/frozen. Stable same-auth stream, head-last index projection and malformed-snapshot initial barrier retained. Builds serialized; no tests/lint/standalone typecheck/runtime/services/migrations/provider activation.
+
+### Cleanup verification and R06 repair1 frozen package — 2026-10-01
+
+Current artifacts and git worktree list confirm R01/R02/R03/R05/R09 archived; only active reasoning/R04/R06 and preserved dirty historical Phase4 remain registered. P01–P03 residual directories remain after prior automatic deletion rejection; do not bypass it. No additional completed registered worktree is eligible today.
+
+R06 repair1 prescribed full build exit0; source frozen, documentation-only evidence updated afterward. Controller snapshot2 review-R06-2.diff SHA2561758A069B93E05820D27DDA6C3DFD8278548F7C02FE01A1A080E9850AD20AA2F covers25functional/report files including actual connector routes and search index producers. Explicit absolute-tree staged detection CRITICAL140symbols/96flows; owner warned. Scoped rereview queued after current R04 report; no approval/commit/merge yet.
+
+R04 rereview identified residual source-boundary history and out-of-order configuration refetch issues; final report pending, then narrow repair2 in existing Luna tree. Build lock free. No tests/lint/standalone typecheck/runtime/services/migrations/provider activation. Full goal remains active.
+
+### R06 feature source/build/review complete — 2026-10-01
+
+Sol task-R06-rereview-1.md approves source/spec and quality for scoped repair gate; all7findings closed, no new blocking production defect in repaired paths. Controller corrected stale report wording only, fresh explicit staged detection CRITICAL140symbols/96flows/25files and diff check clean. Feature commit325d20b. Luna integration against pinned develope13bbe6 dispatched in same exclusive tree; no integration approval/merge/archive yet. R04 repair2 holds serialized build lock. Preserve QueryProvider compositions at later integration; runtime acceptance deferred. No tests/lint/standalone typecheck/services/migrations/provider activation.
+
+### R06 feature review passed; integration in progress — 2026-10-01
+
+R06 repair1 received scoped source/spec and quality approval in `task-R06-rereview-1.md`; feature commit `325d20b` is on `codex/bbd-r06`. Merged pinned develop `e13bbe6` locally without a merge commit. Resolved the only conflict in the `EXECUTION.md` append while retaining complete pinned develop history and recording the R06 approval/feature checkpoint. Imported P04 entry/normalization plans and current implementation status. R04 production changes are not on this pinned develop. The prescribed combined build passed: Next.js and integrated TypeScript completed, all 16 routes rendered, and Docker built web/API/worker/migrate. Combined source is frozen, pending independent integration review; no integration commit yet. No tests/lint/typecheck/runtime/services/migration execution/provider activation.
+
+### R06 integrated completion — 2026-10-01
+
+Feature325d20b and integrationda4fb8c passed full prescribed combined build and Sol task-R06-integration-review-1 source/spec+quality review with no new findings. Root merge conflict only checkpoint append; retained both histories. Core replay/model/migration/query contracts preserved. Archive after merge; R04 later integration must preserve shared provider composition. Runtime acceptance deferred; no tests/lint/standalone typecheck/services/migrations/provider activation.
+
+R06 develop merge35fc0c5 confirmed; native archive completed and removed from git worktree list. Fresh forced root staged detection CRITICAL145symbols/89flows/26files before merge, owner warned; source/integration reviews close material findings. R04 repair2 first build caught stale type import references; Luna correcting and rerunning exact prescribed build. Sol P04-transfer-inventory.md preserves13modified+10untracked and ignored files in historical draft; migration compatibility ruling next, without database probing. P02-RN1 production waits integrated R04/R06 as companion plan requires. Full original/supplemental goal remains active; no tests/lint/standalone typecheck/runtime/services/migrations/provider activation.
+
+### R04 repair2 frozen; normalization preparation — 2026-10-01
+
+R04 repair2 full prescribed build exit0 after correcting two stale TypeScript type references; Next16pages/integratedTS and four Docker images. Snapshot3 review-R04-3.diff SHA2561BB9CD36A9BAAE23E77B2DA7E908105F9883CBA6F77AC65988FDA5EE6B3A7395,21functional/report files, staged detection CRITICAL110symbols/29flows after forced local analyze, owner warned. Two dispositions recorded; scoped rereview2 queued behind Sol migration compatibility ruling. No feature commit/approval yet.
+
+P02-RN1 native worktree created at876aa77, branchcodex/bbd-p02-rn1; exclusive Luna read-only preparation dispatched. Production waits final integrated R04/R06 and explicit controller release; no build or code changes yet. Sol preparing historical0007 compatibility DAG that retains exact revision and adds merge/delta after actualr06. Build lock free. Full goal remains active; no tests/lint/standalone typecheck/services/migrations/runtime/provider activation.
+
+P04 migration entry ruling accepted and preserved in tracked 2026-10-01-bbd-os-phase-4-migration-compatibility.md: retain exact historical0007_entities/down0006 bytes, empty merge with actual integrated head, forward delta preserves legacy IDs/rows and explicit unknown support/provenance. Supports correctly recorded fresh/R06-only/0007-only/two-head states without assuming historical application or rewriting shipped history. Refresh finalR04/R06 head before allocation; operational migration proof deferred. Sol now reviewing R04 snapshot3.
+
+R04 task-R04-rereview-2.md closes navigationfinding but requires one final config ordering repair: editor ref must not mask newer same-source cache, monotonic acceptance repeated after final cancellation immediately before publication; obsolete Save ack retains draft/secret and shows conflict. Scoped repair3 dispatched existing Luna with buildslot granted. Snapshot3 build remains historical until finalrepairbuild. No featurecommit/merge. Sol bounded RN1 owner ordering/deletion preflight runs while R04 repairs; no additional scope/replan.
+
+### RN1 independent backend production released — 2026-10-01
+
+Ruling: companion plan's after-R04/R06 order governs final integration gate; independent RN1 backend production may start now on integratedR06 base876aa77. Sol traced required receipt/stage/outbox/source-fence/document/chunk/dispatcher/retry/replay owners already present. R04 adds read DTO/query/history consumers, not persistence prerequisites. Cost: later integrate finalR04 and bind truthful normalize history/provider composition; required combined fullbuild/source review before any RN1 commit. This is scheduling clarification, no reduction of scope or acceptance.
+
+Existing Luna RN1 seat released in exclusive codex/bbd-p02-rn1 native tree; Sol completing concrete identity/order/tombstone owner ruling. R04 repair3 continues and owns serialized buildslot. No tests/lint/standalone typecheck/services/migrations/runtime/provider acceptance. Preserve migration compatibility: P04 merge parent refreshes to actual final sole head after RN1 as needed.
+
+### R04 repair3 frozen and RN1 owner contracts pinned — 2026-10-01
+
+R04 prescribed repair3 build exit0 after nullable fence tuple TypeScript correction; Next16pages/integratedTS and four images, source frozen. Snapshot4 review-R04-4.diff SHA25621C440BD2F98D7C44B6FDE26B23CB7E5F31B2414A7FD51AF4D69F70AB67230CA,21functional/report files; fresh staged detection CRITICAL115symbols/32flows, owner warned. Sol scoped rereview3 active for single remaining configuration ordering finding; no featurecommit/merge yet. Buildlock free.
+
+Accepted RN1 owner-ruling preserved in tracked 2026-10-01-bbd-os-normalization-owner-ruling.md: stable identity/provenance, fixed observation-time/hash rank, maxstoredversion allocation, persistent deletion tombstone, exactstage/capturedgeneration retries and source-first terminal replay transaction. Local collection/receipt timestamps must stay outside stable provider metadata identity hash to avoid one revision per poll. Luna production active in exclusive normalization tree; finalR04 integration/full combined build/source review required before commit. No tests/lint/typecheck/runtime/services/migrations/providers.

@@ -1,5 +1,6 @@
 import json
 import math
+from dataclasses import dataclass
 from typing import cast
 from uuid import UUID
 
@@ -12,6 +13,7 @@ from core.config import Settings
 from core.model_gateway.client import ModelGateway, ModelGatewayError, PrivacyPolicyDenied
 from core.model_gateway.policy import may_send
 from core.model_gateway.schemas import ModelMapping, RequestPolicy
+from core.realtime import commit_with_replay, make_index_change
 from modules.knowledge.documents.models import Document, DocumentChunk, DocumentVersion
 from modules.knowledge.documents.public import backfill_current_chunks
 from modules.search.models import IndexGeneration, SearchIndexItem
@@ -20,6 +22,56 @@ from modules.sources import public as sources
 from modules.sources.models import Source
 
 MAX_VECTOR_DIMENSIONS = 2000  # pgvector HNSW vector index limit.
+
+
+@dataclass(frozen=True)
+class IndexProjection:
+    generation_id: UUID
+    status: str
+    indexed_items: int
+    failed_items: int
+
+
+async def _index_projection(
+    session: AsyncSession, generation_id: UUID
+) -> IndexProjection | None:
+    row = await session.execute(
+        select(IndexGeneration.id, IndexGeneration.status)
+        .where(IndexGeneration.id == generation_id)
+    )
+    generation = row.one_or_none()
+    if generation is None:
+        return None
+    counts = dict((await session.execute(
+        select(SearchIndexItem.status, func.count())
+        .where(SearchIndexItem.generation_id == generation_id)
+        .group_by(SearchIndexItem.status)
+    )).all())
+    return IndexProjection(
+        generation_id=generation.id,
+        status=generation.status,
+        indexed_items=counts.get("succeeded", 0),
+        failed_items=counts.get("failed", 0),
+    )
+
+
+async def _commit_index_change(
+    session: AsyncSession,
+    before: IndexProjection | None,
+    *,
+    generation_id: UUID,
+) -> None:
+    await session.flush()
+    after = await _index_projection(session, generation_id)
+    drafts = []
+    if after is not None and after != before:
+        drafts.append(make_index_change(
+            after.generation_id,
+            after.status,
+            after.indexed_items,
+            after.failed_items,
+        ))
+    await commit_with_replay(session, drafts)
 
 
 def embedding_values(response: object, expected_dimensions: int | None = None) -> tuple[list[float], str | None]:
@@ -87,7 +139,8 @@ async def create_generation(session: AsyncSession, mapping: ModelMapping, gatewa
         return existing
     generation = IndexGeneration(model_id=mapping.model, model_version=mapping.version, gateway_identity=gateway_identity)
     session.add(generation)
-    await session.commit()
+    await session.flush()
+    await _commit_index_change(session, None, generation_id=generation.id)
     await session.refresh(generation)
     return generation
 
@@ -122,9 +175,10 @@ async def index_pending_chunks(ctx: dict[str, object]) -> int:
         async with factory() as session:
             generation = await session.get(IndexGeneration, generation_id, with_for_update=True)
             if generation is not None and generation.status != "active":
+                before = await _index_projection(session, generation_id)
                 generation.status = "failed"
                 generation.error_code = "model_unavailable"
-                await session.commit()
+                await _commit_index_change(session, before, generation_id=generation_id)
         return 0
 
     completed = 0
@@ -133,6 +187,7 @@ async def index_pending_chunks(ctx: dict[str, object]) -> int:
             generation = await session.get(IndexGeneration, generation_id, with_for_update=True)
             if generation is None or generation.status not in {"queued", "running", "active"}:
                 break
+            before = await _index_projection(session, generation_id)
             if generation.status == "queued":
                 generation.status = "running"
             row = (await session.execute(
@@ -165,7 +220,7 @@ async def index_pending_chunks(ctx: dict[str, object]) -> int:
                         generation.error_code = "no_indexable_chunks"
                     else:
                         await activate_generation(session, generation)
-                await session.commit()
+                await _commit_index_change(session, before, generation_id=generation_id)
                 break
             chunk_id, content, source_id = row
             item = await session.scalar(select(SearchIndexItem).where(
@@ -177,7 +232,7 @@ async def index_pending_chunks(ctx: dict[str, object]) -> int:
                 await session.flush()
             item_id = item.id
             dimensions = generation.dimensions
-            await session.commit()
+            await _commit_index_change(session, before, generation_id=generation_id)
         try:
             async with factory() as session:
                 # Hold the source lock across transport so archive/purge cannot race a send.
@@ -193,8 +248,9 @@ async def index_pending_chunks(ctx: dict[str, object]) -> int:
                 if source is None or source.status != "active" or source.local_only or current is None:
                     item = await session.get(SearchIndexItem, item_id, with_for_update=True)
                     if item is not None:
+                        before = await _index_projection(session, generation_id)
                         await session.delete(item)
-                        await session.commit()
+                        await _commit_index_change(session, before, generation_id=generation_id)
                     continue
                 config, mapping, policy = await configured_embedding(session, settings, redis)
                 if not policy.embeddings_allowed:
@@ -220,9 +276,13 @@ async def index_pending_chunks(ctx: dict[str, object]) -> int:
                 item = await session.get(SearchIndexItem, item_id, with_for_update=True)
                 if generation is None or item is None or generation.status not in {"running", "active"}:
                     if item is not None:
+                        before = await _index_projection(session, item.generation_id)
                         await session.delete(item)
-                        await session.commit()
+                        await _commit_index_change(
+                            session, before, generation_id=item.generation_id
+                        )
                     continue
+                before = await _index_projection(session, generation_id)
                 if generation.dimensions is None:
                     generation.response_model_id = returned_model
                     generation.dimensions = len(values)
@@ -231,7 +291,7 @@ async def index_pending_chunks(ctx: dict[str, object]) -> int:
                     generation.error_code = "model_identity_changed"
                     item.status = "failed"
                     item.error_code = "model_identity_changed"
-                    await session.commit()
+                    await _commit_index_change(session, before, generation_id=generation_id)
                     break
                 elif generation.dimensions != len(values):
                     raise ValueError("Embedding dimensions changed during indexing")
@@ -239,15 +299,18 @@ async def index_pending_chunks(ctx: dict[str, object]) -> int:
                                       {"embedding": json.dumps(values), "item_id": item_id})
                 item.status = "succeeded"
                 item.error_code = None
-                await session.commit()
+                await _commit_index_change(session, before, generation_id=generation_id)
                 completed += 1
         except (ModelGatewayError, RedisError, ValueError):
             async with factory() as session:
                 item = await session.get(SearchIndexItem, item_id, with_for_update=True)
                 if item is not None:
+                    before = await _index_projection(session, item.generation_id)
                     item.status = "failed"
                     item.error_code = "embedding_failed"
-                    await session.commit()
+                    await _commit_index_change(
+                        session, before, generation_id=item.generation_id
+                    )
     return completed
 
 

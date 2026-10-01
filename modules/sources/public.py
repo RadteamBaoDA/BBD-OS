@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.pagination import decode_cursor, encode_cursor
 from core.events import DomainEvent
+from core.realtime import commit_with_replay, make_source_change
 from modules.sources.models import Source, SourcePurgeOperation
 from modules.sources.schemas import ConnectorSource, SourceCreate, SourceFence, SourcePatch
 
@@ -20,7 +21,8 @@ async def create_source(session: AsyncSession, payload: SourceCreate) -> Source:
         local_only=payload.type == "manual",
     )
     session.add(source)
-    await session.commit()
+    await session.flush()
+    await commit_with_replay(session, [make_source_change(source.id, source.generation, source.status)])
     await session.refresh(source)
     return source
 
@@ -194,19 +196,24 @@ async def update_source(
     )
     if source is None:
         return None
+    changed = False
     if source.status == "archived" and payload.status not in (None, "archived"):
         raise ValueError("Archived sources cannot be reactivated")
     if "name" in payload.model_fields_set:
-        source.name = payload.name or ""
+        value = payload.name or ""
+        changed = changed or source.name != value
+        source.name = value
     if "status" in payload.model_fields_set:
         next_status = payload.status or ""
         if next_status != source.status:
+            changed = True
             source.generation += 1
             source.status = next_status
             source.retired_at = datetime.now(UTC) if next_status in {"paused", "archived"} else None
             if next_status in {"paused", "archived"}:
                 await _fence_connector_source(session, source)
-    await session.commit()
+    drafts = [make_source_change(source.id, source.generation, source.status)] if changed else []
+    await commit_with_replay(session, drafts)
     await session.refresh(source)
     return source
 
@@ -233,12 +240,14 @@ async def archive_source(
     source = await _lock_source_row(session, source_id)
     if source is None:
         return None
+    changed = source.status != "archived"
     if source.status != "archived":
         source.generation += 1
         source.status = "archived"
         source.retired_at = datetime.now(UTC)
     await _fence_connector_source(session, source)
-    await session.commit()
+    drafts = [make_source_change(source.id, source.generation, source.status)] if changed else []
+    await commit_with_replay(session, drafts)
     await session.refresh(source)
     return source
 
@@ -257,7 +266,8 @@ async def start_source_purge(
     if current is not None and (source.status == "archived" or current.status in {"queued", "running"}):
         return current
 
-    if source.status != "archived":
+    changed = source.status != "archived"
+    if changed:
         source.generation += 1
         source.status = "archived"
         source.retired_at = datetime.now(UTC)
@@ -275,7 +285,8 @@ async def start_source_purge(
         producer="modules.sources", payload={"operation_id": str(operation.id)},
     )
     await ingestion.publish_event(session, event)
-    await session.commit()
+    drafts = [make_source_change(source.id, source.generation, source.status, operation_id=operation.id)]
+    await commit_with_replay(session, drafts)
     await session.refresh(operation)
     return operation
 

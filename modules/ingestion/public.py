@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.events import DomainEvent
 from core.pagination import decode_cursor, encode_cursor
+from core.realtime import commit_with_replay, make_ingestion_change, make_knowledge_change, make_source_change
 from modules.ingestion.models import (
     COLLECTION_LEASE,
     CollectorCredential,
@@ -274,7 +275,10 @@ async def receive_batch(
     )
     if result.rowcount != 1:
         raise HTTPException(status_code=409, detail="Collection cursor changed")
-    await session.commit()
+    await commit_with_replay(session, [
+        make_source_change(source.id, source.generation, source.status),
+        make_ingestion_change(source.id, run.id, run.status, stage.stage_key, stage.status),
+    ])
     await session.refresh(batch)
     await session.refresh(run)
     return batch, run
@@ -371,7 +375,10 @@ async def queue_connector_crawl(
     await publish_event(session, event)
     state.lease_run_id = run.id
     state.lease_expires_at = now + COLLECTION_LEASE
-    await session.commit()
+    await commit_with_replay(session, [
+        make_source_change(source.id, source.generation, source.status),
+        make_ingestion_change(source.id, run.id, run.status, stage.stage_key, stage.status),
+    ])
     await session.refresh(run)
     return CrawlReceipt(run_id=run.id)
 
@@ -430,7 +437,11 @@ async def receive_file(
         payload={"run_id": str(run.id), "stage_id": str(stage.id), "document_id": str(stored_document_id), "raw_uri": raw_uri, "mime_type": mime_type, "source_generation": source.generation},
     )
     await publish_event(session, event)
-    await session.commit()
+    await commit_with_replay(session, [
+        make_source_change(source.id, source.generation, source.status),
+        make_ingestion_change(source.id, run.id, run.status, stage.stage_key, stage.status),
+        make_knowledge_change(source_id, stored_document_id, 1),
+    ])
     await session.refresh(run)
     return run, True
 
@@ -580,6 +591,9 @@ async def retry_run(session: AsyncSession, run_id: UUID) -> IngestionRun | None:
             raise HTTPException(status_code=409, detail="Source already has an active collection run")
         state.lease_run_id = run.id
         state.lease_expires_at = now + COLLECTION_LEASE
-    await session.commit()
+    await commit_with_replay(
+        session,
+        [make_ingestion_change(source.id, run.id, run.status, stage.stage_key, stage.status)],
+    )
     await session.refresh(run)
     return run

@@ -6,6 +6,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from core.config import Settings
+from modules.connectors.provisioning import capture_connector_observation, commit_connector_observation
 from modules.connectors import provisioning
 from modules.connectors.credentials import N8nCredentials
 from modules.connectors.models import ConnectorManagedCredential, ConnectorProvisioning
@@ -26,10 +27,14 @@ async def _delete_credential(
         return False
     target = claimed.get("target_id")
     if not isinstance(target, str):
-        await provisioning.fail_credential_operation(
+        before = await capture_connector_observation(session, source_id)
+        changed = await provisioning.fail_credential_operation(
             session, source_id, slot, operation_id, "credential_delete_target_missing", unknown=False
         )
-        await session.commit()
+        if changed:
+            await commit_connector_observation(session, before, operation_id=operation_id)
+        else:
+            await session.rollback()
         return False
     try:
         await client.delete(target)
@@ -39,7 +44,8 @@ async def _delete_credential(
             and 400 <= exc.response.status_code < 500
             and exc.response.status_code != 408
         )
-        await provisioning.fail_credential_operation(
+        before = await capture_connector_observation(session, source_id)
+        changed = await provisioning.fail_credential_operation(
             session,
             source_id,
             slot,
@@ -47,13 +53,17 @@ async def _delete_credential(
             "credential_delete_rejected" if rejected else "credential_delete_outcome_unknown",
             unknown=not rejected,
         )
-        await session.commit()
+        if changed:
+            await commit_connector_observation(session, before, operation_id=operation_id)
+        else:
+            await session.rollback()
         return False
+    before = await capture_connector_observation(session, source_id)
     result = await provisioning.acknowledge_credential_delete(
         session, source_id, slot, operation_id, target
     )
     if result:
-        await session.commit()
+        await commit_connector_observation(session, before, operation_id=operation_id)
     else:
         await session.rollback()
     return result
@@ -185,11 +195,12 @@ async def reconcile_connectors(ctx: dict[str, object]) -> int:
             pass
         if workflow_id is not None and operation_id is not None:
             async with factory() as session:
+                before = await capture_connector_observation(session, source_id)
                 resolved = await provisioning.resolve_unknown_workflow_create(
                     session, source_id, operation_id, str(step_value), workflow_id
                 )
                 if resolved:
-                    await session.commit()
+                    await commit_connector_observation(session, before, operation_id=operation_id)
                     completed += 1
                     continue
                 await session.rollback()

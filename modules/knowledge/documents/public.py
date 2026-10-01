@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.pagination import decode_cursor, encode_cursor
 from core.chunking import chunk_text
+from core.realtime import commit_with_replay, make_knowledge_change
 from modules.knowledge.documents.models import Document, DocumentChunk, DocumentVersion
 from modules.knowledge.documents.schemas import DocumentCreate, DocumentPatch
 from modules.sources import public as sources
@@ -78,10 +79,13 @@ async def create_document(session: AsyncSession, payload: DocumentCreate) -> Doc
                 version_number=1,
                 content=payload.content,
                 content_hash=digest,
-            )
+        )
         session.add(version)
         await add_content_chunks(session, version)
-        await session.commit()
+        await commit_with_replay(
+            session,
+            [make_knowledge_change(payload.source_id, document.id, 1)],
+        )
     except IntegrityError:
         await session.rollback()
         raise
@@ -238,11 +242,17 @@ async def list_documents(
 async def update_document(
     session: AsyncSession, document: Document, payload: DocumentPatch
 ) -> Document:
+    changed = False
     if "title" in payload.model_fields_set:
-        document.title = payload.title or ""
+        value = payload.title or ""
+        changed = changed or document.title != value
+        document.title = value
     if "metadata" in payload.model_fields_set:
-        document.metadata_json = payload.metadata or {}
-    await session.commit()
+        value = payload.metadata or {}
+        changed = changed or document.metadata_json != value
+        document.metadata_json = value
+    drafts = [make_knowledge_change(document.source_id, document.id, document.current_version)] if changed else []
+    await commit_with_replay(session, drafts)
     await session.refresh(document)
     return document
 
@@ -258,8 +268,10 @@ async def delete_document(session: AsyncSession, document_id: UUID) -> bool:
         .where(Document.id == document_id, Document.source_id == source_id)
         .returning(Document.id)
     )
-    await session.commit()
-    return result.first() is not None
+    deleted = result.first() is not None
+    drafts = [make_knowledge_change(source_id, document_id, deleted=True)] if deleted else []
+    await commit_with_replay(session, drafts)
+    return deleted
 
 
 async def delete_source_documents(session: AsyncSession, source_id: UUID) -> None:
@@ -299,7 +311,10 @@ async def append_content(
     await add_content_chunks(session, version)
     document.current_version = next_version
     document.content_hash = digest
-    await session.commit()
+    await commit_with_replay(
+        session,
+        [make_knowledge_change(document.source_id, document.id, next_version)],
+    )
     await session.refresh(document)
     return document
 

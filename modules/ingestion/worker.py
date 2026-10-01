@@ -18,6 +18,7 @@ from sqlalchemy.exc import OperationalError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from core.config import Settings
+from core.realtime import ReplayDraft, commit_with_replay, make_ingestion_change, make_knowledge_change, make_source_change
 from core.storage import cleanup_orphaned_files, storage_path
 from modules.connectors.public import ConnectorRecord
 from modules.ingestion.dispatcher import mark_event_delivered
@@ -38,6 +39,18 @@ from core.chunking import chunk_text
 logger = logging.getLogger("bbd.worker")
 STAGE_TIMEOUT_SECONDS = 120
 MAX_STAGE_ATTEMPTS = 5
+
+
+async def _commit_ingestion_change(
+    session: AsyncSession,
+    run: IngestionRun,
+    stage: IngestionStage,
+    extras: tuple[ReplayDraft, ...] = (),
+) -> None:
+    await commit_with_replay(
+        session,
+        [make_ingestion_change(run.source_id, run.id, run.status, stage.stage_key, stage.status), *extras],
+    )
 
 
 class ConnectorRetryError(OSError):
@@ -216,8 +229,9 @@ async def _fail_ingestion_stage(
         run.status = "failed"
         run.error_code = error_code
         event.status = "failed"
+        source_changed = False
         if source is not None:
-            await sources.record_collection_result(
+            source_changed = await sources.record_collection_result(
                 session,
                 source.id,
                 int(event.payload.get("source_generation", source.generation)),
@@ -229,7 +243,8 @@ async def _fail_ingestion_stage(
             state.lease_run_id = None
             state.lease_expires_at = None
         logger.warning("Ingestion stage failed run_id=%s stage_id=%s error_code=%s", run.id, stage.id, error_code)
-        await session.commit()
+        extras = (make_source_change(source.id, source.generation, source.status),) if source is not None and source_changed else ()
+        await _commit_ingestion_change(session, run, stage, extras)
 
 
 async def process_ingestion_event(ctx: dict[str, object], event_id: str) -> None:
@@ -269,7 +284,7 @@ async def process_ingestion_event(ctx: dict[str, object], event_id: str) -> None
                 state.lease_run_id = None
                 state.lease_expires_at = None
             logger.warning("Ingestion stage rejected run_id=%s stage_id=%s source unavailable", run.id, stage.id)
-            await session.commit()
+            await _commit_ingestion_change(session, run, stage)
             return
         now = datetime.now(UTC)
         if stage.status == "succeeded":
@@ -293,7 +308,7 @@ async def process_ingestion_event(ctx: dict[str, object], event_id: str) -> None
                 state.lease_run_id = None
                 state.lease_expires_at = None
             logger.warning("Ingestion stage rejected run_id=%s stage_id=%s lease expired", run.id, stage.id)
-            await session.commit()
+            await _commit_ingestion_change(session, run, stage)
             return
         stage.status = "running"
         stage.attempts += 1
@@ -302,7 +317,7 @@ async def process_ingestion_event(ctx: dict[str, object], event_id: str) -> None
         stage.error_code = None
         run.status = "running"
         logger.info("Ingestion stage started run_id=%s stage_id=%s attempt=%s", run.id, stage.id, stage.attempts)
-        await session.commit()
+        await _commit_ingestion_change(session, run, stage)
 
     try:
         # Stage work is deliberately bounded; later ingestion tasks add extraction consumers.
@@ -346,7 +361,10 @@ async def process_ingestion_event(ctx: dict[str, object], event_id: str) -> None
                 if state is not None and state.lease_run_id == run_id:
                     state.lease_run_id = None
                     state.lease_expires_at = None
-                await session.commit()
+                if run is not None and stage is not None:
+                    await _commit_ingestion_change(session, run, stage)
+                else:
+                    await session.commit()
                 return
             if stage is None or run is None or event is None:
                 return
@@ -376,7 +394,7 @@ async def process_ingestion_event(ctx: dict[str, object], event_id: str) -> None
                 stage.id,
                 attempt,
             )
-            await session.commit()
+            await _commit_ingestion_change(session, run, stage)
         raise Retry(defer=delay) from exc
     except Exception:
         await _fail_ingestion_stage(factory, identifier, run_id, stage_id, "stage_failed")
@@ -402,14 +420,14 @@ async def process_ingestion_event(ctx: dict[str, object], event_id: str) -> None
             if state is not None and state.lease_run_id == run.id:
                 state.lease_run_id = None
                 state.lease_expires_at = None
-            await session.commit()
+            await _commit_ingestion_change(session, run, stage)
             return
         stage.status = "succeeded"
         stage.error_code = None
         stage.lease_expires_at = None
         run.status = "succeeded"
         run.error_code = None
-        await sources.record_collection_result(
+        source_changed = await sources.record_collection_result(
             session,
             source.id,
             int(event.payload.get("source_generation", source.generation)),
@@ -420,9 +438,12 @@ async def process_ingestion_event(ctx: dict[str, object], event_id: str) -> None
         if state is not None and state.lease_run_id == run.id:
             state.lease_run_id = None
             state.lease_expires_at = None
+        event_row = await session.get(EventOutbox, identifier, with_for_update=True)
+        if event_row is not None:
+            event_row.status = "delivered"
         logger.info("Ingestion stage completed run_id=%s stage_id=%s", run.id, stage.id)
-        await session.commit()
-        await mark_event_delivered(session, identifier)
+        extras = (make_source_change(source.id, source.generation, source.status),) if source_changed else ()
+        await _commit_ingestion_change(session, run, stage, extras)
 
 
 async def process_uploaded_file(ctx: dict[str, object], event_id: str) -> None:
@@ -461,7 +482,10 @@ async def process_uploaded_file(ctx: dict[str, object], event_id: str) -> None:
                 run.status = "failed"
                 run.error_code = "source_or_document_unavailable"
             event.status = "failed"
-            await session.commit()
+            if run is not None and stage is not None:
+                await _commit_ingestion_change(session, run, stage)
+            else:
+                await session.commit()
             return
         now = datetime.now(UTC)
         if stage.status == "succeeded":
@@ -476,7 +500,10 @@ async def process_uploaded_file(ctx: dict[str, object], event_id: str) -> None:
         stage.error_code = None
         run.status = "running"
         await documents.set_extraction_status(session, document_id, source_id, "processing")
-        await session.commit()
+        await _commit_ingestion_change(
+            session, run, stage,
+            (make_knowledge_change(source_id, document_id),),
+        )
 
     try:
         raw_path = storage_path(settings.data_dir, str(event.payload["raw_uri"]))
@@ -509,7 +536,10 @@ async def process_uploaded_file(ctx: dict[str, object], event_id: str) -> None:
                 event = await session.get(EventOutbox, identifier, with_for_update=True)
                 if event is not None:
                     event.status = "failed"
-                await session.commit()
+                if run is not None and stage is not None:
+                    await _commit_ingestion_change(session, run, stage)
+                else:
+                    await session.commit()
                 return
             document_id = await documents.save_extraction(
                 session,
@@ -535,8 +565,14 @@ async def process_uploaded_file(ctx: dict[str, object], event_id: str) -> None:
             run.status = extraction_status if extraction_status == "needs_ocr" else "succeeded"
             run.error_code = None
             event.status = "delivered"
-            await sources.record_processing_result(session, source_id, source.generation, datetime.now(UTC), None)
-            await session.commit()
+            source_changed = await sources.record_processing_result(session, source_id, source.generation, datetime.now(UTC), None)
+            extras = [make_knowledge_change(source_id, document_id)]
+            if source_changed:
+                extras.append(make_source_change(source.id, source.generation, source.status))
+            await _commit_ingestion_change(
+                session, run, stage,
+                tuple(extras),
+            )
     except Exception as exc:
         async with factory() as session:
             source = await sources.lock_source(session, source_id)
@@ -563,10 +599,21 @@ async def process_uploaded_file(ctx: dict[str, object], event_id: str) -> None:
             await documents.set_extraction_status(session, document_id, source_id, "failed")
             if source is not None:
                 code = "parser_timeout" if isinstance(exc, TimeoutError) else "parse_failed"
-                await sources.record_processing_result(session, source_id, source.generation, datetime.now(UTC), code)
+                source_changed = await sources.record_processing_result(session, source_id, source.generation, datetime.now(UTC), code)
+            else:
+                source_changed = False
             if event is not None:
                 event.status = "failed"
-            await session.commit()
+            if run is not None and stage is not None:
+                extras = [make_knowledge_change(source_id, document_id)]
+                if source is not None and source_changed:
+                    extras.append(make_source_change(source.id, source.generation, source.status))
+                await _commit_ingestion_change(
+                    session, run, stage,
+                    tuple(extras),
+                )
+            else:
+                await session.commit()
 
 
 async def cleanup_storage_orphans(ctx: dict[str, object]) -> int:
