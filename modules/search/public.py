@@ -12,7 +12,8 @@ from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.config import Settings
-from core.model_gateway.client import ModelGatewayError
+from core.model_gateway.client import ModelGatewayError, PrivacyPolicyDenied
+from core.model_gateway.policy import may_send
 from modules.knowledge.documents.models import Document, DocumentChunk, DocumentVersion
 from modules.search.indexing import configured_embedding, embedding_values, gateway
 from modules.search.models import IndexGeneration, SearchIndexItem
@@ -127,14 +128,24 @@ async def search(session: AsyncSession, redis: Redis, settings: Settings, reques
     if request.mode == "hybrid":
         generation = await session.scalar(select(IndexGeneration).where(IndexGeneration.status == "active"))
         try:
-            mapping, policy = await configured_embedding(redis, settings)
+            config, mapping, policy = await configured_embedding(session, settings, redis)
+            if config.endpoint_policy_denied:
+                raise ValueError("Saved endpoint is denied by deployment network policy")
             if (
                 generation is None or generation.dimensions is None or mapping is None
                 or mapping.model != generation.model_id or mapping.version != generation.model_version
-                or not policy.embeddings_allowed
+                or generation.gateway_identity != config.gateway_identity or not policy.embeddings_allowed
             ):
                 raise ValueError("No permitted active embedding generation")
-            response = await gateway(settings, redis).embed("embedding", mapping, policy, [request.query])
+            async def recheck_send() -> None:
+                latest, latest_mapping, latest_policy = await configured_embedding(session, settings, redis)
+                if (latest.gateway_identity != config.gateway_identity or latest_mapping != mapping
+                        or not may_send(latest_policy, "embedding", latest_mapping,
+                                        latest.endpoint_destination_id or "omniroute",
+                                        bool(latest.omniroute_api_key), "embeddings")):
+                    raise PrivacyPolicyDenied("Search embedding denied by current settings")
+
+            response = await gateway(config, redis, recheck_send).embed("embedding", mapping, policy, [request.query])
             values, returned_model = embedding_values(response, generation.dimensions)
             if returned_model != generation.response_model_id:
                 raise ValueError("Embedding response identity changed")
@@ -144,6 +155,10 @@ async def search(session: AsyncSession, redis: Redis, settings: Settings, reques
             warnings.append(FALLBACK_WARNING)
         except DBAPIError:
             await session.rollback()
+            warnings.append(FALLBACK_WARNING)
+        except HTTPException as exc:
+            if exc.status_code != 503:
+                raise
             warnings.append(FALLBACK_WARNING)
     ranked: dict[UUID, float] = {}
     for candidates in (lexical, vector) if effective_mode == "hybrid" else (lexical,):

@@ -1,4 +1,3 @@
-import { WorkspaceShell } from '@/core/app-shell/workspace-shell';
-import { ModelSettings } from '@/modules/settings/models';
+import { redirect } from 'next/navigation';
 
-export default function ModelsPage() { return <WorkspaceShell><ModelSettings /></WorkspaceShell>; }
+export default function ModelsPage() { redirect('/settings/ai'); }

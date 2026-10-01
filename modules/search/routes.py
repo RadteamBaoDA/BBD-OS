@@ -31,8 +31,11 @@ async def index_status(session: Session, _owner: OwnerRead) -> SearchIndexStatus
 async def reindex(request: Request, session: Session, _owner: OwnerWrite) -> ReindexResponse:
     redis: Redis = request.app.state.redis
     settings: Settings = request.app.state.settings
-    mapping, policy = await indexing.configured_embedding(redis, settings)
+    config, mapping, policy = await indexing.configured_embedding(session, settings, redis)
     if mapping is None or not mapping.model.strip() or mapping.destination != "remote" or not policy.embeddings_allowed:
         raise HTTPException(status_code=409, detail="Configure and permit a remote embedding model first")
-    generation = await indexing.create_generation(session, mapping)
+    try:
+        generation = await indexing.create_generation(session, mapping, config.gateway_identity)
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail="An index generation for another gateway is still running") from exc
     return ReindexResponse(run_id=generation.id)
