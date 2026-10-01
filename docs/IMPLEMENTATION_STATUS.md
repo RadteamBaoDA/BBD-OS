@@ -1,6 +1,6 @@
 # BBD-OS implementation status
 
-Updated: 2026-10-01 (R01/R02 integrated; R03-core/R05 integrated; R09 integrated; R04/R06 production in progress; behavioral acceptance deferred).
+Updated: 2026-10-01 (R01/R02 integrated; R03-core/R05 integrated; R09 integrated; R04/R06 integrated and archived; RN1/P04 active; behavioral acceptance deferred).
 
 Markers: `[ ]` not started; `[~]` in progress; `[x]` complete; `[!]` blocked.
 
@@ -36,6 +36,6 @@ Phase 0 verified on 2026-09-25: Ruff, mypy, pytest (15 passed, 1 integration tes
 - [x] R09 shell/preferences/theme/locales integrated into develop3e98c0f (feature216e135, integrationb170746); code/build/source and integration review approved. Behavioral acceptance deferred; legacy UI localization tracked for R16.
 - [x] R04 embedded source editor: feature `1c4d77a`, integration `e9938d8`; full combined build and independent source/spec/quality review passed. Integrated with R06 into develop; behavioral acceptance deferred.
 - [x] R06 durable replay/SSE/provider: feature `325d20b`, integration `da4fb8c`, develop merge `35fc0c5`; full combined build and source/spec/quality review passed; worktree archived. Behavioral acceptance deferred.
-- [~] P02-RN1 receipt-to-library normalization: backend production active in isolated `codex/bbd-p02-rn1`; final R04 integration and full build/review remain required.
+- [~] P02-RN1 receipt-to-library normalization: production frozen in isolated `codex/bbd-p02-rn1` on integrated R04/R06; full prescribed build passed, independent source/spec/quality review pending.
 - [ ] Remaining reconciliation production code/build/review and later acceptance.
 - Active production tasks: P02-RN1 normalization and P04-T1 entities/relationships. R04/R06 integrated and archived; old Phase 4 draft remains preserved. Tests begin after all original and supplemental production code is complete.
