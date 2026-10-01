@@ -5,6 +5,8 @@
 | [Authlib](https://github.com/authlib/authlib) | 1.8.0 | BSD-3-Clause | Server-side OpenID Connect discovery, authorization-code + PKCE flow, ID-token/JWKS validation for Google sign-in. |
 | [itsdangerous](https://github.com/pallets/itsdangerous) | 2.2.0 | BSD-3-Clause | Required by Starlette `SessionMiddleware` for signed session-cookie support. |
 | [Radix UI](https://github.com/radix-ui/primitives) | 1.6.7 | MIT | Primitives used by the account DropdownMenu and Dialog. |
+| [next-intl](https://github.com/amannn/next-intl) | 4.14.8 | MIT | English and Vietnamese interface catalogs and locale context. |
+| [next-themes](https://github.com/pacocoursey/next-themes) | 0.4.6 | MIT | System-aware light/dark theme class bootstrap. |
 | [HTTPX](https://github.com/encode/httpx) | 0.28.1 | BSD-3-Clause | OpenAI SDK HTTP transport with DNS result CIDR approval, numeric-IP pinning, and proxy/redirect denial at the OmniRoute boundary. |
 | [cn](https://github.com/shadcn-ui/cn) | 0.4.0 | MIT | Tailwind-aware class merging in the locally owned shadcn component source. |
 | [Lucide React](https://github.com/lucide-icons/lucide) | 1.49.0 | ISC | Close icon used by the generated Dialog component. |

@@ -35,6 +35,24 @@ class AISettingsRecord(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now())
 
+
+class OwnerPreferencesRecord(Base):
+    __tablename__ = "owner_preferences"
+    __table_args__ = (
+        CheckConstraint("owner_id = 1", name="ck_owner_preferences_single_owner"),
+        CheckConstraint("configuration_revision > 0", name="ck_owner_preferences_revision_positive"),
+        CheckConstraint("theme IN ('light', 'dark', 'system')", name="ck_owner_preferences_theme"),
+        CheckConstraint("locale IN ('en-us', 'vi-vi')", name="ck_owner_preferences_locale"),
+    )
+
+    owner_id: Mapped[int] = mapped_column(ForeignKey("owner.id", ondelete="CASCADE"), primary_key=True)
+    configuration_revision: Mapped[int] = mapped_column(Integer, nullable=False, server_default="1")
+    theme: Mapped[str] = mapped_column(String(8), nullable=False, server_default="system")
+    locale: Mapped[str] = mapped_column(String(8), nullable=False, server_default="en-us")
+    timezone: Mapped[str] = mapped_column(String(100), nullable=False, server_default="Asia/Ho_Chi_Minh")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now())
+
 ALIASES = ("reasoning-large", "reasoning-small", "fast", "embedding", "reranker", "vision", "local-private")
 _MAPPINGS = "bbd:settings:model-mappings"
 
