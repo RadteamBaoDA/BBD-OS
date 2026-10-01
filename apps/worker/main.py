@@ -24,6 +24,11 @@ from modules.ingestion.worker import (
 from modules.sources.worker import process_source_purge
 from modules.search.indexing import index_pending_chunks
 from modules.connectors.worker import reconcile_connectors
+from modules.knowledge.entities.worker import (
+    process_document_ready,
+    process_entity_extraction_work,
+    recover_entity_extraction_work,
+)
 
 async def startup(ctx: dict[str, object]) -> None:
     settings = Settings()
@@ -59,7 +64,7 @@ async def purge_expired_sessions(ctx: dict[str, object]) -> int:
 class WorkerSettings:
     functions: ClassVar[list[object]] = [
         purge_expired_sessions, process_ingestion_event, process_normalize_event, process_uploaded_file, process_source_purge,
-        reconcile_connectors,
+        reconcile_connectors, process_document_ready, process_entity_extraction_work,
     ]
     cron_jobs: ClassVar[list[object]] = [
         cron(purge_expired_sessions, minute=0),
@@ -67,6 +72,7 @@ class WorkerSettings:
         cron(dispatch_pending_work, second=set(range(0, 60, 5)), run_at_start=True),
         cron(index_pending_chunks, minute=set(range(0, 60, 1))),
         cron(reconcile_connectors, second=set(range(0, 60, 5)), run_at_start=True),
+        cron(recover_entity_extraction_work, minute=set(range(0, 60, 1))),
     ]
     redis_settings = RedisSettings.from_dsn(Settings().redis_url)
     max_jobs = 1

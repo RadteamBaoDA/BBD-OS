@@ -12,7 +12,7 @@
 
 **Entry gate:** Phase 3 validated structured-output alias, search and public library.
 
-**Implementation status:** P04-T1.1–T1.3 production code, prescribed build and independent reviews are complete on `codex/bbd-p04`; the phase remains in progress while T2–T4 continue. Runtime/provider acceptance is deferred.
+**Implementation status:** P04-T1.1–T1.3 and P04-T2 production code, prescribed build and scoped independent reviews are complete on `codex/bbd-p04`. P04-T3 is next; T4 remains. Runtime/provider acceptance is deferred. See `docs/task-reports/P04-T2.md`.
 
 Code stage: implement production code and run affected production builds only. Do not create, modify or run tests, lint, or standalone typecheck until production code for all Phase 1-12 is complete. Behavioral acceptance is listed separately in the deferred test-stage section.
 
@@ -63,7 +63,7 @@ Concrete contract/configuration shape (illustrative IDs/timestamps are test data
 
 **Interfaces — consumes/produces:** resolve_candidates(candidates,known) -> ResolutionResult(matches,review_candidates); extraction consumes document_version_id + allowed chunk IDs and produces validated evidence-backed facts. Resolution match reasons: external identity, confirmed alias, manual correction.
 
-- [ ] **P04-T2.1 - Implement production behavior.** Call structured extraction through ModelGateway policy, validate types/references and cap candidates per batch. Key extraction output by document revision + extractor/prompt version to avoid duplicate retries. Prefer explicit provider identity or confirmed aliases; similar names alone create review candidates. Keep extraction failure visible without blocking reading/search of the underlying document. Relevance and extraction prompts never authorize tools.
+- [x] **P04-T2.1 - Implement production behavior.** Implemented bounded structured extraction through ModelGateway policy, strict output/evidence validation, versioned durable work, confirmed-alias-only resolution, visible extraction status and noncommitting evidence-backed publication. External identity and owner corrections remain unavailable until their authoritative P04-T3 storage/consumer exists; similar names remain review candidates. F1–F6 scoped repairs passed independent source/spec/quality review 2.
 
 Concrete contract/configuration shape (illustrative IDs/timestamps are test data, not production defaults):
 
@@ -71,9 +71,9 @@ Concrete contract/configuration shape (illustrative IDs/timestamps are test data
 {"matches":[],"review_candidates":[{"candidate_name":"Nguyen An","reason":"ambiguous_identity","possible_entity_ids":["p1"]}]}
 ```
 
-- [ ] **P04-T2.2 - Build the affected deliverable.** Run `./scripts/dev.ps1 build` (or `make build`) and fix production build failures before proceeding.
+- [x] **P04-T2.2 - Build the affected deliverable.** `./scripts/dev.ps1 build` passed on 2026-10-01 after the final F1–F6 source freeze: Next.js 16.3.6 production compilation and integrated TypeScript, all 16 routes, and web/API/worker/migrate Docker images. No tests, lint, standalone typecheck or runtime/migration checks ran.
 
-- [ ] **P04-T2.3 - Record build evidence, commit and continue.** Record changed files, the exact production build command/result, review findings and unresolved gates in `EXECUTION.md`; commit the completed task and continue to the next ready task.
+- [x] **P04-T2.3 - Record build evidence, commit and continue.** Build evidence and F1–F6 scoped review 2 PASS are recorded in `docs/task-reports/P04-T2.md`, `docs/IMPLEMENTATION_STATUS.md`, and `docs/superpowers/plans/EXECUTION.md`. The reviewed task is ready for its scoped feature commit. Next task: P04-T3. Behavioral, provider, migration-application and target-host acceptance remain deferred.
 
 ## Task P04-T3: Persistent corrections, merge and split
 

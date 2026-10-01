@@ -127,6 +127,17 @@ class EntityPage(BaseModel):
     next_cursor: str | None
 
 
+class EntityExtractionStatus(BaseModel):
+    document_version_id: UUID
+    status: Literal["pending", "running", "succeeded", "blocked", "failed"]
+    attempt: int
+    error_code: str | None
+    model: str | None = None
+    facts: list[dict[str, Any]] = Field(default_factory=list)
+    review_candidates: list[dict[str, Any]] = Field(default_factory=list)
+    completed_at: datetime | None = None
+
+
 class EntityReferenceRead(BaseModel):
     requested_id: UUID
     canonical_id: UUID

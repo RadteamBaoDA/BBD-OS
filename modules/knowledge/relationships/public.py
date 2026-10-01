@@ -4,7 +4,7 @@ import json
 from datetime import datetime
 from uuid import UUID
 
-from sqlalchemy import delete, desc, or_, select, tuple_
+from sqlalchemy import delete, desc, func, or_, select, tuple_
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.pagination import decode_cursor, encode_cursor
@@ -41,6 +41,69 @@ def _relationship_read(
         created_at=relationship.created_at,
         evidence=evidence or [],
     )
+
+
+async def publish_extracted_relationship(
+    session: AsyncSession,
+    *,
+    source_entity_id: UUID,
+    target_entity_id: UUID,
+    relationship_type: str,
+    document_version_id: UUID,
+    chunk_id: UUID,
+    source_membership_id: UUID,
+    target_membership_id: UUID,
+    confidence: float,
+) -> UUID | None:
+    """Publish evidence-backed extraction inside the caller's source transaction."""
+    if source_entity_id == target_entity_id:
+        return None
+    refs = await documents.read_evidence_refs(session, [(document_version_id, chunk_id)])
+    memberships = await entities.get_membership_refs(
+        session, [source_membership_id, target_membership_id], for_write=True
+    )
+    by_id = {item.id: item for item in memberships}
+    source_membership, target_membership = by_id[source_membership_id], by_id[target_membership_id]
+    for item, entity_id in ((source_membership, source_entity_id), (target_membership, target_entity_id)):
+        if item.entity_id != entity_id or item.document_version_id != document_version_id or item.chunk_id != chunk_id:
+            raise ValueError("Relationship evidence memberships do not match the cited chunk")
+    ref = refs[0]
+    relationship = await session.scalar(select(Relationship).where(
+        Relationship.source_entity_id == source_entity_id,
+        Relationship.target_entity_id == target_entity_id,
+        Relationship.type == relationship_type,
+        Relationship.origin == "derived",
+        Relationship.valid_from.is_(None),
+        Relationship.valid_to.is_(None),
+    ).with_for_update())
+    if relationship is None:
+        relationship = Relationship(
+            source_entity_id=source_entity_id, target_entity_id=target_entity_id,
+            type=relationship_type, origin="derived", confidence=confidence,
+        )
+        session.add(relationship)
+        await session.flush()
+    evidence = await session.scalar(select(RelationshipEvidence).where(
+        RelationshipEvidence.relationship_id == relationship.id,
+        RelationshipEvidence.document_version_id == document_version_id,
+        RelationshipEvidence.chunk_id == chunk_id,
+    ).with_for_update())
+    if evidence is None:
+        session.add(RelationshipEvidence(
+            relationship_id=relationship.id, document_version_id=document_version_id,
+            chunk_id=chunk_id, document_id=ref.document_id, source_id=ref.source_id,
+            observed_at=ref.observed_at, confidence=confidence,
+            source_membership_id=source_membership_id, target_membership_id=target_membership_id,
+        ))
+    else:
+        evidence.confidence = max(evidence.confidence, confidence)
+    await session.flush()
+    supported_confidence = await session.scalar(select(func.max(RelationshipEvidence.confidence)).where(
+        RelationshipEvidence.relationship_id == relationship.id,
+    ))
+    if supported_confidence is not None:
+        relationship.confidence = supported_confidence
+    return relationship.id
 
 
 async def _evidence_read(session: AsyncSession, rows: list[RelationshipEvidence]) -> list[EvidenceRead]:

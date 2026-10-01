@@ -9,7 +9,7 @@ from core.auth.dependencies import require_owner, require_owner_write
 from core.auth.models import AuthSession
 from core.database import get_session
 from modules.knowledge.entities import public
-from modules.knowledge.entities.schemas import AliasCreate, EntityCreate, EntityPage, EntityPatch, EntityRead
+from modules.knowledge.entities.schemas import AliasCreate, EntityCreate, EntityExtractionStatus, EntityPage, EntityPatch, EntityRead
 from modules.knowledge.relationships import public as relationships
 from modules.knowledge.relationships.schemas import NeighborPage
 
@@ -17,6 +17,14 @@ router = APIRouter(tags=["knowledge"])
 Session = Annotated[AsyncSession, Depends(get_session)]
 OwnerRead = Annotated[AuthSession, Depends(require_owner)]
 OwnerWrite = Annotated[AuthSession, Depends(require_owner_write)]
+
+
+@router.get("/api/v1/entities/extractions/{document_version_id}", response_model=EntityExtractionStatus)
+async def get_extraction_status(document_version_id: UUID, session: Session, _owner: OwnerRead) -> EntityExtractionStatus:
+    result = await public.get_extraction_status(session, document_version_id)
+    if result is None:
+        raise HTTPException(status_code=404, detail="Entity extraction status not found")
+    return result
 
 
 @router.get("/api/v1/entities", response_model=EntityPage)

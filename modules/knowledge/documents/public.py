@@ -1,6 +1,7 @@
 import base64
 import binascii
 import hashlib
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from uuid import UUID
 
@@ -22,6 +23,46 @@ from modules.knowledge.documents.schemas import (
 )
 from modules.sources import public as sources
 from modules.sources.models import Source
+
+EXTRACTION_CHUNK_LIMIT = 100
+EXTRACTION_INPUT_BYTES = 64_000
+
+
+@dataclass(frozen=True)
+class ExtractionChunk:
+    id: UUID
+    content: str
+
+
+@dataclass(frozen=True)
+class ExtractionInput:
+    document_id: UUID
+    document_version_id: UUID
+    source_id: UUID
+    source_generation: int
+    local_only: bool
+    observed_at: datetime
+    chunks: tuple[ExtractionChunk, ...]
+
+
+@dataclass(frozen=True)
+class ExtractionEvidenceRef:
+    document_id: UUID
+    document_version_id: UUID
+    source_id: UUID
+    source_generation: int
+    chunk_id: UUID
+
+
+@dataclass(frozen=True)
+class ReadyVersionRef:
+    document_id: UUID
+    document_version_id: UUID
+    source_id: UUID
+    source_generation: int
+    version_number: int
+    created_at: datetime
+    local_only: bool
 
 
 def content_hash(content: str) -> str:
@@ -46,14 +87,16 @@ async def list_evidence_ref_keys(
     return [(version_id, chunk_id) for version_id, chunk_id in rows]
 
 
-async def add_content_chunks(session: AsyncSession, version: DocumentVersion) -> None:
+async def add_content_chunks(session: AsyncSession, version: DocumentVersion) -> int:
     await session.flush()
-    for index, draft in enumerate(chunk_text(version.content)):
+    drafts = chunk_text(version.content)
+    for index, draft in enumerate(drafts):
         session.add(DocumentChunk(
             document_version_id=version.id, chunk_index=index, content=draft.content,
             content_hash=content_hash(draft.content), token_count=draft.token_count,
             metadata_json=draft.metadata,
         ))
+    return len(drafts)
 
 
 async def backfill_current_chunks(session: AsyncSession, limit: int = 2) -> int:
@@ -72,7 +115,18 @@ async def backfill_current_chunks(session: AsyncSession, limit: int = 2) -> int:
         .order_by(DocumentVersion.id).limit(limit)
     )).all())
     for version in versions:
-        await add_content_chunks(session, version)
+        hint = await session.get(Document, version.document_id)
+        source = await sources.lock_source(session, hint.source_id) if hint else None
+        document = await session.scalar(
+            select(Document).where(Document.id == version.document_id).with_for_update()
+        )
+        if (
+            source is None or source.status != "active" or document is None
+            or document.current_version != version.version_number
+        ):
+            continue
+        if await add_content_chunks(session, version):
+            await _publish_document_ready(session, document, version)
     if versions:
         await session.commit()
     return len(versions)
@@ -106,7 +160,8 @@ async def create_document(session: AsyncSession, payload: DocumentCreate) -> Doc
                 content_hash=digest,
         )
         session.add(version)
-        await add_content_chunks(session, version)
+        if await add_content_chunks(session, version):
+            await _publish_document_ready(session, document, version)
         await commit_with_replay(
             session,
             [make_knowledge_change(payload.source_id, document.id, 1)],
@@ -243,8 +298,7 @@ async def upsert_normalized_document(
         published_at=payload.published_at, content_type=payload.content_type,
         provenance_json=payload.provenance,
     ))
-    await add_content_chunks(session, version)
-    chunk_count = len(chunk_text(payload.content))
+    chunk_count = await add_content_chunks(session, version)
     if selected:
         document.current_version = version.version_number
         document.content_hash = version.content_hash
@@ -380,6 +434,8 @@ async def save_extraction(
                     metadata_json=dict(chunk.get("metadata", {})),
                 )
             )
+    if extraction_status == "succeeded" and chunks:
+        await _publish_document_ready(session, document, current)
     await session.flush()
     return document.id
 
@@ -548,7 +604,8 @@ async def append_content(
             content_hash=digest,
         )
     session.add(version)
-    await add_content_chunks(session, version)
+    if await add_content_chunks(session, version):
+        await _publish_document_ready(session, document, version)
     document.current_version = next_version
     document.content_hash = digest
     await commit_with_replay(
@@ -557,6 +614,168 @@ async def append_content(
     )
     await session.refresh(document)
     return document
+
+
+async def read_extraction_input(
+    session: AsyncSession, version_id: UUID, allowed_chunk_ids: list[UUID] | None = None
+) -> ExtractionInput | None:
+    statement = (
+        select(
+            Document.id, Document.source_id, Source.generation, Source.local_only,
+            DocumentVersion.id, DocumentVersion.observed_at,
+        )
+        .join(DocumentVersion, DocumentVersion.document_id == Document.id)
+        .join(Source, Source.id == Document.source_id)
+        .where(
+            DocumentVersion.id == version_id,
+            Document.current_version == DocumentVersion.version_number,
+            Document.extraction_status.in_(("ready", "succeeded")),
+            Source.status == "active",
+        )
+    )
+    row = (await session.execute(statement)).one_or_none()
+    if row is None:
+        return None
+    document_id, source_id, source_generation, local_only, actual_version_id, observed_at = row
+    chunks_query = select(DocumentChunk.id, DocumentChunk.content).where(
+        DocumentChunk.document_version_id == actual_version_id
+    )
+    if allowed_chunk_ids is not None:
+        if not allowed_chunk_ids or len(allowed_chunk_ids) > EXTRACTION_CHUNK_LIMIT or len(set(allowed_chunk_ids)) != len(allowed_chunk_ids):
+            raise ValueError("Extraction chunk IDs must be unique and bounded")
+        chunks_query = chunks_query.where(DocumentChunk.id.in_(allowed_chunk_ids))
+    stats = await session.execute(
+        select(func.count(DocumentChunk.id), func.coalesce(func.sum(func.octet_length(DocumentChunk.content)), 0))
+        .where(DocumentChunk.document_version_id == actual_version_id)
+        .where(DocumentChunk.id.in_(allowed_chunk_ids) if allowed_chunk_ids is not None else True)
+    )
+    chunk_count, byte_count = stats.one()
+    if not chunk_count or chunk_count > EXTRACTION_CHUNK_LIMIT or byte_count > EXTRACTION_INPUT_BYTES:
+        raise ValueError("Extraction input exceeds its chunk or byte limit")
+    chunks = list((await session.execute(chunks_query.order_by(DocumentChunk.chunk_index))).all())
+    if allowed_chunk_ids is not None and {identifier for identifier, _ in chunks} != set(allowed_chunk_ids):
+        return None
+    return ExtractionInput(
+        document_id=document_id, document_version_id=actual_version_id, source_id=source_id,
+        source_generation=source_generation, local_only=local_only,
+        observed_at=observed_at, chunks=tuple(ExtractionChunk(id=identifier, content=content) for identifier, content in chunks),
+    )
+
+
+async def read_extraction_evidence_refs(
+    session: AsyncSession,
+    *,
+    document_id: UUID,
+    document_version_id: UUID,
+    source_id: UUID,
+    source_generation: int,
+    chunk_ids: list[UUID],
+) -> list[ExtractionEvidenceRef] | None:
+    """Validate a bounded set of current extraction chunks and return detached evidence refs."""
+    if not chunk_ids or len(chunk_ids) > 150 or len(set(chunk_ids)) != len(chunk_ids):
+        raise ValueError("Extraction membership evidence must be nonempty and bounded")
+    rows = (await session.execute(
+        select(Document.id, DocumentVersion.id, Document.source_id, Source.generation, DocumentChunk.id)
+        .join(DocumentVersion, DocumentVersion.document_id == Document.id)
+        .join(DocumentChunk, DocumentChunk.document_version_id == DocumentVersion.id)
+        .join(Source, Source.id == Document.source_id)
+        .where(
+            Document.id == document_id,
+            Document.source_id == source_id,
+            DocumentVersion.id == document_version_id,
+            Document.current_version == DocumentVersion.version_number,
+            Document.extraction_status.in_(("ready", "succeeded")),
+            Source.status == "active",
+            Source.generation == source_generation,
+            DocumentChunk.id.in_(chunk_ids),
+        )
+        .order_by(DocumentChunk.id)
+    )).all()
+    if len(rows) != len(chunk_ids):
+        return None
+    return [ExtractionEvidenceRef(
+        document_id=row[0], document_version_id=row[1], source_id=row[2],
+        source_generation=row[3], chunk_id=row[4],
+    ) for row in rows]
+
+
+async def list_ready_version_refs(
+    session: AsyncSession, limit: int = 50, cursor: str | None = None
+) -> tuple[list[ReadyVersionRef], str | None]:
+    if not 1 <= limit <= 100:
+        raise ValueError("Ready-version page size must be between 1 and 100")
+    statement = (
+        select(
+            Document.id, Document.created_at, Source.id, Source.generation,
+            DocumentVersion.id, DocumentVersion.version_number, Source.local_only,
+        )
+        .join(DocumentVersion, DocumentVersion.document_id == Document.id)
+        .join(Source, Source.id == Document.source_id)
+        .where(
+            Document.current_version == DocumentVersion.version_number,
+            Document.extraction_status.in_(("ready", "succeeded")),
+            DocumentVersion.content != "",
+            Source.status == "active",
+            select(DocumentChunk.id).where(DocumentChunk.document_version_id == DocumentVersion.id).exists(),
+        )
+    )
+    if cursor:
+        created_at, identifier = decode_cursor(cursor)
+        statement = statement.where(tuple_(Document.created_at, Document.id) < (created_at, identifier))
+    rows = list((await session.execute(statement.order_by(desc(Document.created_at), desc(Document.id)).limit(limit + 1))).all())
+    more = len(rows) > limit
+    rows = rows[:limit]
+    result = [ReadyVersionRef(
+        document_id=document_id, document_version_id=version_id, source_id=source_id,
+        source_generation=generation, version_number=version_number, created_at=created_at,
+        local_only=local_only,
+    ) for document_id, created_at, source_id, generation, version_id, version_number, local_only in rows]
+    return result, encode_cursor(rows[-1][1], rows[-1][0]) if more and rows else None
+
+
+async def get_ready_version_ref(session: AsyncSession, version_id: UUID) -> ReadyVersionRef | None:
+    row = (await session.execute(
+        select(
+            Document.id, Document.created_at, Source.id, Source.generation,
+            DocumentVersion.id, DocumentVersion.version_number, Source.local_only,
+        )
+        .join(DocumentVersion, DocumentVersion.document_id == Document.id)
+        .join(Source, Source.id == Document.source_id)
+        .where(
+            DocumentVersion.id == version_id,
+            Document.current_version == DocumentVersion.version_number,
+            Document.extraction_status.in_(("ready", "succeeded")),
+            DocumentVersion.content != "",
+            Source.status == "active",
+            select(DocumentChunk.id).where(DocumentChunk.document_version_id == DocumentVersion.id).exists(),
+        )
+    )).one_or_none()
+    if row is None:
+        return None
+    document_id, created_at, source_id, generation, actual_version_id, version_number, local_only = row
+    return ReadyVersionRef(
+        document_id=document_id, document_version_id=actual_version_id, source_id=source_id,
+        source_generation=generation, version_number=version_number,
+        created_at=created_at, local_only=local_only,
+    )
+
+
+async def _publish_document_ready(session: AsyncSession, document: Document, version: DocumentVersion) -> None:
+    from core.events import DomainEvent
+    from modules.ingestion import public as ingestion
+
+    source = await session.get(Source, document.source_id)
+    if source is None:
+        return
+    await ingestion.publish_event(session, DomainEvent(
+        id=uuid4(), type="document.version.ready", version=1,
+        occurred_at=datetime.now(UTC), producer="modules.knowledge.documents",
+        payload={
+            "source_id": str(source.id), "document_id": str(document.id),
+            "document_version_id": str(version.id), "source_generation": source.generation,
+            "version_number": version.version_number,
+        },
+    ))
 
 
 def encode_version_cursor(version_number: int) -> str:

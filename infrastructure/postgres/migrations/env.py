@@ -33,6 +33,8 @@ from modules.knowledge.entities.models import (
     EntityAliasEvidence,
     EntityFieldEvidence,
     EntityOwnerAction,
+    EntityExtractionWork,
+    EntityExtractionResult,
 )
 from modules.knowledge.relationships.models import Relationship, RelationshipEvidence
 from modules.settings.models import AISettingsRecord, OwnerPreferencesRecord
@@ -63,6 +65,8 @@ _knowledge_models = (
     EntityAliasEvidence,
     EntityFieldEvidence,
     EntityOwnerAction,
+    EntityExtractionWork,
+    EntityExtractionResult,
     Relationship,
     RelationshipEvidence,
 )

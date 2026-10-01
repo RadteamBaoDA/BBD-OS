@@ -127,3 +127,42 @@ class EntityOwnerAction(Base):
     affected_ids: Mapped[list[str]] = mapped_column(JSONB, nullable=False)
     revisions: Mapped[dict[str, int | None]] = mapped_column(JSONB, nullable=False, server_default="{}")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+
+
+class EntityExtractionWork(Base):
+    __tablename__ = "entity_extraction_work"
+    __table_args__ = (
+        CheckConstraint("status IN ('pending', 'running', 'succeeded', 'blocked', 'failed')", name="ck_entity_extraction_work_status"),
+        CheckConstraint("attempt >= 0", name="ck_entity_extraction_work_attempt"),
+        CheckConstraint("source_generation >= 1", name="ck_entity_extraction_work_generation"),
+        UniqueConstraint("document_version_id", "extractor_version", "prompt_version", name="uq_entity_extraction_work_identity"),
+        Index("ix_entity_extraction_work_recovery", "status", "next_attempt_at", "lease_expires_at"),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid4)
+    document_version_id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), ForeignKey("document_versions.id", ondelete="CASCADE"), nullable=False)
+    source_generation: Mapped[int] = mapped_column(Integer, nullable=False)
+    extractor_version: Mapped[str] = mapped_column(String(64), nullable=False)
+    prompt_version: Mapped[str] = mapped_column(String(64), nullable=False)
+    status: Mapped[str] = mapped_column(String(16), nullable=False, server_default="pending")
+    attempt: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+    next_attempt_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    lease_owner: Mapped[str | None] = mapped_column(String(64))
+    lease_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    error_code: Mapped[str | None] = mapped_column(String(64))
+    dependency_fingerprint: Mapped[str | None] = mapped_column(String(64))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now())
+
+
+class EntityExtractionResult(Base):
+    __tablename__ = "entity_extraction_results"
+    __table_args__ = (UniqueConstraint("work_id", name="uq_entity_extraction_results_work"),)
+
+    id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid4)
+    work_id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), ForeignKey("entity_extraction_work.id", ondelete="CASCADE"), nullable=False)
+    model: Mapped[str | None] = mapped_column(String(200))
+    usage_json: Mapped[dict[str, object] | None] = mapped_column(JSONB)
+    facts_json: Mapped[list[dict[str, object]]] = mapped_column(JSONB, nullable=False)
+    review_json: Mapped[list[dict[str, object]]] = mapped_column(JSONB, nullable=False, server_default="[]")
+    completed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
