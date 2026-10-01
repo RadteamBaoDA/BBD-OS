@@ -10,6 +10,7 @@ from core.auth.models import AuthSession
 from core.database import get_session
 from core.storage import save_upload, storage_path
 from modules.ingestion import public
+from modules.connectors import public as connectors
 from modules.ingestion.files import validate_upload
 from modules.ingestion.schemas import CollectorCredentialRead, Receipt, ReceiveBatch, RunRead, StageRead
 
@@ -26,10 +27,13 @@ async def issue_collector_credential(
     session: Session,
     _owner: OwnerWrite,
 ) -> CollectorCredentialRead:
+    if not await connectors.allow_external_collector_credential_issue(session, source_id):
+        raise HTTPException(status_code=409, detail="Managed collector grants rotate during connector activation")
     try:
         token = await public.create_collector_credential(session, source_id)
     except LookupError as exc:
         raise HTTPException(status_code=404, detail="Source not found") from exc
+    await session.commit()
     return CollectorCredentialRead(source_id=source_id, token=token)
 
 
@@ -44,7 +48,7 @@ async def receive_batch(
         session, payload.source_id, token
     ):
         raise HTTPException(status_code=401, detail="Collector authentication required")
-    batch, run = await public.receive_batch(session, payload)
+    batch, run = await public.receive_batch(session, payload, token)
     return Receipt(batch_id=batch.id, run_id=run.id, status=run.status)
 
 

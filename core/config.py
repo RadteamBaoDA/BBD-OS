@@ -18,8 +18,11 @@ class Settings(BaseSettings):
     browser_service_url: AnyHttpUrl = AnyHttpUrl("http://browser:8001")
     browser_shared_token: SecretStr = SecretStr("")
     n8n_service_url: AnyHttpUrl = Field(default=AnyHttpUrl("http://n8n:5678"), validation_alias="N8N_SERVICE_URL")
-    n8n_source_id: str = Field(default="", validation_alias="BBD_SOURCE_ID")
+    n8n_api_key: SecretStr = Field(default=SecretStr(""), validation_alias="N8N_API_KEY")
     n8n_webhook_token: SecretStr = Field(default=SecretStr(""), validation_alias="N8N_WEBHOOK_TOKEN")
+    connector_credential_encryption_key: SecretStr = Field(
+        default=SecretStr(""), validation_alias="CONNECTOR_CREDENTIAL_ENCRYPTION_KEY", repr=False
+    )
     public_origin: AnyHttpUrl = AnyHttpUrl("http://localhost:3000")
     secure_cookies: bool = False
     setup_token: SecretStr = SecretStr("")

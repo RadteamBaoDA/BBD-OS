@@ -22,6 +22,7 @@ from modules.ingestion.worker import (
 )
 from modules.sources.worker import process_source_purge
 from modules.search.indexing import index_pending_chunks
+from modules.connectors.worker import reconcile_connectors
 
 async def startup(ctx: dict[str, object]) -> None:
     settings = Settings()
@@ -56,13 +57,15 @@ async def purge_expired_sessions(ctx: dict[str, object]) -> int:
 
 class WorkerSettings:
     functions: ClassVar[list[object]] = [
-        purge_expired_sessions, process_ingestion_event, process_uploaded_file, process_source_purge
+        purge_expired_sessions, process_ingestion_event, process_uploaded_file, process_source_purge,
+        reconcile_connectors,
     ]
     cron_jobs: ClassVar[list[object]] = [
         cron(purge_expired_sessions, minute=0),
         cron(cleanup_storage_orphans, minute=set(range(0, 60, 5))),
         cron(dispatch_pending_work, second=set(range(0, 60, 5)), run_at_start=True),
         cron(index_pending_chunks, minute=set(range(0, 60, 1))),
+        cron(reconcile_connectors, second=set(range(0, 60, 5)), run_at_start=True),
     ]
     redis_settings = RedisSettings.from_dsn(Settings().redis_url)
     max_jobs = 1

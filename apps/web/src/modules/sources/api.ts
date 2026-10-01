@@ -60,11 +60,11 @@ export function createConnectorSource(type: 'rss' | 'web' | 'api', name: string,
 }
 
 export function configureConnector(id: string, configuration: Record<string, unknown>, csrfToken: string) {
-  return apiRequest<{ source_id: string; url: string }>(`/api/v1/connectors/sources/${id}/configuration`, { method: 'PUT', headers: { 'Content-Type': 'application/json', ...csrfHeaders(csrfToken) }, body: JSON.stringify(configuration) });
+  return apiRequest<{ source_id: string; source_generation: number; connector_revision: number; url: string }>(`/api/v1/connectors/sources/${id}/configuration`, { method: 'PUT', headers: { 'Content-Type': 'application/json', ...csrfHeaders(csrfToken) }, body: JSON.stringify({ expected_revision: 0, configuration }) });
 }
 
-export function validateConnector(id: string, token: string) {
-  return apiRequest<{ source_id: string; url: string }>(`/api/v1/connectors/sources/${id}/validate`, { method: 'POST', headers: { Authorization: `Bearer ${token}` } });
+export function validateConnector(id: string, token: string, sourceGeneration: number, connectorRevision: number) {
+  return apiRequest<{ source_id: string; source_generation: number; connector_revision: number; url: string }>(`/api/v1/connectors/sources/${id}/validate`, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body: JSON.stringify({ source_generation: sourceGeneration, connector_revision: connectorRevision }) });
 }
 
 export function issueCollectorCredential(id: string, csrfToken: string) {

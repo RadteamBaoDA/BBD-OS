@@ -9,7 +9,6 @@ services:
       N8N_ENCRYPTION_KEY: ${N8N_ENCRYPTION_KEY:-}
       N8N_DIAGNOSTICS_ENABLED: "false"
       N8N_PERSONALIZATION_ENABLED: "false"
-      BBD_SOURCE_ID: ${BBD_SOURCE_ID:-}
       CONNECTOR_API_IP: 172.29.250.10
     ports:
       - "127.0.0.1:${N8N_PORT:-5678}:5678"
@@ -48,7 +47,8 @@ services:
   api:
     environment:
       N8N_SERVICE_URL: ${N8N_SERVICE_URL:-http://n8n:5678}
-      BBD_SOURCE_ID: ${BBD_SOURCE_ID:-}
+      N8N_API_KEY: ${N8N_API_KEY:-}
+      CONNECTOR_CREDENTIAL_ENCRYPTION_KEY: ${CONNECTOR_CREDENTIAL_ENCRYPTION_KEY:-}
       N8N_WEBHOOK_TOKEN: ${N8N_WEBHOOK_TOKEN:-}
     networks:
       default: {}
@@ -56,6 +56,10 @@ services:
         ipv4_address: 172.29.250.10
 
   worker:
+    environment:
+      N8N_SERVICE_URL: ${N8N_SERVICE_URL:-http://n8n:5678}
+      N8N_API_KEY: ${N8N_API_KEY:-}
+      CONNECTOR_CREDENTIAL_ENCRYPTION_KEY: ${CONNECTOR_CREDENTIAL_ENCRYPTION_KEY:-}
     networks:
       - default
       - connectors_internal

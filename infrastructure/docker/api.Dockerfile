@@ -6,6 +6,7 @@ COPY apps ./apps
 COPY core ./core
 COPY modules ./modules
 COPY infrastructure/postgres/migrations ./infrastructure/postgres/migrations
+COPY infrastructure/n8n/workflows ./infrastructure/n8n/workflows
 COPY alembic.ini ./alembic.ini
 
 FROM python:3.12.14-slim-bookworm AS runtime
