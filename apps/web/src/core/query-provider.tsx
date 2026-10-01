@@ -5,6 +5,7 @@ import { NextIntlClientProvider } from 'next-intl';
 import { ThemeProvider, useTheme } from 'next-themes';
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { AppLocaleId, normalizeFormattingLocale } from '@/core/i18n';
+import { GuardedNavigationProvider } from '@/core/guarded-navigation';
 import { messages } from '@/core/messages';
 import { OwnerPreferences, PreferenceValues } from '@/core/preferences';
 import { RealtimeProvider } from '@/core/realtime-provider';
@@ -48,9 +49,13 @@ export function QueryProvider({ children }: { children: ReactNode }) {
     }),
   );
   return <QueryClientProvider client={client}>
-    <ThemeProvider attribute="class" defaultTheme="system" enableSystem disableTransitionOnChange>
-      <DisplayPreferencesProvider><RealtimeProvider>{children}</RealtimeProvider></DisplayPreferencesProvider>
-    </ThemeProvider>
+    <GuardedNavigationProvider>
+      <ThemeProvider attribute="class" defaultTheme="system" enableSystem disableTransitionOnChange>
+        <DisplayPreferencesProvider>
+          <RealtimeProvider>{children}</RealtimeProvider>
+        </DisplayPreferencesProvider>
+      </ThemeProvider>
+    </GuardedNavigationProvider>
   </QueryClientProvider>;
 }
 

@@ -1,3 +1,4 @@
+from datetime import UTC, datetime
 from typing import Annotated, Literal
 from uuid import UUID, uuid4
 
@@ -46,6 +47,10 @@ class ConnectorSettingsRequest(BaseModel):
         return self
 
 
+class DraftValidationRequest(ConnectorSettingsRequest):
+    expected_source_generation: int = Field(ge=1)
+
+
 class ActivationRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -69,6 +74,91 @@ class ActivationRead(BaseModel):
     state: str
     error_code: str | None
     credential_recovery: str = "supported"
+
+
+class ConnectorConfigurationRead(BaseModel):
+    source_id: UUID
+    source_type: str
+    source_generation: int
+    configuration: ConnectorConfig
+    expected_revision: int
+    auth_method: Literal["none", "http_header"]
+    auth_header_name: str | None
+    desired_enabled: bool
+    activation_state: str
+    activation_error_code: str | None
+    provider_credential_configured: bool
+    provider_credential_state: str | None
+
+
+class DraftValidationRead(BaseModel):
+    source_id: UUID
+    source_generation: int
+    expected_revision: int
+    validated_at: datetime
+    validation_status: Literal["valid"]
+    checks: tuple[Literal["configuration", "public_url_policy"], ...]
+
+
+@router.get("/{source_id}/configuration", response_model=ConnectorConfigurationRead)
+async def get_configuration(
+    source_id: UUID, session: Session, _owner: OwnerRead
+) -> ConnectorConfigurationRead:
+    snapshot = await connector_owner.get_connector_configuration(session, source_id)
+    if snapshot is None:
+        raise HTTPException(status_code=404, detail="Source not found")
+    if snapshot.source_type not in registry.SUPPORTED_TYPES:
+        raise HTTPException(status_code=409, detail="This source has no managed connector configuration")
+    return ConnectorConfigurationRead(
+        source_id=snapshot.source_id,
+        source_type=snapshot.source_type,
+        source_generation=snapshot.source_generation,
+        configuration=ConnectorConfig.model_validate(snapshot.configuration),
+        expected_revision=snapshot.expected_revision,
+        auth_method=snapshot.auth_method,
+        auth_header_name=snapshot.auth_header_name,
+        desired_enabled=snapshot.desired_enabled,
+        activation_state=snapshot.activation_state,
+        activation_error_code=snapshot.activation_error_code,
+        provider_credential_configured=snapshot.provider_credential_configured,
+        provider_credential_state=snapshot.provider_credential_state,
+    )
+
+
+@router.post("/{source_id}/validate-draft", response_model=DraftValidationRead)
+async def validate_draft_configuration(
+    source_id: UUID,
+    payload: DraftValidationRequest,
+    session: Session,
+    _owner: OwnerRead,
+) -> DraftValidationRead:
+    source = await _source(session, source_id)
+    if source.status != "active" or source.type not in registry.SUPPORTED_TYPES:
+        raise HTTPException(status_code=409, detail="Active packaged connector required")
+    if payload.expected_source_generation != source.generation:
+        raise HTTPException(status_code=409, detail="Source generation changed; reload before validating")
+    row = await provisioning.activation_status(session, source_id)
+    current_revision = row.desired_revision if row is not None else 0
+    if payload.expected_revision != current_revision:
+        raise HTTPException(status_code=409, detail="Connector configuration revision changed; reload before validating")
+    if payload.auth_method == "http_header" and source.type != "api":
+        raise HTTPException(status_code=422, detail="Header authentication is supported only for REST sources")
+    candidate = source.model_copy(update={
+        "configuration": payload.configuration.model_dump(mode="json", exclude_none=True)
+    })
+    try:
+        data = registry.validate(candidate)
+        await validate_public_url(data["url"])
+    except (KeyError, TypeError, ValueError) as exc:
+        raise HTTPException(status_code=422, detail="Draft connector configuration is invalid") from exc
+    return DraftValidationRead(
+        source_id=source_id,
+        source_generation=source.generation,
+        expected_revision=payload.expected_revision,
+        validated_at=datetime.now(UTC),
+        validation_status="valid",
+        checks=("configuration", "public_url_policy"),
+    )
 
 
 async def _source(session: AsyncSession, source_id: UUID) -> ConnectorSource:

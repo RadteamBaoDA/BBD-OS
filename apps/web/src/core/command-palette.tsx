@@ -1,17 +1,17 @@
 'use client';
 
-import { useRouter } from 'next/navigation';
 import { useEffect, useRef, useState } from 'react';
 import { useTranslations } from 'next-intl';
 import { Button } from '@/components/ui/button';
 import { commandDestinations } from '@/core/module-registry';
+import { useGuardedNavigation } from '@/core/guarded-navigation';
 
 function isEditing(target: EventTarget | null) {
   return target instanceof HTMLElement && Boolean(target.closest('input, textarea, select, [contenteditable], [role="textbox"]'));
 }
 
 export function CommandPalette() {
-  const router = useRouter();
+  const { navigate } = useGuardedNavigation();
   const t = useTranslations('shell');
   const dialogRef = useRef<HTMLDialogElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -45,7 +45,7 @@ export function CommandPalette() {
     <dialog ref={dialogRef} className="command-dialog" aria-label={t('workspaceCommands')} onClose={() => { setOpen(false); setFilter(''); }}>
       <div className="section-heading"><h2>{t('goTo')}</h2><Button type="button" className="secondary" onClick={() => setOpen(false)}>{t('close')}</Button></div>
       <label className="label" htmlFor="command-filter">{t('filterActions')}</label><input ref={inputRef} id="command-filter" className="input" value={filter} onChange={(event) => setFilter(event.target.value)} />
-      <ul className="command-actions">{actions.map((action) => <li key={action.id}><button type="button" className="text-button" onClick={() => { setOpen(false); router.push(action.href); }}>{t(action.messageKey)}</button></li>)}</ul>
+      <ul className="command-actions">{actions.map((action) => <li key={action.id}><button type="button" className="text-button" onClick={() => { if (navigate(action.href)) setOpen(false); }}>{t(action.messageKey)}</button></li>)}</ul>
       {actions.length === 0 && <p className="muted">{t('noActions')}</p>}
     </dialog>
   </>;

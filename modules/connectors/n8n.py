@@ -10,7 +10,11 @@ from uuid import UUID
 
 import httpx
 
-from modules.connectors.public import overlap_floor, validate_public_url
+from modules.connectors.public import (
+    default_schedule_interval_minutes,
+    overlap_floor,
+    validate_public_url,
+)
 from modules.sources.schemas import ConnectorSource
 
 
@@ -56,7 +60,30 @@ def build_workflow(
         "Acknowledge no changes",
     }
     for node in workflow["nodes"]:
-        if node.get("name") == "Manual collection":
+        if node.get("name") == "Schedule":
+            configured_interval = source.configuration.get("schedule_interval_minutes")
+            interval = (
+                configured_interval
+                if configured_interval in {15, 30, 60, 360, 1440}
+                else default_schedule_interval_minutes(source.type)
+            )
+            if interval < 60:
+                schedule = {"field": "minutes", "minutesInterval": interval}
+            elif interval < 1440:
+                schedule = {
+                    "field": "hours",
+                    "hoursInterval": interval // 60,
+                    "triggerAtMinute": 0,
+                }
+            else:
+                schedule = {
+                    "field": "days",
+                    "daysInterval": 1,
+                    "triggerAtHour": 0,
+                    "triggerAtMinute": 0,
+                }
+            node["parameters"]["rule"]["interval"] = [schedule]
+        elif node.get("name") == "Manual collection":
             node["parameters"]["path"] = workflow_webhook_path(source.id, source.type)
             node.setdefault("credentials", {}).setdefault("httpHeaderAuth", {})
             node["credentials"]["httpHeaderAuth"].update(
