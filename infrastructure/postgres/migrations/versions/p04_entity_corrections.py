@@ -23,8 +23,6 @@ def upgrade() -> None:
          sa.text("coalesce(target_membership_id, '00000000-0000-0000-0000-000000000000'::uuid)")],
         unique=True,
     )
-    op.create_index("ix_relationship_evidence_source_membership", "relationship_evidence", ["source_membership_id"])
-    op.create_index("ix_relationship_evidence_target_membership", "relationship_evidence", ["target_membership_id"])
     op.create_table(
         "entity_redirects",
         sa.Column("old_entity_id", postgresql.UUID(as_uuid=True), sa.ForeignKey("entities.id", ondelete="CASCADE"), primary_key=True),
@@ -57,8 +55,6 @@ def downgrade() -> None:
     op.drop_table("entity_correction_decisions")
     op.drop_index("ix_entity_redirect_target", table_name="entity_redirects")
     op.drop_table("entity_redirects")
-    op.drop_index("ix_relationship_evidence_target_membership", table_name="relationship_evidence")
-    op.drop_index("ix_relationship_evidence_source_membership", table_name="relationship_evidence")
     op.drop_index("uq_relationship_evidence_fact_endpoint_pair", table_name="relationship_evidence")
     op.create_unique_constraint(
         "uq_relationship_evidence_fact_chunk", "relationship_evidence",
