@@ -6,7 +6,7 @@ import logging
 from difflib import SequenceMatcher
 from datetime import UTC, datetime
 from typing import cast
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from arq.connections import ArqRedis
 from redis.asyncio import Redis
@@ -502,7 +502,7 @@ async def process_entity_extraction_work(ctx: dict[str, object], work_id_value: 
                     if action == "suppress":
                         resolution_plan[candidate.key] = ("review", None, [], "owner_suppressed_candidate")
                         continue
-                    if action != "assign" or assigned_id is None or current_resolution == "review" or (
+                    if action != "assign" or assigned_id is None or (
                         current_resolution == "matched" and current_id != str(assigned_id)
                     ):
                         resolution_plan[candidate.key] = ("review", None, possible, "conflicting_owner_corrections")
@@ -541,8 +541,18 @@ async def process_entity_extraction_work(ctx: dict[str, object], work_id_value: 
             for candidate in extracted.entities:
                 resolution, match_id, possible, reason = resolution_plan[candidate.key]
                 if resolution == "review":
+                    candidate_key = hashlib.sha256(f"{candidate.type}:{candidate.key}".encode()).hexdigest()
+                    fingerprint = match_fingerprints[candidate.key]
+                    snapshot = {
+                        "kind": "entity", "candidate_id": str(uuid4()),
+                        "candidate_type": candidate.type, "candidate_name": candidate.name,
+                        "candidate_key": candidate_key, "match_fingerprint": fingerprint,
+                        "chunk_ids": [str(identifier) for identifier in candidate.chunk_ids],
+                        "confidence": candidate.confidence,
+                    }
+                    snapshot["snapshot_digest"] = hashlib.sha256(json.dumps(snapshot, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
                     review.append({
-                        "candidate_name": candidate.name,
+                        **snapshot,
                         "reason": reason or "ambiguous_identity",
                         "possible_entity_ids": possible,
                     })
@@ -571,15 +581,28 @@ async def process_entity_extraction_work(ctx: dict[str, object], work_id_value: 
                                 field_name="description", value=candidate.description,
                             )
                 facts.append({"entity_id": str(entity_id), "candidate_key": candidate.key, "confidence": candidate.confidence})
+            def retain_relationship_review(relation, reason: str, possible: list[str]) -> None:
+                source_candidate = candidate_by_key[relation.source_key]
+                target_candidate = candidate_by_key[relation.target_key]
+                snapshot = {
+                    "kind": "relationship", "candidate_id": str(uuid4()),
+                    "candidate_name": relation.type, "relationship_type": relation.type,
+                    "source_candidate_key": hashlib.sha256(f"{source_candidate.type}:{source_candidate.key}".encode()).hexdigest(),
+                    "target_candidate_key": hashlib.sha256(f"{target_candidate.type}:{target_candidate.key}".encode()).hexdigest(),
+                    "chunk_id": str(relation.chunk_id), "confidence": relation.confidence,
+                }
+                snapshot["snapshot_digest"] = hashlib.sha256(json.dumps(snapshot, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+                review.append({**snapshot, "reason": reason, "possible_entity_ids": possible})
+
             for relation in extracted.relationships:
                 source_id, target_id = key_to_entity.get(relation.source_key), key_to_entity.get(relation.target_key)
                 if source_id is None or target_id is None:
-                    review.append({"candidate_name": relation.type, "reason": "relationship_endpoint_requires_review", "possible_entity_ids": []})
+                    retain_relationship_review(relation, "relationship_endpoint_requires_review", [])
                     continue
                 source_membership = membership_for.get((relation.source_key, relation.chunk_id))
                 target_membership = membership_for.get((relation.target_key, relation.chunk_id))
                 if source_membership is None or target_membership is None or source_id == target_id:
-                    review.append({"candidate_name": relation.type, "reason": "relationship_identity_ambiguous", "possible_entity_ids": [str(source_id), str(target_id)]})
+                    retain_relationship_review(relation, "relationship_identity_ambiguous", [str(source_id), str(target_id)])
                     continue
                 relationship_id = await relationships.publish_extracted_relationship(
                     session, source_entity_id=source_id, target_entity_id=target_id,

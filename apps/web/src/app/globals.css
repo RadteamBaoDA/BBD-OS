@@ -164,6 +164,11 @@ html.dark .button { color: #102117; }
 .status-label { font-weight: 700; }
 .status-value { color: var(--muted); margin-top: 6px; font-size: 13px; }
 .skeleton { min-height: 180px; border-radius: 18px; background: linear-gradient(100deg, var(--surface) 25%, var(--line) 42%, var(--surface) 60%); background-size: 300% 100%; animation: shimmer 1.6s infinite; }
+.entity-graph { height: 380px; margin: 14px 0; overflow: hidden; border: 1px solid var(--line); border-radius: 12px; background: var(--bg); }
+.entity-graph .react-flow__node { border: 1px solid var(--accent); border-radius: 9px; background: var(--surface); color: var(--text); padding: 8px 12px; }
+.entity-graph .react-flow__edge-path { stroke: var(--accent); }
+.entity-graph .react-flow__edge-text { fill: var(--text); }
+.entity-graph .react-flow__edge-textbg { fill: var(--surface); }
 @keyframes shimmer { to { background-position-x: -150%; } }
 @media (max-width: 720px) { .shell { padding: max(12px, env(safe-area-inset-top)) max(12px, env(safe-area-inset-right)) max(12px, env(safe-area-inset-bottom)) max(12px, env(safe-area-inset-left)); } .topbar { margin-bottom: 20px; flex-wrap: wrap; } .top-actions { margin-left: auto; } .workspace { display: block; } .workspace-nav { flex-direction: row; overflow-x: auto; margin: 0 -2px 12px; padding-bottom: 4px; } .workspace-nav a { white-space: nowrap; } .settings-nav { padding: 0; margin-bottom: 18px; } .settings-nav h2 { margin-left: 4px; } .settings-details { display: flex; flex-wrap: wrap; } .connection-footer small { margin-left: 0; width: 100%; } .detail-grid { display: block; } }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; scroll-behavior: auto !important; } }

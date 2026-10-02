@@ -169,11 +169,97 @@ class EntityEvidenceRead(BaseModel):
     source_id: UUID
     title: str
     canonical_url: str | None
+    metadata_is_version_snapshot: bool
     excerpt: str
 
 
 class EntityEvidencePage(BaseModel):
     items: list[EntityEvidenceRead]
+    next_cursor: str | None
+
+
+class EntityReviewEvidence(BaseModel):
+    document_id: UUID
+    document_version_id: UUID
+    version_number: int
+    chunk_id: UUID
+    source_id: UUID
+    source_name: str
+    title: str
+    canonical_url: str | None
+    metadata_is_version_snapshot: bool
+    observed_at: datetime
+    excerpt: str
+
+
+class EntityReviewEndpoint(BaseModel):
+    state: Literal["assigned", "unassigned", "ambiguous"]
+    entity_id: UUID | None = None
+    entity_name: str | None = None
+    entity_type: EntityType | None = None
+    membership_id: UUID | None = None
+
+
+class EntityReviewCandidate(BaseModel):
+    kind: Literal["entity", "relationship"] = "entity"
+    candidate_id: UUID | None = None
+    work_id: UUID
+    result_id: UUID
+    snapshot_digest: str | None = None
+    document_version_id: UUID
+    source_generation: int
+    owner_generation: int | None = None
+    document_id: UUID | None = None
+    version_number: int | None = None
+    source_id: UUID | None = None
+    source_name: str | None = None
+    evidence: list[EntityReviewEvidence] = Field(default_factory=list)
+    relationship_type: str | None = None
+    source_endpoint: EntityReviewEndpoint | None = None
+    target_endpoint: EntityReviewEndpoint | None = None
+    actionable: bool = False
+    status: Literal["pending", "running", "succeeded", "blocked", "failed"]
+    candidate_name: str
+    candidate_type: str | None = None
+    reason: str
+    possible_entity_ids: list[UUID] = Field(default_factory=list)
+
+
+class EntityReviewAssignmentRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    result_id: UUID
+    snapshot_digest: str = Field(pattern=r"^[a-f0-9]{64}$")
+    expected_source_generation: int = Field(ge=1)
+    expected_owner_generation: int = Field(ge=1)
+    target_entity_id: UUID
+    expected_target_revision: int = Field(ge=1)
+    reason: str = Field(min_length=1, max_length=300)
+    future_document_id: UUID | None = None
+
+
+class EntityReviewAssignmentResult(BaseModel):
+    candidate_id: UUID
+    target_entity_id: UUID
+    membership_ids: list[UUID]
+    revision: int
+
+
+class EntityRelationshipReviewRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    result_id: UUID
+    snapshot_digest: str = Field(pattern=r"^[a-f0-9]{64}$")
+    expected_source_generation: int = Field(ge=1)
+    expected_owner_generation: int = Field(ge=1)
+    reason: str = Field(min_length=1, max_length=300)
+
+
+class EntityRelationshipReviewResult(BaseModel):
+    candidate_id: UUID
+    relationship_id: UUID
+
+
+class EntityReviewPage(BaseModel):
+    items: list[EntityReviewCandidate]
     next_cursor: str | None
 
 

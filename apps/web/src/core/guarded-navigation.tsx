@@ -13,6 +13,7 @@ type GuardedNavigation = {
   registerLeaveGuard: (guard: LeaveGuard) => () => void;
   navigate: (href: string, mode?: NavigationMode) => boolean;
   ensureSourcesDocument: () => boolean;
+  ensureEntityDocument: () => boolean;
 };
 
 const GuardedNavigationContext = createContext<GuardedNavigation | null>(null);
@@ -22,11 +23,24 @@ function isSourcesPath(pathname: string) {
   return sourcePaths.has(pathname);
 }
 
+function isEntityDetailPath(pathname: string) {
+  return /^\/knowledge\/entities\/[^/]+\/?$/.test(pathname);
+}
+
 export function GuardedNavigationProvider({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
   const guardRef = useRef<LeaveGuard | null>(null);
   const documentPath = useRef(pathname);
+  const entityDocumentPath = useRef(isEntityDetailPath(pathname) ? pathname : null);
+  const entityReloadRequested = useRef<string | null>(null);
+  const observedPath = useRef(pathname);
+
+  useEffect(() => {
+    if (pathname === observedPath.current) return;
+    if (isEntityDetailPath(observedPath.current)) entityDocumentPath.current = null;
+    observedPath.current = pathname;
+  }, [pathname]);
 
   const registerLeaveGuard = useCallback((guard: LeaveGuard) => {
     guardRef.current = guard;
@@ -41,18 +55,32 @@ export function GuardedNavigationProvider({ children }: { children: ReactNode })
     return false;
   }, [pathname]);
 
+  const ensureEntityDocument = useCallback(() => {
+    if (!isEntityDetailPath(pathname) || entityDocumentPath.current === pathname) return true;
+    if (entityReloadRequested.current !== pathname) {
+      entityReloadRequested.current = pathname;
+      window.location.replace(window.location.href);
+    }
+    return false;
+  }, [pathname]);
+
   const navigate = useCallback((href: string, mode: NavigationMode = 'push') => {
     const destination = new URL(href, window.location.href);
+    const leavesPage = destination.origin !== window.location.origin || destination.pathname !== pathname;
+    const guard = guardRef.current;
+    if (leavesPage && guard?.hasUnsavedChanges()) {
+      if (!guard.confirmDiscard()) return false;
+      guard.acceptLeave();
+    }
     if (destination.origin !== window.location.origin) {
+      guard?.acceptLeave();
       if (mode === 'replace') window.location.replace(destination.href);
       else window.location.assign(destination.href);
       return true;
     }
 
     const leavesSources = isSourcesPath(pathname) && destination.pathname !== pathname;
-    const guard = guardRef.current;
     if (leavesSources) {
-      if (guard?.hasUnsavedChanges() && !guard.confirmDiscard()) return false;
       guard?.acceptLeave();
       window.location.assign(destination.href);
       return true;
@@ -82,18 +110,9 @@ export function GuardedNavigationProvider({ children }: { children: ReactNode })
       const leavesSources = isSourcesPath(window.location.pathname)
         && (!sameOrigin || destination.pathname !== window.location.pathname);
       const entersSources = sameOrigin && isSourcesPath(destination.pathname) && !isSourcesPath(window.location.pathname);
-      if (!leavesSources && !entersSources) return;
-      if (leavesSources && !sameOrigin) {
-        const guard = guardRef.current;
-        if (guard?.hasUnsavedChanges() && !guard.confirmDiscard()) {
-          event.preventDefault();
-          event.stopPropagation();
-          event.stopImmediatePropagation();
-          return;
-        }
-        guard?.acceptLeave();
-        return;
-      }
+      const guard = guardRef.current;
+      const leavesGuardedPage = guard?.hasUnsavedChanges() && (!sameOrigin || destination.pathname !== window.location.pathname);
+      if (!leavesSources && !entersSources && !leavesGuardedPage) return;
       event.preventDefault();
       event.stopPropagation();
       event.stopImmediatePropagation();
@@ -116,7 +135,7 @@ export function GuardedNavigationProvider({ children }: { children: ReactNode })
     };
   }, [navigate]);
 
-  return <GuardedNavigationContext.Provider value={{ registerLeaveGuard, navigate, ensureSourcesDocument }}>
+  return <GuardedNavigationContext.Provider value={{ registerLeaveGuard, navigate, ensureSourcesDocument, ensureEntityDocument }}>
     {children}
   </GuardedNavigationContext.Provider>;
 }

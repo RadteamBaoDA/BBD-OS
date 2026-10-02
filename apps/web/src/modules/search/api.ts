@@ -14,6 +14,9 @@ export type SearchHit = {
   citation: { sourceType: 'document'; sourceId: string; documentId: string; chunkId: string; title: string; url: string | null; observedAt: string | null; quote: string };
 };
 
+export type EntitySearchHit = { id: string; type: string; name: string | null; revision: number; aliases: { id: string; alias: string; confirmed: boolean }[] };
+export type EntitySearchResponse = { items: EntitySearchHit[]; next_cursor: string | null };
+
 export type SearchResponse = { items: SearchHit[]; next_cursor: string | null; effective_mode: 'lexical' | 'hybrid'; warnings: string[] };
 export type SearchIndexStatus = { run_id: string | null; status: string; model_id: string | null; dimensions: number | null; indexed_items: number; failed_items: number };
 export type SearchFilters = { source_ids: string[]; date_from: string | null; date_to: string | null; content_types: string[] };
@@ -24,6 +27,12 @@ export function searchDocuments(query: string, filters: SearchFilters, mode: 'le
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ query, filters, mode, limit: 20, cursor: cursor ?? null }),
   });
+}
+
+export function searchEntities(query: string, cursor?: string) {
+  const params = new URLSearchParams({ limit: '20', q: query });
+  if (cursor) params.set('cursor', cursor);
+  return apiRequest<EntitySearchResponse>(`/api/v1/entities?${params}`);
 }
 
 export function getSearchIndexStatus() { return apiRequest<SearchIndexStatus>('/api/v1/search/index'); }

@@ -14,8 +14,11 @@ from modules.knowledge.entities.schemas import (
     AliasCreate, EntityCorrectionPreview, EntityCorrectionResult, EntityCreate,
     EntityEvidencePage, EntityExtractionStatus, EntityMergeRequest,
     EntityPage, EntityPatch, EntityRead, EntitySplitRequest, EntitySuppressionRequest,
+    EntityReviewPage,
+    EntityReviewAssignmentRequest, EntityReviewAssignmentResult,
+    EntityRelationshipReviewRequest, EntityRelationshipReviewResult,
 )
-from modules.knowledge.relationships import public as relationships
+from modules.knowledge.public import KnowledgeService
 from modules.knowledge.relationships.schemas import NeighborPage
 
 router = APIRouter(tags=["knowledge"])
@@ -41,7 +44,45 @@ async def list_entities(
     entity_type: Annotated[str | None, Query(alias="type", max_length=32)] = None,
     q: Annotated[str | None, Query(max_length=300)] = None,
 ) -> EntityPage:
-    return await public.list_entities(session, limit, cursor, entity_type, q)
+    return await KnowledgeService(session).entities(limit=limit, cursor=cursor, entity_type=entity_type, query=q)
+
+
+@router.get("/api/v1/entities/review", response_model=EntityReviewPage)
+async def list_review_candidates(
+    session: Session, _owner: OwnerRead,
+    limit: Annotated[int, Query(ge=1, le=100)] = 50,
+    cursor: Annotated[str | None, Query(max_length=512)] = None,
+) -> EntityReviewPage:
+    try:
+        return await KnowledgeService(session).entity_review(limit=limit, cursor=cursor)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@router.post("/api/v1/entities/review/{candidate_id}/assign", response_model=EntityReviewAssignmentResult)
+async def assign_review_candidate(
+    candidate_id: UUID, payload: EntityReviewAssignmentRequest,
+    session: Session, owner: OwnerWrite,
+) -> EntityReviewAssignmentResult:
+    try:
+        return await KnowledgeService(session).assign_review_candidate(candidate_id, payload, actor_id=owner.owner_id)
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail={"code": "ENTITY_REVIEW_CONFLICT", "message": str(exc), "details": {}}) from exc
+
+
+@router.post("/api/v1/entities/review/{candidate_id}/resolve-relationship", response_model=EntityRelationshipReviewResult)
+async def resolve_relationship_review(
+    candidate_id: UUID, payload: EntityRelationshipReviewRequest,
+    session: Session, owner: OwnerWrite,
+) -> EntityRelationshipReviewResult:
+    try:
+        return await KnowledgeService(session).resolve_relationship_review(candidate_id, payload, actor_id=owner.owner_id)
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail={"code": "RELATIONSHIP_REVIEW_CONFLICT", "message": str(exc), "details": {}}) from exc
 
 
 @router.post("/api/v1/entities", response_model=EntityRead, status_code=201)
@@ -61,7 +102,7 @@ async def get_neighbors(
     cursor: str | None = Query(default=None, max_length=512),
 ) -> NeighborPage:
     try:
-        result = await relationships.get_neighbors(session, entity_id, limit, cursor)
+        result = await KnowledgeService(session).entity_neighbors(entity_id, limit=limit, cursor=cursor)
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     if result is None:
@@ -102,7 +143,7 @@ async def delete_alias(
 
 @router.get("/api/v1/entities/{entity_id}", response_model=EntityRead)
 async def get_entity(entity_id: UUID, session: Session, _owner: OwnerRead) -> EntityRead:
-    entity = await public.get_entity(session, entity_id)
+    entity = await KnowledgeService(session).entity(entity_id)
     if entity is None:
         raise HTTPException(status_code=404, detail="Entity not found")
     return entity
@@ -115,7 +156,7 @@ async def list_evidence(
     cursor: Annotated[str | None, Query(max_length=512)] = None,
 ) -> EntityEvidencePage:
     try:
-        page = await public.list_entity_evidence(session, entity_id, limit, cursor)
+        page = await KnowledgeService(session).entity_evidence(entity_id, limit=limit, cursor=cursor)
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     if page is None:

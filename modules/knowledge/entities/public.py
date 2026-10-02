@@ -2,17 +2,22 @@ from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
 from hashlib import sha256
+import base64
+import binascii
+from copy import deepcopy
+import json
 import math
 from typing import TYPE_CHECKING, Literal
 from uuid import UUID
 
-from sqlalchemy import delete, desc, func, or_, select, tuple_
+from sqlalchemy import delete, desc, func, or_, select, tuple_, and_
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.pagination import decode_cursor, encode_cursor
 from core.realtime import commit_with_replay, make_graph_change
+from modules.sources import public as sources
 from modules.knowledge.entities.models import (
     Entity,
     EntityAlias,
@@ -30,12 +35,20 @@ from modules.knowledge.entities.schemas import (
     EntityAliasRead,
     EntityEvidencePage,
     EntityEvidenceRead,
+    EntityReviewEvidence,
+    EntityReviewEndpoint,
     EntityCreate,
     EntityMembershipReferenceRead,
     EntityPage,
     EntityPatch,
     EntityRead,
     EntityReferenceRead,
+    EntityReviewCandidate,
+    EntityReviewPage,
+    EntityReviewAssignmentRequest,
+    EntityReviewAssignmentResult,
+    EntityRelationshipReviewRequest,
+    EntityRelationshipReviewResult,
     canonicalize_name,
 )
 
@@ -263,13 +276,473 @@ async def list_entity_evidence(
             document_version_id=row.document_version_id, version_number=ref.version_number,
             chunk_id=row.chunk_id, observed_at=row.observed_at, extracted_at=row.extracted_at,
             confidence=row.confidence, source_id=ref.source_id, title=ref.title,
-            canonical_url=ref.canonical_url, excerpt=ref.excerpt,
+            canonical_url=ref.canonical_url,
+            metadata_is_version_snapshot=ref.metadata_is_version_snapshot, excerpt=ref.excerpt,
         )
         for row in rows
         if (ref := by_pair.get((row.document_version_id, row.chunk_id))) is not None
     ]
     next_cursor = encode_cursor(rows[-1].extracted_at, rows[-1].id) if has_more and rows else None
     return EntityEvidencePage(items=items, next_cursor=next_cursor)
+
+
+def _review_cursor(timestamp: datetime, work_id: UUID, index: int) -> str:
+    raw = json.dumps([timestamp.isoformat(), str(work_id), index], separators=(",", ":")).encode()
+    return base64.urlsafe_b64encode(raw).decode().rstrip("=")
+
+
+def _decode_review_cursor(value: str) -> tuple[datetime, UUID, int]:
+    try:
+        if not value or len(value) > 512:
+            raise ValueError
+        raw = base64.urlsafe_b64decode(value + "=" * (-len(value) % 4))
+        decoded = json.loads(raw)
+        if (not isinstance(decoded, list) or len(decoded) != 3
+                or not isinstance(decoded[0], str) or not isinstance(decoded[1], str)
+                or type(decoded[2]) is not int):
+            raise ValueError
+        timestamp, work_id, index = decoded
+        result = datetime.fromisoformat(timestamp), UUID(work_id), index
+        if result[2] < 0 or result[2] > 100:
+            raise ValueError
+        return result
+    except (binascii.Error, ValueError, TypeError, KeyError) as exc:
+        raise ValueError("Invalid review cursor") from exc
+
+
+async def list_review_candidates(session: AsyncSession, limit: int = 50, cursor: str | None = None) -> EntityReviewPage:
+    """Bounded owner projection; only immutable future snapshots are actionable."""
+    if not 1 <= limit <= 100:
+        raise ValueError("Review page limit must be between 1 and 100")
+    cursor_time, cursor_work, cursor_index = _decode_review_cursor(cursor) if cursor else (None, None, 0)
+    statement = select(EntityExtractionWork, EntityExtractionResult).join(
+        EntityExtractionResult, EntityExtractionResult.work_id == EntityExtractionWork.id
+    ).where(EntityExtractionResult.review_json.is_not(None))
+    if cursor_time is not None and cursor_work is not None:
+        statement = statement.where(tuple_(EntityExtractionWork.updated_at, EntityExtractionWork.id) <= (cursor_time, cursor_work))
+    rows = (await session.execute(
+        statement
+        .order_by(EntityExtractionWork.updated_at.desc(), EntityExtractionWork.id.desc())
+        .limit(101)
+    )).all()
+    from modules.knowledge.documents import public as documents
+    fences = await documents.review_version_fences(session, [work.document_version_id for work, _ in rows[:100]])
+    items: list[EntityReviewCandidate] = []
+    evidence_keys: list[list[tuple[UUID, UUID]]] = []
+    endpoint_keys: list[tuple[UUID, UUID, str, str, UUID] | None] = []
+    next_cursor = None
+    for row_index, (work, result) in enumerate(rows[:100]):
+        review = result.review_json if isinstance(result.review_json, list) else []
+        start = cursor_index if cursor_work == work.id else 0
+        cursor_work = None
+        for candidate_index, candidate in enumerate(review[start:], start=start):
+            if not isinstance(candidate, dict):
+                continue
+            state = candidate.get("decision_state")
+            if isinstance(state, dict) and state.get("kind") in {"assigned", "resolved", "suppressed"}:
+                continue
+            name, reason = candidate.get("candidate_name", candidate.get("candidate_name")), candidate.get("reason")
+            if not isinstance(name, str) or not isinstance(reason, str):
+                continue
+            ids = candidate.get("possible_entity_ids", [])
+            valid_ids = []
+            for value in ids if isinstance(ids, list) else []:
+                try:
+                    valid_ids.append(UUID(str(value)))
+                except ValueError:
+                    continue
+            kind = candidate.get("kind") if candidate.get("kind") in {"entity", "relationship"} else (
+                "relationship" if reason.startswith("relationship_") else "entity"
+            )
+            candidate_id = None
+            try:
+                candidate_id = UUID(str(candidate.get("candidate_id"))) if candidate.get("candidate_id") else None
+            except ValueError:
+                pass
+            digest_ok = False
+            try:
+                digest_ok = candidate.get("snapshot_digest") == _review_snapshot_digest(candidate)
+            except (KeyError, TypeError):
+                pass
+            actionable = bool(candidate_id and digest_ok and not state and work.status == "succeeded" and (
+                work.document_version_id in fences and (
+                kind == "entity" and candidate.get("candidate_key") and candidate.get("match_fingerprint") and candidate.get("chunk_ids")
+                or kind == "relationship" and candidate.get("source_candidate_key") and candidate.get("target_candidate_key") and candidate.get("chunk_id") and candidate.get("relationship_type")
+                )
+            ))
+            candidate_evidence: list[tuple[UUID, UUID]] = []
+            if kind == "entity" and isinstance(candidate.get("chunk_ids"), list):
+                for raw_chunk in candidate["chunk_ids"][:5]:
+                    try:
+                        candidate_evidence.append((work.document_version_id, UUID(str(raw_chunk))))
+                    except (ValueError, TypeError):
+                        continue
+            elif kind == "relationship" and candidate.get("chunk_id"):
+                try:
+                    candidate_evidence.append((work.document_version_id, UUID(str(candidate["chunk_id"]))))
+                except (ValueError, TypeError):
+                    pass
+            fence = fences.get(work.document_version_id)
+            items.append(EntityReviewCandidate(
+                kind=kind, candidate_id=candidate_id, work_id=work.id, result_id=result.id,
+                snapshot_digest=candidate.get("snapshot_digest") if actionable else None,
+                document_version_id=work.document_version_id, source_generation=work.source_generation,
+                owner_generation=fence.current_source_generation if fence else None,
+                document_id=fence.document_id if fence else None,
+                version_number=fence.version_number if fence else None,
+                source_id=fence.source_id if fence else None,
+                source_name=fence.source_name if fence else None,
+                actionable=actionable, status=work.status, candidate_name=name[:300],
+                candidate_type=str(candidate.get("candidate_type")) if candidate.get("candidate_type") else None,
+                reason=reason[:128], possible_entity_ids=valid_ids[:30],
+                relationship_type=str(candidate.get("relationship_type")) if kind == "relationship" and candidate.get("relationship_type") else None,
+            ))
+            evidence_keys.append(candidate_evidence)
+            endpoint_keys.append((work.id, work.document_version_id, str(candidate.get("source_candidate_key")), str(candidate.get("target_candidate_key")), candidate_evidence[0][1]) if kind == "relationship" and candidate.get("source_candidate_key") and candidate.get("target_candidate_key") and candidate_evidence else None)
+            if len(items) == limit:
+                if candidate_index + 1 < len(review):
+                    next_cursor = _review_cursor(work.updated_at, work.id, candidate_index + 1)
+                elif row_index + 1 < 100 or len(rows) > 100:
+                    next_cursor = _review_cursor(work.updated_at, work.id, len(review))
+                break
+        if len(items) == limit:
+            break
+    if len(items) < limit and len(rows) > 100:
+        work, result = rows[99]
+        review = result.review_json if isinstance(result.review_json, list) else []
+        next_cursor = _review_cursor(work.updated_at, work.id, len(review))
+    all_keys = list(dict.fromkeys(key for group in evidence_keys for key in group))
+    refs_by_pair = {}
+    for offset in range(0, len(all_keys), 100):
+        refs = await documents.read_evidence_refs(session, all_keys[offset:offset + 100])
+        refs_by_pair.update({(ref.document_version_id, ref.chunk_id): ref for ref in refs})
+    endpoint_bindings = list(dict.fromkeys(
+        (str(work_id), key, version_id, chunk_id)
+        for endpoints in endpoint_keys if endpoints is not None
+        for work_id, version_id, source_key, target_key, chunk_id in (endpoints,)
+        for key in (source_key, target_key)
+    ))
+    endpoint_rows = list((await session.scalars(
+        select(EntityEvidenceMembership).where(
+            tuple_(EntityEvidenceMembership.extraction_identity, EntityEvidenceMembership.candidate_key,
+                   EntityEvidenceMembership.document_version_id, EntityEvidenceMembership.chunk_id).in_(endpoint_bindings)
+        ).order_by(EntityEvidenceMembership.entity_id, EntityEvidenceMembership.id).limit(401)
+    )).all()) if endpoint_bindings else []
+    endpoint_entities = sorted({row.entity_id for row in endpoint_rows}, key=str)
+    entity_refs = []
+    for offset in range(0, len(endpoint_entities), 100):
+        entity_refs.extend(await get_entity_refs(session, endpoint_entities[offset:offset + 100]))
+    entity_refs_by_id = {ref.requested_id: ref for ref in entity_refs}
+    for item, keys, endpoints in zip(items, evidence_keys, endpoint_keys):
+        fence = fences.get(item.document_version_id)
+        item.evidence = [EntityReviewEvidence(
+            document_id=ref.document_id, document_version_id=ref.document_version_id,
+            version_number=ref.version_number, chunk_id=ref.chunk_id, source_id=ref.source_id,
+            source_name=fence.source_name if fence else "", title=ref.title,
+            canonical_url=ref.canonical_url,
+            metadata_is_version_snapshot=ref.metadata_is_version_snapshot,
+            observed_at=ref.observed_at, excerpt=ref.excerpt,
+        ) for key in keys if (ref := refs_by_pair.get(key)) is not None]
+        if endpoints is None:
+            continue
+        work_id, version_id, source_key, target_key, chunk_id = endpoints
+        endpoint_dtos = []
+        for key in (source_key, target_key):
+            matches = [row for row in endpoint_rows if row.extraction_identity == str(work_id) and row.candidate_key == key and row.document_version_id == version_id and row.chunk_id == chunk_id]
+            if len(matches) != 1:
+                endpoint_dtos.append(EntityReviewEndpoint(state="ambiguous" if matches else "unassigned"))
+                continue
+            member = matches[0]
+            ref = entity_refs_by_id.get(member.entity_id)
+            if ref is None:
+                endpoint_dtos.append(EntityReviewEndpoint(state="unassigned"))
+                continue
+            endpoint_dtos.append(EntityReviewEndpoint(
+                state="assigned", entity_id=ref.canonical_id, entity_name=ref.name,
+                entity_type=ref.type, membership_id=member.id,
+            ))
+        item.source_endpoint, item.target_endpoint = endpoint_dtos
+        if (len(endpoint_dtos) != 2 or any(endpoint.state != "assigned" for endpoint in endpoint_dtos)
+                or endpoint_dtos[0].entity_id == endpoint_dtos[1].entity_id):
+            item.actionable = False
+            item.snapshot_digest = None
+    return EntityReviewPage(items=items, next_cursor=next_cursor)
+
+
+def _review_snapshot_digest(candidate: dict[str, object]) -> str:
+    keys = (
+        ("kind", "candidate_id", "candidate_type", "candidate_name", "candidate_key", "match_fingerprint", "chunk_ids", "confidence")
+        if candidate.get("kind") == "entity" else
+        ("kind", "candidate_id", "candidate_name", "relationship_type", "source_candidate_key", "target_candidate_key", "chunk_id", "confidence")
+    )
+    snapshot = {key: candidate[key] for key in keys}
+    return sha256(json.dumps(snapshot, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+
+
+def _review_entity_bindings(review: list[object]) -> dict[str, tuple[str, set[UUID]]]:
+    bindings: dict[str, tuple[str, set[UUID]]] = {}
+    for item in review:
+        if not isinstance(item, dict) or item.get("kind") != "entity":
+            continue
+        fingerprint, raw_chunks = item.get("match_fingerprint"), item.get("chunk_ids")
+        if fingerprint is None and raw_chunks is None:
+            continue
+        if (not isinstance(fingerprint, str) or len(fingerprint) != 64
+                or any(char not in "0123456789abcdef" for char in fingerprint)
+                or not isinstance(raw_chunks, list) or not 1 <= len(raw_chunks) <= 5
+                or not isinstance(item.get("candidate_key"), str) or len(item["candidate_key"]) != 64
+                or not item.get("candidate_id")):
+            raise ValueError("Same-result candidate selectors are incomplete; reload the review")
+        try:
+            chunks = {UUID(str(value)) for value in raw_chunks}
+            key = str(UUID(str(item["candidate_id"])))
+            if item.get("snapshot_digest") != _review_snapshot_digest(item):
+                raise ValueError
+        except (KeyError, ValueError, TypeError) as exc:
+            raise ValueError("Same-result candidate selectors are invalid; reload the review") from exc
+        if len(chunks) != len(raw_chunks) or key in bindings:
+            raise ValueError("Same-result candidate selectors are ambiguous; reload the review")
+        bindings[key] = (fingerprint, chunks)
+    if len(bindings) > 30:
+        raise ValueError("Same-result candidate selector set exceeds its limit")
+    return bindings
+
+
+async def assign_review_candidate(
+    session: AsyncSession, candidate_id: UUID, payload: EntityReviewAssignmentRequest, *, actor_id: int,
+) -> EntityReviewAssignmentResult:
+    """Bind one durable extraction candidate to an owner-selected canonical entity."""
+    from modules.knowledge.documents import public as documents
+
+    result_hint = await session.get(EntityExtractionResult, payload.result_id)
+    if result_hint is None:
+        raise LookupError("Review result is unavailable")
+    work_hint = await session.get(EntityExtractionWork, result_hint.work_id)
+    if work_hint is None:
+        raise LookupError("Review work is unavailable")
+    extraction_generation = work_hint.source_generation
+    extraction_version_id = work_hint.document_version_id
+    extraction_work_id = work_hint.id
+    reviews = result_hint.review_json if isinstance(result_hint.review_json, list) else []
+    candidates = [item for item in reviews if isinstance(item, dict) and item.get("candidate_id") == str(candidate_id)]
+    if len(candidates) != 1:
+        raise LookupError("Review candidate is no longer available")
+    snapshot = candidates[0]
+    if snapshot.get("kind") != "entity" or snapshot.get("snapshot_digest") != payload.snapshot_digest or _review_snapshot_digest(snapshot) != payload.snapshot_digest:
+        raise ValueError("Review candidate snapshot changed; reload the queue")
+    if snapshot.get("decision_state"):
+        raise ValueError("Review candidate was already resolved")
+    if payload.future_document_id is not None:
+        raise ValueError("Future document scope is not available from this review action")
+    try:
+        candidate_type = str(snapshot["candidate_type"])
+        candidate_key = str(snapshot["candidate_key"])
+        fingerprint = str(snapshot["match_fingerprint"])
+        chunks = [UUID(str(value)) for value in snapshot["chunk_ids"]]
+        confidence = float(snapshot["confidence"])
+    except (KeyError, TypeError, ValueError) as exc:
+        raise ValueError("Review candidate evidence selector is unavailable") from exc
+    if not 1 <= len(chunks) <= 5 or len(set(chunks)) != len(chunks) or len(fingerprint) != 64 or len(candidate_key) != 64:
+        raise ValueError("Review candidate evidence selector is invalid")
+
+    locator = await documents.review_version_locator(session, work_hint.document_version_id)
+    if locator is None:
+        raise LookupError("Review evidence was removed")
+    document_id, source_id = locator
+    source = await sources.lock_source(session, source_id)
+    if source is None or source.generation != payload.expected_owner_generation:
+        raise ValueError("Owner evidence fence changed; reload the review candidate")
+    evidence = await documents.lock_review_version_evidence(
+        session, document_id=document_id, source_id=source_id,
+        version_id=work_hint.document_version_id, source_generation=source.generation,
+        chunk_ids=chunks,
+    )
+    if evidence is None:
+        raise LookupError("Selected source evidence is no longer retained")
+
+    bindings = _review_entity_bindings(reviews)
+    if str(candidate_id) not in bindings or bindings[str(candidate_id)] != (fingerprint, set(chunks)):
+        raise ValueError("Selected candidate is missing from the complete result selector set")
+    prior = await get_document_correction_decisions(session, document_id, work_hint.document_version_id, bindings)
+    prior_decision = prior.get(str(candidate_id))
+    if prior_decision is not None and (prior_decision[1] != "assign" or prior_decision[2] != payload.target_entity_id):
+        raise ValueError("A conflicting correction decision already exists")
+    refs = await get_entity_refs(session, [payload.target_entity_id], for_write=True)
+    target = refs[0]
+    if target.canonical_id != payload.target_entity_id or target.type != candidate_type or target.revision != payload.expected_target_revision:
+        raise ValueError("Target entity changed or has an incompatible identity")
+
+    work = await session.scalar(select(EntityExtractionWork).where(EntityExtractionWork.id == work_hint.id).with_for_update().execution_options(populate_existing=True))
+    result = await session.scalar(select(EntityExtractionResult).where(
+        EntityExtractionResult.id == payload.result_id, EntityExtractionResult.work_id == work_hint.id,
+    ).with_for_update().execution_options(populate_existing=True))
+    if work is None or result is None or work.status != "succeeded" or work.document_version_id != extraction_version_id or work.source_generation != extraction_generation or work.id != extraction_work_id:
+        raise ValueError("Review extraction changed; reload the queue")
+    current_snapshot = [item for item in (result.review_json if isinstance(result.review_json, list) else []) if isinstance(item, dict) and item.get("candidate_id") == str(candidate_id)]
+    if len(current_snapshot) != 1 or current_snapshot[0].get("snapshot_digest") != payload.snapshot_digest or _review_snapshot_digest(current_snapshot[0]) != payload.snapshot_digest or current_snapshot[0].get("decision_state"):
+        raise ValueError("Review candidate snapshot changed or was resolved")
+    evidence = await documents.lock_review_version_evidence(
+        session, document_id=document_id, source_id=source_id,
+        version_id=work.document_version_id, source_generation=payload.expected_owner_generation,
+        chunk_ids=chunks,
+    )
+    if evidence is None:
+        raise LookupError("Selected source evidence is no longer retained")
+    current_bindings = _review_entity_bindings(result.review_json if isinstance(result.review_json, list) else [])
+    if current_bindings != bindings:
+        raise ValueError("Same-result candidate selectors changed; reload the review")
+    current = await get_document_correction_decisions(session, document_id, work.document_version_id, current_bindings, for_update=True)
+    decision = current.get(str(candidate_id))
+    if decision != prior_decision:
+        raise ValueError("Correction decision changed; reload the review")
+
+    memberships = [await record_extraction_membership(
+        session, entity_id=payload.target_entity_id,
+        evidence_ref=documents.ExtractionEvidenceRef(
+            document_id=ref.document_id, document_version_id=ref.document_version_id,
+            source_id=ref.source_id, source_generation=ref.current_source_generation,
+            chunk_id=ref.chunk_id,
+        ),
+        source_generation=payload.expected_owner_generation, extraction_identity=str(work.id),
+        candidate_key=candidate_key, match_fingerprint=fingerprint,
+        observed_at=ref.observed_at, confidence=confidence,
+    ) for ref in evidence]
+    for membership_id in memberships:
+        existing = await session.scalar(select(EntityCorrectionDecision).where(
+            EntityCorrectionDecision.scope == "evidence", EntityCorrectionDecision.membership_id == membership_id,
+        ).with_for_update())
+        if existing is None:
+            session.add(EntityCorrectionDecision(
+                decision="assign", scope="evidence", entity_id=payload.target_entity_id,
+                membership_id=membership_id, match_fingerprint=fingerprint, actor_id=actor_id,
+                reason=payload.reason, created_at=datetime.now(UTC),
+            ))
+        elif existing.decision != "assign" or existing.entity_id != payload.target_entity_id:
+            raise ValueError("Evidence membership already has a conflicting owner decision")
+    updated_review = deepcopy(result.review_json)
+    for item in updated_review:
+        if isinstance(item, dict) and item.get("candidate_id") == str(candidate_id):
+            item["decision_state"] = {"kind": "assigned", "target_entity_id": str(payload.target_entity_id), "membership_ids": [str(value) for value in memberships]}
+            break
+    result.review_json = updated_review
+    await record_owner_action(
+        session, actor_id=actor_id, operation="entity_review_assign", reason=payload.reason,
+        affected_ids=[payload.target_entity_id, candidate_id, *memberships],
+        revisions={str(payload.target_entity_id): target.revision},
+    )
+    await session.flush()
+    await commit_with_replay(session, [make_graph_change(entity_id=payload.target_entity_id)])
+    return EntityReviewAssignmentResult(candidate_id=candidate_id, target_entity_id=payload.target_entity_id, membership_ids=memberships, revision=target.revision)
+
+
+async def resolve_relationship_review(
+    session: AsyncSession, candidate_id: UUID, payload: EntityRelationshipReviewRequest, *, actor_id: int,
+) -> EntityRelationshipReviewResult:
+    """Publish a stored relationship only after both exact endpoint memberships exist."""
+    from modules.knowledge.documents import public as documents
+    from modules.knowledge.relationships import public as relationships
+
+    result_hint = await session.get(EntityExtractionResult, payload.result_id)
+    if result_hint is None:
+        raise LookupError("Review result is unavailable")
+    work_hint = await session.get(EntityExtractionWork, result_hint.work_id)
+    if work_hint is None:
+        raise LookupError("Review work is unavailable")
+    extraction_generation = work_hint.source_generation
+    extraction_version_id = work_hint.document_version_id
+    extraction_work_id = work_hint.id
+    reviews = result_hint.review_json if isinstance(result_hint.review_json, list) else []
+    snapshots = [item for item in reviews if isinstance(item, dict) and item.get("candidate_id") == str(candidate_id)]
+    if len(snapshots) != 1 or snapshots[0].get("kind") != "relationship":
+        raise LookupError("Relationship review snapshot is unavailable")
+    snapshot = snapshots[0]
+    if snapshot.get("snapshot_digest") != payload.snapshot_digest or _review_snapshot_digest(snapshot) != payload.snapshot_digest:
+        raise ValueError("Relationship review snapshot changed")
+    if snapshot.get("decision_state"):
+        raise ValueError("Relationship review item was already resolved")
+    source_key = str(snapshot.get("source_candidate_key", ""))
+    target_key = str(snapshot.get("target_candidate_key", ""))
+    relationship_type = str(snapshot.get("relationship_type", ""))
+    chunk_id = UUID(str(snapshot.get("chunk_id")))
+    if not source_key or not target_key or source_key == target_key or not relationship_type:
+        raise ValueError("Relationship endpoint selector is invalid")
+
+    locator = await documents.review_version_locator(session, work_hint.document_version_id)
+    if locator is None:
+        raise LookupError("Relationship evidence was removed")
+    document_id, source_id = locator
+    source = await sources.lock_source(session, source_id)
+    if source is None or source.generation != payload.expected_owner_generation:
+        raise ValueError("Owner evidence fence changed; reload the relationship review")
+    refs = await documents.lock_review_version_evidence(
+        session, document_id=document_id, source_id=source_id,
+        version_id=work_hint.document_version_id, source_generation=source.generation,
+        chunk_ids=[chunk_id],
+    )
+    if refs is None:
+        raise LookupError("Relationship evidence is no longer retained")
+
+    async def endpoint_memberships() -> tuple[EntityEvidenceMembership, EntityEvidenceMembership]:
+        rows = list((await session.scalars(select(EntityEvidenceMembership).where(
+            EntityEvidenceMembership.extraction_identity == str(work_hint.id),
+            EntityEvidenceMembership.candidate_key.in_([source_key, target_key]),
+            EntityEvidenceMembership.document_version_id == work_hint.document_version_id,
+            EntityEvidenceMembership.chunk_id == chunk_id,
+        ).order_by(EntityEvidenceMembership.entity_id, EntityEvidenceMembership.id).limit(3))).all())
+        left = [row for row in rows if row.candidate_key == source_key]
+        right = [row for row in rows if row.candidate_key == target_key]
+        if len(left) != 1 or len(right) != 1 or left[0].id == right[0].id or left[0].entity_id == right[0].entity_id:
+            raise ValueError("Both endpoints require one distinct exact evidence membership on the cited chunk")
+        return left[0], right[0]
+
+    source_membership, target_membership = await endpoint_memberships()
+    expected_membership_ids = (source_membership.id, target_membership.id)
+    expected_membership_identity = {
+        source_membership.id: (source_membership.entity_id, source_membership.document_version_id, source_membership.chunk_id),
+        target_membership.id: (target_membership.entity_id, target_membership.document_version_id, target_membership.chunk_id),
+    }
+    endpoint_refs = await get_entity_refs(session, [source_membership.entity_id, target_membership.entity_id], for_write=True)
+    if len(endpoint_refs) != 2 or any(ref.requested_id != ref.canonical_id for ref in endpoint_refs):
+        raise ValueError("Relationship endpoint identity changed; review the assignments")
+    locked = await get_membership_refs(session, [source_membership.id, target_membership.id], for_write=True)
+    work = await session.scalar(select(EntityExtractionWork).where(EntityExtractionWork.id == work_hint.id).with_for_update().execution_options(populate_existing=True))
+    result = await session.scalar(select(EntityExtractionResult).where(
+        EntityExtractionResult.id == payload.result_id, EntityExtractionResult.work_id == work_hint.id,
+    ).with_for_update().execution_options(populate_existing=True))
+    if work is None or result is None or work.status != "succeeded" or work.source_generation != extraction_generation or work.document_version_id != extraction_version_id or work.id != extraction_work_id:
+        raise ValueError("Relationship extraction changed; reload the queue")
+    current = [item for item in (result.review_json if isinstance(result.review_json, list) else []) if isinstance(item, dict) and item.get("candidate_id") == str(candidate_id)]
+    if len(current) != 1 or current[0].get("snapshot_digest") != payload.snapshot_digest or _review_snapshot_digest(current[0]) != payload.snapshot_digest or current[0].get("decision_state"):
+        raise ValueError("Relationship review snapshot changed or was resolved")
+    source_membership, target_membership = await endpoint_memberships()
+    locked_by_id = {item.id: (item.entity_id, item.document_version_id, item.chunk_id) for item in locked}
+    current_membership_ids = (source_membership.id, target_membership.id)
+    if (current_membership_ids != expected_membership_ids
+            or locked_by_id != expected_membership_identity
+            or any(item.entity_id not in {ref.canonical_id for ref in endpoint_refs} for item in locked)):
+        raise ValueError("Endpoint membership identity changed")
+    relationship_id = await relationships.publish_extracted_relationship(
+        session, source_entity_id=source_membership.entity_id,
+        target_entity_id=target_membership.entity_id, relationship_type=relationship_type,
+        document_version_id=work.document_version_id, chunk_id=chunk_id,
+        source_membership_id=source_membership.id, target_membership_id=target_membership.id,
+        confidence=float(snapshot["confidence"]),
+    )
+    if relationship_id is None:
+        raise ValueError("Relationship endpoints are identical")
+    updated_review = deepcopy(result.review_json)
+    for item in updated_review:
+        if isinstance(item, dict) and item.get("candidate_id") == str(candidate_id):
+            item["decision_state"] = {"kind": "resolved", "relationship_id": str(relationship_id)}
+            break
+    result.review_json = updated_review
+    await record_owner_action(
+        session, actor_id=actor_id, operation="relationship_review_resolve", reason=payload.reason,
+        affected_ids=[relationship_id, candidate_id, source_membership.id, target_membership.id],
+    )
+    await session.flush()
+    await commit_with_replay(session, [make_graph_change(relationship_id=relationship_id)])
+    return EntityRelationshipReviewResult(candidate_id=candidate_id, relationship_id=relationship_id)
 
 
 async def publish_derived_field(

@@ -1,0 +1,27 @@
+'use client';
+
+import * as React from 'react';
+import { AlertDialog as AlertDialogPrimitive } from 'radix-ui';
+import { Button } from '@/components/ui/button';
+
+export const AlertDialog = AlertDialogPrimitive.Root;
+export const AlertDialogTrigger = AlertDialogPrimitive.Trigger;
+
+export function AlertDialogContent({ children, ...props }: React.ComponentProps<typeof AlertDialogPrimitive.Content>) {
+  return <AlertDialogPrimitive.Portal><AlertDialogPrimitive.Overlay className="fixed inset-0 z-50 bg-foreground/50" /><AlertDialogPrimitive.Content {...props} className={`fixed left-1/2 top-1/2 z-50 grid w-full max-w-[calc(100%-2rem)] -translate-x-1/2 -translate-y-1/2 gap-4 rounded-lg border bg-background p-6 shadow-lg outline-none sm:max-w-lg ${props.className ?? ''}`}>{children}</AlertDialogPrimitive.Content></AlertDialogPrimitive.Portal>;
+}
+
+export function AlertDialogHeader({ children, ...props }: React.ComponentProps<'div'>) {
+  return <div {...props} className={`flex flex-col gap-2 text-left ${props.className ?? ''}`}>{children}</div>;
+}
+
+export function AlertDialogFooter({ children, ...props }: React.ComponentProps<'div'>) {
+  return <div {...props} className={`flex flex-col-reverse gap-2 sm:flex-row sm:justify-end ${props.className ?? ''}`}>{children}</div>;
+}
+
+export const AlertDialogTitle = AlertDialogPrimitive.Title;
+export const AlertDialogDescription = AlertDialogPrimitive.Description;
+
+export function AlertDialogCancel(props: React.ComponentProps<typeof AlertDialogPrimitive.Cancel>) {
+  return <AlertDialogPrimitive.Cancel asChild><Button className="secondary" {...props} /></AlertDialogPrimitive.Cancel>;
+}

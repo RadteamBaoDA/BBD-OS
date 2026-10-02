@@ -6,6 +6,7 @@ export type ShellMessageKey =
   | 'aiRouter'
   | 'dashboardGadgets'
   | 'documents'
+  | 'entities'
   | 'search'
   | 'systemStatus';
 
@@ -29,6 +30,7 @@ export const settingsGroups: NavigationDestination[] = [
 
 export const detailDestinations: NavigationDestination[] = [
   { id: 'documents', href: '/knowledge/documents', messageKey: 'documents' },
+  { id: 'entities', href: '/knowledge/entities', messageKey: 'entities' },
   { id: 'search', href: '/search', messageKey: 'search' },
   { id: 'system', href: '/settings/system', messageKey: 'systemStatus' },
 ];

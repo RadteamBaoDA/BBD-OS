@@ -1,9 +1,14 @@
 export class ApiError extends Error {
+  readonly code: string | null;
+  readonly details: unknown;
   constructor(
     readonly status: number,
     message: string,
+    payload?: { code?: unknown; details?: unknown },
   ) {
     super(message);
+    this.code = typeof payload?.code === 'string' ? payload.code : null;
+    this.details = payload?.details;
   }
 }
 
@@ -40,12 +45,14 @@ export async function apiRequest<T>(
   }
   if (response.status === 204) return undefined as T;
 
-  const body = (await response.json()) as { error?: { message?: string } } & T;
+  const body = (await response.json()) as { error?: { message?: string; code?: string; details?: unknown }; detail?: string | { message?: string; code?: string; details?: unknown } } & T;
   if (!response.ok) {
     if (response.status === 401 && typeof window !== 'undefined') {
       window.dispatchEvent(new Event('bbd:unauthorized'));
     }
-    throw new ApiError(response.status, body.error?.message ?? 'Request failed');
+    const detail = typeof body.detail === 'object' && body.detail !== null ? body.detail : undefined;
+    const message = body.error?.message ?? detail?.message ?? (typeof body.detail === 'string' ? body.detail : 'Request failed');
+    throw new ApiError(response.status, message, body.error ?? detail);
   }
   return body;
 }

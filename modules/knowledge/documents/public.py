@@ -65,6 +65,31 @@ class ReadyVersionRef:
     local_only: bool
 
 
+@dataclass(frozen=True)
+class ReviewEvidenceRef:
+    document_id: UUID
+    document_version_id: UUID
+    source_id: UUID
+    current_source_generation: int
+    source_name: str
+    version_number: int
+    chunk_id: UUID
+    title: str
+    canonical_url: str | None
+    metadata_is_version_snapshot: bool
+    observed_at: datetime
+    excerpt: str
+
+
+@dataclass(frozen=True)
+class ReviewVersionFence:
+    document_id: UUID
+    source_id: UUID
+    current_source_generation: int
+    source_name: str
+    version_number: int
+
+
 def content_hash(content: str) -> str:
     return hashlib.sha256(content.encode("utf-8")).hexdigest()
 
@@ -852,6 +877,77 @@ async def read_evidence_refs(
         )
         result = await _read_evidence_ref_rows(session, refs)
     return result
+
+
+async def review_version_locator(session: AsyncSession, version_id: UUID) -> tuple[UUID, UUID] | None:
+    """Return the owning document/source IDs for a retained review version."""
+    row = (await session.execute(
+        select(Document.id, Document.source_id)
+        .join(DocumentVersion, DocumentVersion.document_id == Document.id)
+        .where(DocumentVersion.id == version_id)
+    )).one_or_none()
+    return (row[0], row[1]) if row else None
+
+
+async def review_version_fences(
+    session: AsyncSession, version_ids: list[UUID],
+) -> dict[UUID, ReviewVersionFence]:
+    ids = list(dict.fromkeys(version_ids))
+    if len(ids) > 100:
+        raise ValueError("Review version fence set exceeds its page limit")
+    if not ids:
+        return {}
+    rows = (await session.execute(
+        select(DocumentVersion.id, Document.id, Document.source_id, Source.generation, Source.name, DocumentVersion.version_number)
+        .join(Document, Document.id == DocumentVersion.document_id)
+        .join(Source, Source.id == Document.source_id)
+        .where(DocumentVersion.id.in_(ids))
+    )).all()
+    return {
+        version_id: ReviewVersionFence(document_id, source_id, generation, source_name, version_number)
+        for version_id, document_id, source_id, generation, source_name, version_number in rows
+    }
+
+
+async def lock_review_version_evidence(
+    session: AsyncSession, *, document_id: UUID, source_id: UUID, version_id: UUID,
+    source_generation: int, chunk_ids: list[UUID],
+) -> list[ReviewEvidenceRef] | None:
+    """Fence a bounded owner correction to retained immutable evidence, including history."""
+    if not chunk_ids or len(chunk_ids) > 5 or len(set(chunk_ids)) != len(chunk_ids):
+        raise ValueError("Review evidence must contain unique bounded chunks")
+    document = await session.scalar(
+        select(Document).where(Document.id == document_id, Document.source_id == source_id)
+        .with_for_update().execution_options(populate_existing=True)
+    )
+    if document is None:
+        return None
+    version = await session.scalar(select(DocumentVersion).where(
+        DocumentVersion.id == version_id, DocumentVersion.document_id == document_id,
+    ))
+    source_row = (await session.execute(select(Source.generation, Source.name).where(Source.id == source_id))).one_or_none()
+    generation, source_name = source_row if source_row else (None, None)
+    if version is None or generation != source_generation:
+        return None
+    refs = await read_evidence_refs(session, [(version_id, chunk_id) for chunk_id in chunk_ids])
+    if len(refs) != len(chunk_ids) or any(
+        ref.document_id != document_id or ref.source_id != source_id for ref in refs
+    ):
+        return None
+    return [ReviewEvidenceRef(
+        document_id=ref.document_id,
+        document_version_id=ref.document_version_id,
+        source_id=ref.source_id,
+        current_source_generation=generation,
+        source_name=source_name,
+        version_number=ref.version_number,
+        chunk_id=ref.chunk_id,
+        title=ref.title,
+        canonical_url=ref.canonical_url,
+        metadata_is_version_snapshot=ref.metadata_is_version_snapshot,
+        observed_at=ref.observed_at,
+        excerpt=ref.excerpt,
+    ) for ref in refs]
 
 
 async def lock_document_ids(session: AsyncSession, document_ids: list[UUID]) -> list[UUID]:
