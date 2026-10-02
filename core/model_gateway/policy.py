@@ -9,6 +9,7 @@ def may_send(
     credential_configured: bool,
     capability: str,
 ) -> bool:
+    """Decide whether a configured remote capability may be sent under destination, credential, and privacy policy."""
     if mapping is None or not mapping.model.strip():
         return False
     if (

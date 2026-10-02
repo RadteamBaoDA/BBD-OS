@@ -7,6 +7,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
+    """Validated application configuration loaded from environment and the optional .env file; secret fields are masked in representations."""
     model_config = SettingsConfigDict(env_file=".env", extra="ignore", hide_input_in_errors=True)
 
     database_url: str = Field(default="postgresql+asyncpg://bbd:bbd@postgres:5432/bbd", repr=False)
@@ -48,6 +49,7 @@ class Settings(BaseSettings):
     @field_validator("ai_allowed_endpoint_hosts")
     @classmethod
     def normalize_endpoint_hosts(cls, values: set[str]) -> set[str]:
+        """Normalize approved gateway host or host:port entries and reject credentials, paths, malformed ports, scoped IPv6, and invalid authorities."""
         normalized = set()
         for value in values:
             parts = urlsplit(f"//{value}")
@@ -75,6 +77,7 @@ class Settings(BaseSettings):
     @field_validator("ai_allowed_endpoint_cidrs")
     @classmethod
     def normalize_endpoint_cidrs(cls, values: list[str]) -> list[str]:
+        """Parse, canonicalize, deduplicate, and sort approved endpoint CIDRs; reject IPv4-mapped IPv6 networks."""
         networks = []
         for value in values:
             network = ipaddress.ip_network(value, strict=False)
@@ -86,11 +89,13 @@ class Settings(BaseSettings):
     @field_validator("omniroute_base_url", mode="before")
     @classmethod
     def blank_gateway_url_is_unconfigured(cls, value: object) -> object:
+        """Treat an empty OmniRoute URL as absent before Pydantic URL validation."""
         return None if value == "" else value
 
     @field_validator("public_origin")
     @classmethod
     def require_origin_only(cls, value: AnyHttpUrl) -> AnyHttpUrl:
+        """Require the public origin to contain only scheme and host, without credentials, path, query, or fragment."""
         if value.path not in ("", "/") or value.query or value.fragment or value.username:
             raise ValueError("public_origin must contain only scheme and host")
         return value

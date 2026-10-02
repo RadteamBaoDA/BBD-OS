@@ -7,6 +7,7 @@ from core.database import Base
 
 
 class Owner(Base):
+    """Singleton owner credential record; the database check constraint limits the owner ID to one."""
     __tablename__ = "owner"
     __table_args__ = (CheckConstraint("id = 1", name="ck_owner_singleton"),)
 
@@ -18,6 +19,7 @@ class Owner(Base):
 
 
 class AuthSession(Base):
+    """Persisted owner session using token and CSRF hashes, reauthentication time, and expiry."""
     __tablename__ = "auth_session"
     __table_args__ = (Index("ix_auth_session_expires_at", "expires_at"),)
 
@@ -34,6 +36,7 @@ class AuthSession(Base):
 
 
 class GoogleIdentity(Base):
+    """Google issuer/subject identity linked to the singleton owner."""
     __tablename__ = "google_identity"
     __table_args__ = (
         Index("uq_google_identity_issuer_subject", "issuer", "subject", unique=True),

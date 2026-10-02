@@ -16,6 +16,7 @@ PROBE_TIMEOUT_SECONDS = 1.0
 async def system_health(
     session: AsyncSession, redis: Redis, settings: Settings
 ) -> dict[str, Any]:
+    """Probe PostgreSQL, Redis, and worker heartbeat with bounded timeouts and report configured optional services without claiming connectivity."""
     try:
         await asyncio.wait_for(session.execute(text("SELECT 1")), PROBE_TIMEOUT_SECONDS)
         postgres = "healthy"

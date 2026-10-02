@@ -8,11 +8,13 @@ from fastapi import HTTPException
 
 
 def encode_cursor(created_at: datetime, identifier: UUID) -> str:
+    """Encode a timestamp and UUID as canonical unpadded URL-safe base64 JSON for pagination."""
     value = json.dumps([created_at.isoformat(), str(identifier)], separators=(",", ":"))
     return base64.urlsafe_b64encode(value.encode()).decode().rstrip("=")
 
 
 def decode_cursor(cursor: str) -> tuple[datetime, UUID]:
+    """Decode and validate a canonical timezone-aware timestamp/UUID cursor; convert malformed input to HTTP 422."""
     try:
         if "=" in cursor:
             raise ValueError("Cursor must be unpadded")

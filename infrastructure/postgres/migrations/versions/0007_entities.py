@@ -13,6 +13,7 @@ depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:
+    """Create entity, alias, relationship, and relationship-evidence tables with canonical, endpoint, and provenance indexes."""
     op.create_table(
         "entities",
         sa.Column("id", postgresql.UUID(as_uuid=True), primary_key=True),
@@ -83,6 +84,7 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
+    """Drop relationship evidence, relationships, aliases, and entities with their indexes."""
     op.drop_index("ix_relationship_evidence_chunk", table_name="relationship_evidence")
     op.drop_index("ix_relationship_evidence_version", table_name="relationship_evidence")
     op.drop_table("relationship_evidence")

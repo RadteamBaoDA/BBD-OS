@@ -13,6 +13,7 @@ depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:
+    """Create durable connector provisioning revisions and encrypted managed-credential records."""
     op.create_table(
         "connector_provisioning",
         sa.Column("source_id", postgresql.UUID(as_uuid=True), nullable=False),
@@ -81,5 +82,6 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
+    """Drop managed connector credentials and provisioning records."""
     op.drop_table("connector_managed_credentials")
     op.drop_table("connector_provisioning")

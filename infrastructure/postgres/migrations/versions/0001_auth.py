@@ -12,6 +12,7 @@ depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:
+    """Create the singleton owner credential table and hashed authentication-session table with expiry lookup."""
     op.create_table(
         "owner",
         sa.Column("id", sa.Integer(), nullable=False),
@@ -38,6 +39,7 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
+    """Drop the authentication-session index and tables created by this revision."""
     op.drop_index("ix_auth_session_expires_at", table_name="auth_session")
     op.drop_table("auth_session")
     op.drop_table("owner")

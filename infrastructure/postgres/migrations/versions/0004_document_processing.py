@@ -13,6 +13,7 @@ depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:
+    """Add document extraction state and chunk storage, and extend ingestion-run status to represent OCR work."""
     op.drop_constraint("ck_ingestion_runs_status", "ingestion_runs", type_="check")
     op.create_check_constraint(
         "ck_ingestion_runs_status",
@@ -40,6 +41,7 @@ def upgrade() -> None:
     )
 
 def downgrade() -> None:
+    """Drop chunk/extraction structures and map needs_ocr runs to failed before restoring the prior status constraint."""
     op.drop_table("document_chunks")
     op.drop_constraint("ck_documents_extraction_status", "documents", type_="check")
     op.drop_column("documents", "extraction_status")

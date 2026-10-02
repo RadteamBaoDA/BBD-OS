@@ -32,6 +32,7 @@ _TOKEN_CURSOR_RE = re.compile(r"^[0-9a-f]{64}$")
 
 
 class SnapshotRead(BaseModel):
+    """Immutable response containing the current replay cursor and earliest retained sequence."""
     model_config = ConfigDict(frozen=True)
 
     cursor: str
@@ -39,11 +40,13 @@ class SnapshotRead(BaseModel):
 
 
 def _token_hash(request: Request) -> str | None:
+    """Hash the session cookie token for lookup without returning or storing the raw token."""
     token = request.cookies.get(SESSION_COOKIE)
     return hashlib.sha256(token.encode()).hexdigest() if token else None
 
 
 async def _session_is_current(request: Request) -> bool | None:
+    """Check session existence and expiry within a bounded database read; return None when the read times out."""
     token_hash = _token_hash(request)
     if token_hash is None or not _TOKEN_CURSOR_RE.fullmatch(token_hash):
         return False
@@ -63,6 +66,7 @@ async def _session_is_current(request: Request) -> bool | None:
 
 @router.get("/snapshot", response_model=SnapshotRead)
 async def get_snapshot(session: Session, request: Request, response: Response) -> SnapshotRead:
+    """Return the authenticated replay snapshot with private cache headers; report unavailable storage as 503."""
     current = await _session_is_current(request)
     if current is None:
         raise HTTPException(status_code=503, detail="Realtime snapshot is temporarily unavailable")
@@ -78,11 +82,13 @@ async def get_snapshot(session: Session, request: Request, response: Response) -
 
 
 def _resync(reason: str, cursor: str) -> str:
+    """Format an SSE resync instruction with the reason and current snapshot cursor."""
     payload = json.dumps({"reason": reason, "snapshot_cursor": cursor}, separators=(",", ":"))
     return f"event: resync_required\ndata: {payload}\n\n"
 
 
 def _sse_record(record: ReplayRecord) -> str:
+    """Serialize one persisted replay row as an SSE event with its resumable cursor."""
     cursor = ReplayCursor(epoch=record.epoch, sequence=record.sequence).encode()
     payload = json.dumps(record.payload, separators=(",", ":"), ensure_ascii=False)
     return f"id: {cursor}\nevent: {record.event_type}\ndata: {payload}\n\n"
@@ -94,6 +100,7 @@ async def stream_events(
     cursor: Annotated[str | None, Query(max_length=60)] = None,
     last_event_id: Annotated[str | None, Header(alias="Last-Event-ID", max_length=60)] = None,
 ) -> StreamingResponse:
+    """Authenticate and stream ordered replay events, resync on epoch/retention/gap changes, and cap concurrent streams."""
     current = await _session_is_current(request)
     if current is None:
         raise HTTPException(status_code=503, detail="Realtime stream is temporarily unavailable")
@@ -131,6 +138,7 @@ async def stream_events(
         raise HTTPException(status_code=503, detail="Realtime connection limit reached") from exc
 
     async def body():
+        """Poll replay state, recheck session validity, emit events or heartbeats, and release the stream permit on every exit."""
         nonlocal initial_reason
         try:
             position = initial_cursor

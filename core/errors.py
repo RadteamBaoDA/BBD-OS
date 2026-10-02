@@ -10,8 +10,11 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 logger = logging.getLogger("bbd.api")
 
 def install_error_handling(app: FastAPI) -> None:
+    """Install request ID, private cache headers, and structured HTTP, validation, and generic error responses."""
+
     @app.middleware("http")
     async def request_id(request: Request, call_next: Any) -> Any:
+        """Attach a fresh request ID and apply no-store cache policy to API responses."""
         request.state.request_id = str(uuid4())
         response = await call_next(request)
         response.headers["X-Request-ID"] = request.state.request_id
@@ -23,6 +26,7 @@ def install_error_handling(app: FastAPI) -> None:
 
     @app.exception_handler(StarletteHTTPException)
     async def http_error(request: Request, exc: StarletteHTTPException) -> JSONResponse:
+        """Serialize framework HTTP errors using the stable API error envelope and preserve status and headers."""
         structured = exc.detail if isinstance(exc.detail, dict) else {}
         return JSONResponse(
             status_code=exc.status_code,
@@ -39,6 +43,7 @@ def install_error_handling(app: FastAPI) -> None:
 
     @app.exception_handler(RequestValidationError)
     async def validation_error(request: Request, exc: RequestValidationError) -> JSONResponse:
+        """Serialize request validation failures without echoing submitted values or validation context."""
         details = [
             {key: value for key, value in item.items() if key not in {"input", "ctx"}}
             for item in exc.errors()
@@ -57,6 +62,7 @@ def install_error_handling(app: FastAPI) -> None:
 
     @app.exception_handler(Exception)
     async def internal_error(request: Request, exc: Exception) -> JSONResponse:
+        """Log unexpected request failures by request ID and return a generic 500 response without exception details."""
         request_id_value = getattr(request.state, "request_id", "")
         logger.error("Unhandled request failure; request_id=%s", request_id_value)
         return JSONResponse(

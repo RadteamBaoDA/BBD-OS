@@ -13,6 +13,7 @@ depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:
+    """Create bounded, leased entity-extraction work and durable extraction-result tables with recovery indexing."""
     op.create_table(
         "entity_extraction_work",
         sa.Column("id", postgresql.UUID(as_uuid=True), primary_key=True),
@@ -49,6 +50,7 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
+    """Drop extraction results and the leased-work recovery table/index."""
     op.drop_table("entity_extraction_results")
     op.drop_index("ix_entity_extraction_work_recovery", table_name="entity_extraction_work")
     op.drop_table("entity_extraction_work")

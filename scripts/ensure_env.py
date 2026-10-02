@@ -3,6 +3,7 @@ import secrets
 
 
 def main() -> None:
+    """Create a private local .env with generated secrets only when no existing file is present."""
     env_path = Path(".env")
     if env_path.exists():
         print("Kept existing .env unchanged.")

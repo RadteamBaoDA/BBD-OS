@@ -14,6 +14,7 @@ depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:
+    """Create the singleton realtime replay head and ordered event log with epoch/sequence and creation-time indexes."""
     op.create_table(
         "realtime_replay_head",
         sa.Column("id", sa.SmallInteger(), nullable=False),
@@ -58,6 +59,7 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
+    """Drop the replay event indexes/log and singleton replay head."""
     op.drop_index("ix_realtime_replay_events_created_at", table_name="realtime_replay_events")
     op.drop_index("ix_realtime_replay_events_epoch_sequence", table_name="realtime_replay_events")
     op.drop_table("realtime_replay_events")

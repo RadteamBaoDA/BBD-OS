@@ -13,6 +13,7 @@ depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:
+    """Add source generation/lifecycle timestamps and errors, stage result counts, and durable source-purge operations."""
     op.add_column("sources", sa.Column("generation", sa.Integer(), server_default="1", nullable=False))
     op.add_column("sources", sa.Column("retired_at", sa.DateTime(timezone=True), nullable=True))
     op.add_column("sources", sa.Column("last_error_code", sa.String(64), nullable=True))
@@ -39,6 +40,7 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
+    """Drop purge operations and the source/stage fields introduced by this revision."""
     op.drop_index("ix_source_purge_operations_status_created", table_name="source_purge_operations")
     op.drop_table("source_purge_operations")
     op.drop_column("sources", "retired_at")

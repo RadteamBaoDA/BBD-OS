@@ -13,6 +13,7 @@ depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:
+    """Add ingestion receipt timestamps and source generations plus normalized identity, immutable version provenance, and observation-disposition records."""
     op.add_column("ingestion_batches", sa.Column("source_generation", sa.Integer(), nullable=True))
     op.add_column("source_observations", sa.Column("received_at", sa.DateTime(timezone=True)))
     op.add_column("source_observations", sa.Column("collected_at", sa.DateTime(timezone=True)))
@@ -70,6 +71,7 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
+    """Drop normalization and provenance tables, then remove receipt timestamp and generation columns."""
     op.drop_index("ix_observation_normalizations_stage", table_name="observation_normalizations")
     op.drop_table("observation_normalizations")
     op.drop_index("ix_normalized_version_provenance_version", table_name="normalized_version_provenance")

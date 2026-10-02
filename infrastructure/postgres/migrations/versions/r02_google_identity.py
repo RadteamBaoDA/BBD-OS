@@ -12,6 +12,7 @@ depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:
+    """Add session reauthentication timestamps and persist the owner Google issuer/subject identity with a unique provider identity index."""
     op.add_column(
         "auth_session",
         sa.Column("reauthenticated_at", sa.DateTime(timezone=True), nullable=True),
@@ -34,6 +35,7 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
+    """Drop the Google identity index/table and session reauthentication timestamp."""
     op.drop_index("uq_google_identity_issuer_subject", table_name="google_identity")
     op.drop_table("google_identity")
     op.drop_column("auth_session", "reauthenticated_at")

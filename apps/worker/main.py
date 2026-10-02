@@ -31,6 +31,7 @@ from modules.knowledge.entities.worker import (
 )
 
 async def startup(ctx: dict[str, object]) -> None:
+    """Load worker settings and create its bounded async database pool in the ARQ context."""
     settings = Settings()
     ctx["settings"] = settings
     engine = create_async_engine(settings.database_url, pool_pre_ping=True, pool_size=2)
@@ -39,12 +40,14 @@ async def startup(ctx: dict[str, object]) -> None:
 
 
 async def shutdown(ctx: dict[str, object]) -> None:
+    """Dispose the worker database engine when present."""
     engine = ctx.get("db_engine")
     if engine is not None:
         await cast(AsyncEngine, engine).dispose()
 
 
 async def purge_expired_sessions(ctx: dict[str, object]) -> int:
+    """Delete at most 1000 expired auth sessions per run and commit the cleanup transaction."""
     factory = cast(async_sessionmaker[AsyncSession], ctx["session_factory"])
     async with factory() as session:
         expired = (
@@ -62,6 +65,7 @@ async def purge_expired_sessions(ctx: dict[str, object]) -> int:
 
 
 class WorkerSettings:
+    """ARQ worker registration, recurring schedules, retry/concurrency bounds, and lifecycle hooks."""
     functions: ClassVar[list[object]] = [
         purge_expired_sessions, process_ingestion_event, process_normalize_event, process_uploaded_file, process_source_purge,
         reconcile_connectors, process_document_ready, process_entity_extraction_work,

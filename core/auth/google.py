@@ -9,6 +9,7 @@ GOOGLE_CALLBACK_PATH = "/api/v1/auth/google/callback"
 
 
 def google_client(settings: Settings) -> OAuth:
+    """Configure the Google OpenID Connect client with bounded HTTP timeouts and PKCE."""
     oauth = OAuth()
     oauth.register(
         name="google",

@@ -11,6 +11,7 @@ from fastapi import UploadFile
 
 
 def storage_path(root: Path, relative_path: str) -> Path:
+    """Resolve a storage-relative path beneath the configured root and reject traversal or absolute paths."""
     candidate = Path(relative_path)
     if candidate.is_absolute() or any(part in ("", ".", "..") for part in candidate.parts):
         raise ValueError("Invalid storage path")
@@ -22,6 +23,7 @@ def storage_path(root: Path, relative_path: str) -> Path:
 
 
 async def save_upload(root: Path, upload: UploadFile, document_id: UUID, suffix: str, max_bytes: int) -> tuple[str, int, str]:
+    """Stream an upload to a temporary file with a byte limit and SHA-256 digest, then atomically publish it; remove temporary data on failure."""
     relative = Path("documents") / str(document_id) / f"{document_id}{suffix}"
     destination = storage_path(root, relative.as_posix())
     destination.parent.mkdir(parents=True, exist_ok=True)
@@ -48,6 +50,7 @@ async def save_upload(root: Path, upload: UploadFile, document_id: UUID, suffix:
 
 
 def cleanup_orphaned_files(root: Path, referenced: set[str], grace_seconds: int) -> int:
+    """Remove unreferenced document files older than the grace period and return the deletion count."""
     if not root.exists():
         return 0
     cutoff = datetime.now(UTC).timestamp() - grace_seconds

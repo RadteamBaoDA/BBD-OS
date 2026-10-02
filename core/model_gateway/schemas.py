@@ -6,6 +6,7 @@ Capability = Literal["chat", "streaming", "embeddings", "structured", "tools", "
 
 
 class RequestPolicy(BaseModel):
+    """Mutable Pydantic request policy fields governing remote reasoning, embeddings, search, and permitted destinations."""
     reasoning_allowed: bool = False
     embeddings_allowed: bool = False
     web_search_allowed: bool = False
@@ -18,6 +19,7 @@ class RequestPolicy(BaseModel):
 
 
 class ModelMapping(BaseModel):
+    """Validated configured model name, optional version, and known remote destination marker."""
     model_config = ConfigDict(extra="forbid")
     model: str = Field(default="", max_length=200)
     version: str | None = Field(default=None, max_length=200)
@@ -25,6 +27,7 @@ class ModelMapping(BaseModel):
 
 
 class PrivacySettings(BaseModel):
+    """Owner-controlled remote capability flags and destination allowlists."""
     model_config = ConfigDict(extra="forbid")
     allow_remote_reasoning: bool = False
     allow_remote_embeddings: bool = False
@@ -35,6 +38,7 @@ class PrivacySettings(BaseModel):
 
 
 class AISettingsUpdate(BaseModel):
+    """Validated update payload with expected revision, provider credentials/actions, aliases, privacy, and timeout bounds."""
     model_config = ConfigDict(extra="forbid")
     omniroute_base_url: AnyHttpUrl | None = None
     omniroute_credential_action: Literal["unchanged", "replaced", "removed"] = "unchanged"
@@ -52,12 +56,14 @@ class AISettingsUpdate(BaseModel):
 
 
 class ConnectionDraft(BaseModel):
+    """Temporary endpoint and credential input for a gateway probe."""
     model_config = ConfigDict(extra="forbid")
     base_url: AnyHttpUrl
     api_key: str = Field(default="", max_length=4096)
 
 
 class DraftProbeRequest(BaseModel):
+    """Temporary endpoint/model/capability input for an unpersisted connection probe."""
     model_config = ConfigDict(extra="forbid")
     base_url: AnyHttpUrl
     api_key: str = Field(default="", max_length=4096)
@@ -67,11 +73,13 @@ class DraftProbeRequest(BaseModel):
 
 
 class ConnectionCheck(BaseModel):
+    """Connection probe result and discovered model identifiers."""
     connected: bool
     model_ids: list[str]
 
 
 class AIExecutionConfig(BaseModel):
+    """Resolved runtime gateway configuration, including endpoint policy decision and secrets needed by execution."""
     model_config = ConfigDict(frozen=True)
     configuration_revision: int
     gateway_identity: str
@@ -93,6 +101,7 @@ class AIExecutionConfig(BaseModel):
 
 
 class CapabilityResult(BaseModel):
+    """Stored or returned capability probe result tied to a model, gateway identity, and expiry."""
     alias: str
     model: str
     version: str | None = None
@@ -105,6 +114,7 @@ class CapabilityResult(BaseModel):
 
 
 class AISettingsRead(BaseModel):
+    """Safe AI settings response exposing credential presence but not credential values."""
     configuration_revision: int
     omniroute_base_url: AnyHttpUrl | None = None
     endpoint_destination_id: str | None = None
@@ -123,11 +133,13 @@ class AISettingsRead(BaseModel):
 
 
 class ProbeRequest(BaseModel):
+    """Selects the capability to probe for a configured model mapping."""
     model_config = ConfigDict(extra="forbid")
     capability: Capability
 
 
 class ModelSettingsRead(BaseModel):
+    """Safe model configuration and capability response without returning credential material."""
     aliases: dict[str, ModelMapping]
     capabilities: list[CapabilityResult]
     credential_configured: bool

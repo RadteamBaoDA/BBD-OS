@@ -22,11 +22,13 @@ _CURSOR_RE = re.compile(r"^([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9
 
 
 class _Payload(BaseModel):
+    """Strict immutable base for versioned realtime event payloads."""
     model_config = ConfigDict(extra="forbid", frozen=True)
     schema_version: Literal[1] = 1
 
 
 class SourceChanged(_Payload):
+    """Realtime payload describing a source status or connector-generation change."""
     type: Literal["source.changed"] = "source.changed"
     source_id: UUID
     generation: int = Field(ge=1)
@@ -36,6 +38,7 @@ class SourceChanged(_Payload):
 
 
 class IngestionChanged(_Payload):
+    """Realtime payload describing ingestion run or stage progress."""
     type: Literal["ingestion.changed"] = "ingestion.changed"
     source_id: UUID
     run_id: UUID
@@ -45,6 +48,7 @@ class IngestionChanged(_Payload):
 
 
 class KnowledgeChanged(_Payload):
+    """Realtime payload for source, index, or graph changes with scope-specific identity validation."""
     type: Literal["knowledge.changed"] = "knowledge.changed"
     scope: Literal["source", "index", "graph"] = "source"
     source_id: UUID | None = None
@@ -60,6 +64,7 @@ class KnowledgeChanged(_Payload):
 
     @model_validator(mode="after")
     def validate_scope(self) -> "KnowledgeChanged":
+        """Enforce the mutually exclusive field requirements for source, index, and graph knowledge events."""
         if self.scope == "source":
             if self.source_id is None or any((
                 self.entity_id is not None,
@@ -97,6 +102,7 @@ ReplayDraft: TypeAlias = Annotated[
 
 
 class ReplayHead(Base):
+    """Singleton durable replay-stream epoch, sequence, retention floor, and update timestamp."""
     __tablename__ = "realtime_replay_head"
 
     id: Mapped[int] = mapped_column(SmallInteger, primary_key=True)
@@ -107,6 +113,7 @@ class ReplayHead(Base):
 
 
 class ReplayRecord(Base):
+    """Persisted ordered realtime event payload associated with one replay epoch and sequence."""
     __tablename__ = "realtime_replay_events"
 
     sequence: Mapped[int] = mapped_column(BigInteger, primary_key=True)
@@ -117,16 +124,19 @@ class ReplayRecord(Base):
 
 
 class ReplayCursor(BaseModel):
+    """Immutable epoch/sequence position used to resume replay delivery."""
     model_config = ConfigDict(frozen=True)
 
     epoch: UUID
     sequence: int = Field(ge=0)
 
     def encode(self) -> str:
+        """Return this replay cursor in its canonical epoch:sequence representation."""
         return f"{self.epoch}:{self.sequence}"
 
 
 def parse_cursor(value: str) -> ReplayCursor:
+    """Parse a bounded canonical replay cursor; reject malformed UUIDs, sequence values, and noncanonical text."""
     if len(value) > MAX_CURSOR_LENGTH:
         raise ValueError("Replay cursor is too long")
     match = _CURSOR_RE.fullmatch(value)
@@ -146,6 +156,7 @@ def make_source_change(
     connector_state: str | None = None,
     operation_id: UUID | None = None,
 ) -> SourceChanged:
+    """Construct a validated source-changed event from source identity and current source state."""
     return SourceChanged(
         source_id=source_id, generation=generation, status=status,
         connector_state=connector_state, operation_id=operation_id,
@@ -159,6 +170,7 @@ def make_ingestion_change(
     stage_key: str | None = None,
     stage_status: str | None = None,
 ) -> IngestionChanged:
+    """Construct a validated ingestion-changed event from run and optional stage state."""
     return IngestionChanged(
         source_id=source_id, run_id=run_id, status=status,
         stage_key=stage_key, stage_status=stage_status,
@@ -172,6 +184,7 @@ def make_knowledge_change(
     *,
     deleted: bool = False,
 ) -> KnowledgeChanged:
+    """Construct a validated source-scope knowledge event, including optional document version and deletion state."""
     return KnowledgeChanged(
         source_id=source_id, document_id=document_id, version=version,
         deleted=deleted,
@@ -184,6 +197,7 @@ def make_index_change(
     indexed_items: int,
     failed_items: int,
 ) -> KnowledgeChanged:
+    """Construct a validated index-scope knowledge event with generation progress counts."""
     return KnowledgeChanged(
         scope="index",
         index_generation_id=generation_id,
@@ -196,6 +210,7 @@ def make_index_change(
 def make_graph_change(
     *, entity_id: UUID | None = None, relationship_id: UUID | None = None, deleted: bool = False
 ) -> KnowledgeChanged:
+    """Construct a validated graph-scope event for exactly one entity or relationship."""
     return KnowledgeChanged(
         scope="graph", entity_id=entity_id, relationship_id=relationship_id, deleted=deleted
     )
@@ -245,6 +260,7 @@ async def commit_with_replay(session: AsyncSession, drafts: list[ReplayDraft] | 
 
 
 async def current_head(session: AsyncSession) -> ReplayHead:
+    """Read the initialized replay head or raise when the migration/bootstrap row is missing."""
     head = await session.scalar(
         select(ReplayHead).where(ReplayHead.id == 1).execution_options(populate_existing=True)
     )

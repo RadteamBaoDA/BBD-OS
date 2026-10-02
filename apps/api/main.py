@@ -28,12 +28,14 @@ from core.realtime_routes import router as realtime_router
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
+    """Construct the FastAPI app, lifespan-managed clients, middleware, routers, realtime capacity limit, and module registry."""
     app_settings = settings or Settings()
     engine = create_async_engine(app_settings.database_url, pool_pre_ping=True, pool_size=5, max_overflow=0)
     redis = Redis.from_url(app_settings.redis_url, decode_responses=True)
 
     @asynccontextmanager
     async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
+        """Dispose Redis and the database engine when the API application shuts down."""
         yield
         await redis.aclose()
         await engine.dispose()
@@ -71,6 +73,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @app.get("/health")
     async def health() -> dict[str, str]:
+        """Return the process liveness response."""
         return {"status": "ok"}
 
     return app

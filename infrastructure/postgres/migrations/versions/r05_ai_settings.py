@@ -13,6 +13,7 @@ depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:
+    """Create revisioned owner AI settings and record the gateway identity on search index generations."""
     op.create_table(
         "ai_settings",
         sa.Column("owner_id", sa.Integer(), nullable=False),
@@ -39,5 +40,6 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
+    """Remove the search gateway identity field and owner AI settings table."""
     op.drop_column("search_index_generations", "gateway_identity")
     op.drop_table("ai_settings")

@@ -13,6 +13,7 @@ depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:
+    """Add evidence match fingerprints, endpoint-specific relationship-evidence uniqueness, entity redirects, and scoped owner correction decisions."""
     op.add_column("entity_evidence_memberships", sa.Column("match_fingerprint", sa.String(64)))
     op.create_index("ix_entity_evidence_match_fingerprint", "entity_evidence_memberships", ["match_fingerprint"])
     op.drop_constraint("uq_relationship_evidence_fact_chunk", "relationship_evidence", type_="unique")
@@ -51,6 +52,7 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
+    """Drop correction decisions and redirects, restore prior relationship-evidence uniqueness, and remove membership fingerprints."""
     op.drop_index("ix_entity_correction_decision_match", table_name="entity_correction_decisions")
     op.drop_table("entity_correction_decisions")
     op.drop_index("ix_entity_redirect_target", table_name="entity_redirects")

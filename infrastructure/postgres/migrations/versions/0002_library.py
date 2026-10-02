@@ -13,6 +13,7 @@ depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:
+    """Create source, document, and immutable document-version tables with their ownership, lookup, and creation indexes."""
     op.create_table(
         "sources",
         sa.Column("id", postgresql.UUID(as_uuid=True), nullable=False),
@@ -94,6 +95,7 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
+    """Drop document versions, documents, and sources with their revision indexes."""
     op.drop_index("ix_document_versions_created_at", table_name="document_versions")
     op.drop_table("document_versions")
     op.drop_index("ix_documents_created_at_id", table_name="documents")

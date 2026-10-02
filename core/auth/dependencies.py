@@ -18,14 +18,17 @@ CSRF_MAX_AGE_SECONDS = 600
 
 
 def _hash(value: str) -> str:
+    """Return the SHA-256 digest used to persist opaque authentication tokens."""
     return hashlib.sha256(value.encode()).hexdigest()
 
 
 def _origin_allowed(origin: str | None, settings: Settings) -> bool:
+    """Compare the request Origin with the configured public origin after trimming trailing slashes."""
     return origin is not None and origin.rstrip("/") == str(settings.public_origin).rstrip("/")
 
 
 def _csrf_signature(token: str, expires_at: int, settings: Settings) -> str:
+    """Sign a CSRF token and expiry with the configured secret; fail closed when signing is unconfigured."""
     secret = settings.csrf_signing_secret.get_secret_value()
     if not secret:
         raise HTTPException(status_code=503, detail="CSRF protection is not configured")
@@ -34,6 +37,7 @@ def _csrf_signature(token: str, expires_at: int, settings: Settings) -> str:
 
 
 def _valid_csrf(cookie: str | None, submitted: str | None, settings: Settings) -> bool:
+    """Validate CSRF cookie shape, expiry window, submitted token, and constant-time signature equality."""
     if not cookie or not submitted:
         return False
     try:
@@ -54,6 +58,7 @@ async def _current_session(
     session: AsyncSession,
     token: str | None,
 ) -> AuthSession:
+    """Resolve a nonexpired hashed session token, attach it to request state, or reject unauthenticated access."""
     if not token:
         raise HTTPException(status_code=401, detail="Authentication required")
     row = await session.get(AuthSession, _hash(token))
@@ -67,6 +72,7 @@ async def require_owner(
     request: Request,
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> AuthSession:
+    """FastAPI dependency requiring a valid owner session cookie."""
     return await _current_session(request, session, request.cookies.get(SESSION_COOKIE))
 
 
@@ -76,6 +82,7 @@ async def require_owner_write(
     origin: Annotated[str | None, Header()] = None,
     csrf_token: Annotated[str | None, Header(alias="X-CSRF-Token")] = None,
 ) -> AuthSession:
+    """Require owner authentication, allowed Origin, and matching signed CSRF cookie/header for writes."""
     settings: Settings = request.app.state.settings
     if not _origin_allowed(origin, settings):
         raise HTTPException(status_code=403, detail="Origin is not allowed")

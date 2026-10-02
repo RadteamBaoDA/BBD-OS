@@ -26,6 +26,7 @@ async def read_system_health(
     _owner: Annotated[AuthSession, Depends(require_owner)],
     redis: Annotated[Any, Depends(get_auth_redis)],
 ) -> dict[str, Any]:
+    """Return authenticated component health using the current application settings."""
     return await system_health(session, redis, request.app.state.settings)
 
 
@@ -35,6 +36,7 @@ async def get_operation(
     session: Annotated[AsyncSession, Depends(get_session)],
     _owner: Annotated[AuthSession, Depends(require_owner)],
 ) -> OperationRead:
+    """Read one source purge operation and return its public status fields or 404."""
     operation = await session.scalar(
         select(SourcePurgeOperation).where(SourcePurgeOperation.id == operation_id)
     )
@@ -52,6 +54,7 @@ async def get_operation(
 
 @router.get("/ready", include_in_schema=False)
 async def ready(session: Annotated[AsyncSession, Depends(get_session)]) -> dict[str, str]:
+    """Return readiness only when a bounded database probe succeeds."""
     try:
         await asyncio.wait_for(session.execute(text("SELECT 1")), PROBE_TIMEOUT_SECONDS)
     except (SQLAlchemyError, TimeoutError) as exc:

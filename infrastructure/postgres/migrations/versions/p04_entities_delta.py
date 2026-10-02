@@ -13,6 +13,7 @@ depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:
+    """Add entity field origins, alias confidence, owner-action audit records, exact evidence memberships, field evidence, alias evidence, and endpoint membership provenance."""
     op.alter_column("entities", "name", existing_type=sa.String(300), nullable=True)
     op.alter_column("entities", "canonical_name", existing_type=sa.String(300), nullable=True)
     op.add_column("entities", sa.Column("name_origin", sa.String(16)))
@@ -94,6 +95,7 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
+    """Drop the owner/evidence provenance structures and fields added by this revision, then restore required entity-name columns."""
     op.drop_index("ix_relationship_evidence_target_membership", table_name="relationship_evidence")
     op.drop_index("ix_relationship_evidence_source_membership", table_name="relationship_evidence")
     op.drop_index("ix_relationship_evidence_source", table_name="relationship_evidence")

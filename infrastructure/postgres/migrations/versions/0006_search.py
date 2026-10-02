@@ -13,6 +13,7 @@ depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:
+    """Enable PostgreSQL vector support, add chunk full-text indexing, and create index-generation and index-item persistence."""
     op.execute("CREATE EXTENSION IF NOT EXISTS vector")
     op.create_index("ix_document_chunks_simple_fts", "document_chunks", [sa.text("to_tsvector('simple', content)")], postgresql_using="gin")
     op.create_table(
@@ -45,6 +46,7 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
+    """Drop search item/generation structures and the chunk full-text index; the PostgreSQL extension is retained."""
     op.drop_index("ix_search_index_items_status", table_name="search_index_items")
     op.drop_table("search_index_items")
     op.drop_index("uq_search_index_generations_active", table_name="search_index_generations")

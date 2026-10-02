@@ -13,6 +13,7 @@ depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:
+    """Create durable ingestion batches, runs, stages, observations, source state, collector credentials, and event outbox tables."""
     op.create_table(
         "ingestion_batches",
         sa.Column("id", postgresql.UUID(as_uuid=True), nullable=False),
@@ -116,6 +117,7 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
+    """Drop the ingestion and outbox tables in reverse dependency order."""
     op.drop_index("ix_event_outbox_dispatch", table_name="event_outbox")
     op.drop_table("event_outbox")
     op.drop_index("ix_collector_credentials_source_id", table_name="collector_credentials")

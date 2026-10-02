@@ -9,6 +9,7 @@ from modules.knowledge.relationships.descriptor import descriptor as relationshi
 
 
 def register_modules(descriptors: Iterable[Any] = (sources, documents, entities, relationships, search)) -> dict[str, Any]:
+    """Build a module registry and reject duplicate IDs or dependencies that are not registered."""
     registry: dict[str, Any] = {}
     for descriptor in descriptors:
         if descriptor.id in registry:

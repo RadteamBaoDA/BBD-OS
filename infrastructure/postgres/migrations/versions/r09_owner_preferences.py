@@ -12,6 +12,7 @@ depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:
+    """Create revisioned owner locale and appearance preferences."""
     op.create_table(
         "owner_preferences",
         sa.Column("owner_id", sa.Integer(), nullable=False),
@@ -31,4 +32,5 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
+    """Drop owner preferences."""
     op.drop_table("owner_preferences")

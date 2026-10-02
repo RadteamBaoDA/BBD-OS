@@ -51,6 +51,7 @@ router = APIRouter(prefix="/api/v1/auth", tags=["auth"])
 
 
 def _is_owner_conflict(exc: IntegrityError) -> bool:
+    """Recognize only the singleton owner primary-key uniqueness violation in a wrapped database error."""
     original: BaseException | None = exc.orig
     while original is not None:
         if (
@@ -63,16 +64,19 @@ def _is_owner_conflict(exc: IntegrityError) -> bool:
 
 
 def get_auth_redis(request: Request) -> Redis:
+    """Return the Redis client installed on application state for authentication throttling."""
     return cast(Redis, request.app.state.redis)
 
 
 def _new_csrf(settings: Settings) -> tuple[str, str]:
+    """Generate a random client token and signed, short-lived cookie value."""
     token = secrets.token_urlsafe(32)
     expires_at = int(time.time()) + CSRF_MAX_AGE_SECONDS
     return token, f"{token}.{expires_at}.{_csrf_signature(token, expires_at, settings)}"
 
 
 def _set_csrf_cookie(request: Request, response: Response, value: str) -> None:
+    """Set the signed CSRF cookie with HTTP-only, same-site, secure, path, and age settings."""
     settings: Settings = request.app.state.settings
     response.set_cookie(
         CSRF_COOKIE,
@@ -86,6 +90,7 @@ def _set_csrf_cookie(request: Request, response: Response, value: str) -> None:
 
 
 async def _allow_attempt(request: Request, redis: Redis, action: str) -> None:
+    """Atomically increment per-address and global minute counters; reject Redis outages or exceeded limits."""
     minute = int(time.time() // 60)
     address = request.client.host if request.client else "unknown"
     keys = (f"auth:{action}:ip:{_hash(address)}:{minute}", f"auth:{action}:all:{minute}")
@@ -108,6 +113,7 @@ async def _allow_attempt(request: Request, redis: Redis, action: str) -> None:
 
 @router.get("/setup-status", response_model=SetupStatus)
 async def setup_status(session: Annotated[AsyncSession, Depends(get_session)]) -> SetupStatus:
+    """Report whether the singleton owner row exists."""
     has_owner = await session.scalar(select(Owner.id).limit(1)) is not None
     return SetupStatus(setupRequired=not has_owner)
 
@@ -123,6 +129,7 @@ async def create_owner(
     origin: Annotated[str | None, Header()] = None,
     csrf_token: Annotated[str | None, Header(alias="X-CSRF-Token")] = None,
 ) -> SetupResponse:
+    """Create the first owner only with configured setup token, valid Origin/CSRF, and throttling; handle concurrent creation as conflict."""
     settings: Settings = request.app.state.settings
     configured_token = settings.setup_token.get_secret_value()
     if not configured_token:
@@ -150,6 +157,7 @@ async def create_owner(
 
 @router.get("/csrf", response_model=CsrfResponse)
 async def csrf(request: Request, response: Response) -> CsrfResponse:
+    """Issue a client CSRF token and its signed HTTP-only cookie."""
     token, cookie = _new_csrf(request.app.state.settings)
     _set_csrf_cookie(request, response, cookie)
     return CsrfResponse(csrfToken=token)
@@ -165,6 +173,7 @@ async def login(
     origin: Annotated[str | None, Header()] = None,
     csrf_token: Annotated[str | None, Header(alias="X-CSRF-Token")] = None,
 ) -> AuthState:
+    """Validate Origin, CSRF, throttling, and password, then persist hashed session credentials and set response cookies."""
     settings: Settings = request.app.state.settings
     if not _origin_allowed(origin, settings):
         raise HTTPException(status_code=403, detail="Origin is not allowed")
@@ -191,10 +200,12 @@ async def login(
 
 
 def _google_configured(settings: Settings) -> bool:
+    """Report whether both Google OAuth client credentials are configured."""
     return bool(settings.google_client_id and settings.google_client_secret.get_secret_value())
 
 
 def _require_recent_reauthentication(auth_session: AuthSession) -> None:
+    """Require a successful owner password check within the preceding five minutes."""
     timestamp = auth_session.reauthenticated_at
     age = datetime.now(UTC) - timestamp if timestamp is not None else None
     if age is None or age < timedelta(0) or age > timedelta(minutes=5):
@@ -202,6 +213,7 @@ def _require_recent_reauthentication(auth_session: AuthSession) -> None:
 
 
 def _raise_if_owner_lock_busy(exc: DBAPIError) -> None:
+    """Translate PostgreSQL nowait lock contention into a retryable authentication conflict."""
     cause: BaseException | None = exc.orig
     while cause is not None:
         if getattr(cause, "sqlstate", None) == "55P03":
@@ -212,6 +224,7 @@ def _raise_if_owner_lock_busy(exc: DBAPIError) -> None:
 
 
 async def _lock_owner(session: AsyncSession, owner_id: int) -> Owner | None:
+    """Lock the owner row with NOWAIT and map lock contention to the API conflict response."""
     try:
         return await session.scalar(
             select(Owner)
@@ -227,6 +240,7 @@ async def _lock_owner(session: AsyncSession, owner_id: int) -> Owner | None:
 async def _lock_auth_session(
     session: AsyncSession, token_hash: str, owner_id: int
 ) -> AuthSession:
+    """Lock and validate a live auth session belonging to the expected owner."""
     try:
         auth_session = await session.scalar(
             select(AuthSession)
@@ -254,6 +268,7 @@ async def _lock_owner_session(
     *,
     check_csrf: bool = True,
 ) -> tuple[Owner, AuthSession]:
+    """Lock owner then session in a consistent order, optionally validating the current CSRF token."""
     owner = await _lock_owner(session, stale_session.owner_id)
     if owner is None:
         raise HTTPException(status_code=401, detail="Authentication required")
@@ -275,6 +290,7 @@ async def _lock_owner_session(
 async def _lock_identity_for_owner(
     session: AsyncSession, owner_id: int
 ) -> GoogleIdentity | None:
+    """Lock the owner Google identity row with NOWAIT."""
     try:
         return await session.scalar(
             select(GoogleIdentity)
@@ -290,6 +306,7 @@ async def _lock_identity_for_owner(
 async def _lock_identity_for_subject(
     session: AsyncSession, subject: str
 ) -> GoogleIdentity | None:
+    """Lock the Google identity matching the configured issuer and provider subject."""
     try:
         return await session.scalar(
             select(GoogleIdentity)
@@ -303,6 +320,7 @@ async def _lock_identity_for_subject(
 
 
 def _google_callback_url(settings: Settings) -> str:
+    """Build the callback URL from the configured public origin and fixed callback path."""
     return f"{str(settings.public_origin).rstrip('/')}{GOOGLE_CALLBACK_PATH}"
 
 
@@ -311,6 +329,7 @@ async def google_status(
     request: Request,
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> GoogleStatus:
+    """Return OAuth configuration and whether the owner currently has a linked Google identity."""
     linked = await session.get(GoogleIdentity, 1) is not None
     return GoogleStatus(configured=_google_configured(request.app.state.settings), linked=linked)
 
@@ -324,6 +343,7 @@ async def reauthenticate(
     redis: Annotated[Redis, Depends(get_auth_redis)],
     csrf_token: Annotated[str | None, Header(alias="X-CSRF-Token")] = None,
 ) -> None:
+    """Verify the owner password under row locks and update the session recent-authentication timestamp."""
     await _allow_attempt(request, redis, "reauthenticate")
     owner, auth_session = await _lock_owner_session(
         request, session, auth_session, csrf_token
@@ -344,6 +364,7 @@ async def google_start(
     origin: Annotated[str | None, Header()] = None,
     csrf_token: Annotated[str | None, Header(alias="X-CSRF-Token")] = None,
 ) -> GoogleStartResponse:
+    """Validate login/link intent and security state, then begin Google authorization with a short-lived state."""
     settings: Settings = request.app.state.settings
     auth_session: AuthSession | None = None
     if not _google_configured(settings):
@@ -372,6 +393,7 @@ async def google_start(
         "session_hash": auth_session.token_hash if auth_session else None,
     }
     if body.purpose == "link":
+        # Release owner/session row locks before Redis state storage and external OAuth provider work.
         await session.rollback()
     try:
         stored = await redis.set(
@@ -416,6 +438,7 @@ def _issue_auth_session(
     session_token: str,
     csrf_cookie: str,
 ) -> None:
+    """Set session and CSRF cookies with configured security and session lifetime attributes."""
     response.set_cookie(
         SESSION_COOKIE,
         session_token,
@@ -434,6 +457,7 @@ async def google_callback(
     session: Annotated[AsyncSession, Depends(get_session)],
     redis: Annotated[Redis, Depends(get_auth_redis)],
 ) -> Response:
+    """Validate Google OAuth state and identity, then create or link an owner session under row locks."""
     settings: Settings = request.app.state.settings
     state = request.query_params.get("state", "")
     try:
@@ -571,6 +595,7 @@ async def google_unlink(
     session: Annotated[AsyncSession, Depends(get_session)],
     csrf_token: Annotated[str | None, Header(alias="X-CSRF-Token")] = None,
 ) -> None:
+    """Require recent reauthentication and remove the owner Google identity transactionally."""
     owner, auth_session = await _lock_owner_session(
         request, session, auth_session, csrf_token
     )
@@ -590,6 +615,7 @@ async def auth_session(
     response: Response,
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> AuthState:
+    """Return the current authenticated state and CSRF token for the active owner session."""
     row = await _current_session(request, session, request.cookies.get(SESSION_COOKIE))
     _owner, row = await _lock_owner_session(
         request, session, row, None, check_csrf=False
@@ -619,6 +645,7 @@ async def logout(
     stale_session: Annotated[AuthSession, Depends(require_owner_write)],
     csrf_token: Annotated[str | None, Header(alias="X-CSRF-Token")] = None,
 ) -> None:
+    """Invalidate the current session and clear authentication and CSRF cookies."""
     _owner, auth_session = await _lock_owner_session(
         request, session, stale_session, csrf_token
     )

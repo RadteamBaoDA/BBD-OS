@@ -21,18 +21,22 @@ _RELEASE = "if redis.call('get', KEYS[1]) == ARGV[1] then return redis.call('del
 
 
 class ModelGatewayError(RuntimeError):
+    """Base exception for unavailable, rejected, or invalid model gateway operations."""
     pass
 
 
 class PrivacyPolicyDenied(ModelGatewayError):
+    """Raised when request policy forbids sending a capability to the configured destination."""
     pass
 
 
 class CapabilityUnsupported(ModelGatewayError):
+    """Raised when the gateway rejects a requested model capability."""
     pass
 
 
 class ModelGateway:
+    """OpenAI-compatible client enforcing privacy policy, capability verification, bounded concurrency, and approved endpoint networking."""
     def __init__(
         self,
         redis: Redis,
@@ -46,6 +50,7 @@ class ModelGateway:
     ) -> None:
         # The SDK DEBUG request log contains JSON request bodies. Keep prompts
         # and indexed source text out of logs even when OPENAI_LOG=debug is set.
+        """Initialize gateway credentials, identity, timeouts, pre-send hook, and approved destination networks."""
         logging.getLogger("openai").setLevel(logging.WARNING)
         self.redis = redis
         self.base_url = base_url.rstrip("/") if base_url else None
@@ -57,6 +62,7 @@ class ModelGateway:
         self.approved_endpoint_cidrs = approved_endpoint_cidrs
 
     def _http_client(self, base_url: str):
+        """Create a redirect-disabled HTTP client pinned to an endpoint approved by network policy."""
         try:
             return approved_http_client(base_url, self.approved_endpoint_cidrs)
         except EndpointNetworkPolicyError as exc:
@@ -64,6 +70,7 @@ class ModelGateway:
 
     @asynccontextmanager
     async def _slot(self) -> AsyncIterator[None]:
+        """Acquire one of two Redis-backed gateway leases within the timeout and release only the matching lease token."""
         token = secrets.token_urlsafe(18)
         key = None
         try:
@@ -87,6 +94,7 @@ class ModelGateway:
                     pass
 
     async def _with_slot(self, call: Callable[[], Awaitable[Any]]) -> Any:
+        """Run one async gateway operation while holding a bounded-capacity lease."""
         async with self._slot():
             return await call()
 
@@ -100,6 +108,7 @@ class ModelGateway:
         payload: dict[str, Any],
         probe: bool = False,
     ) -> Any:
+        """Check policy and cached capability before sending a bounded, retried gateway request; map transport and provider errors."""
         if not may_send(policy, alias, mapping, self.destination_id, bool(self.api_key), capability):
             raise PrivacyPolicyDenied("Model request denied by privacy policy")
         if self.base_url is None or mapping is None:
@@ -120,6 +129,7 @@ class ModelGateway:
         base_url = self.base_url if self.base_url.endswith("/v1") else f"{self.base_url}/v1"
 
         async def send() -> Any:
+            """Execute a chat, embedding, or rerank SDK call with bounded retries and normalize its response."""
             async with AsyncOpenAI(
                 base_url=base_url,
                 api_key=self.api_key or "not-configured",
@@ -163,11 +173,13 @@ class ModelGateway:
         return await self._with_slot(send)
 
     async def discover_models(self) -> list[str]:
+        """List model IDs from the configured gateway while holding capacity and enforcing endpoint policy."""
         if self.base_url is None or not self.api_key:
             raise ModelGatewayError("Model gateway is not configured")
         base_url = self.base_url if self.base_url.endswith("/v1") else f"{self.base_url}/v1"
 
         async def send() -> list[str]:
+            """Call the configured model-list endpoint and return valid model IDs; map SDK and network failures to the gateway error."""
             if self.before_send is not None:
                 await self.before_send()
             async with AsyncOpenAI(base_url=base_url, api_key=self.api_key,
@@ -184,9 +196,11 @@ class ModelGateway:
         return await self._with_slot(send)
 
     async def chat(self, alias: str, mapping: ModelMapping | None, policy: RequestPolicy, messages: list[dict[str, Any]], probe: bool = False) -> Any:
+        """Send chat messages through the common policy and capability-checked request path."""
         return await self._request(alias, mapping, policy, "chat", "chat/completions", {"messages": messages}, probe)
 
     async def stream(self, alias: str, mapping: ModelMapping | None, policy: RequestPolicy, messages: list[dict[str, Any]], probe: bool = False) -> AsyncIterator[str]:
+        """Stream chat completions after policy and capability checks; retry only before any chunk is emitted."""
         if not may_send(policy, alias, mapping, self.destination_id, bool(self.api_key), "streaming") or self.base_url is None or mapping is None:
             raise PrivacyPolicyDenied("Model request denied by privacy policy")
         if not probe:
@@ -220,6 +234,7 @@ class ModelGateway:
                             stream=True,
                         )
                         async for chunk in stream:
+                            # Retrying after a yielded chunk would duplicate part of the response for the caller.
                             emitted = True
                             yield f"data: {json.dumps(chunk.model_dump(mode='json', exclude_none=True))}"
                         yield "data: [DONE]"
@@ -239,13 +254,17 @@ class ModelGateway:
                         raise ModelGatewayError("Model gateway network policy denied the destination") from exc
 
     async def embed(self, alias: str, mapping: ModelMapping | None, policy: RequestPolicy, inputs: list[str], probe: bool = False) -> Any:
+        """Request embeddings through the common policy and capability-checked request path."""
         return await self._request(alias, mapping, policy, "embeddings", "embeddings", {"input": inputs}, probe)
 
     async def structured(self, alias: str, mapping: ModelMapping | None, policy: RequestPolicy, messages: list[dict[str, Any]], schema: dict[str, Any], probe: bool = False) -> Any:
+        """Request a chat completion constrained by the supplied JSON schema."""
         return await self._request(alias, mapping, policy, "structured", "chat/completions", {"messages": messages, "response_format": {"type": "json_schema", "json_schema": schema}}, probe)
 
     async def tools(self, alias: str, mapping: ModelMapping | None, policy: RequestPolicy, messages: list[dict[str, Any]], tools: list[dict[str, Any]], probe: bool = False) -> Any:
+        """Request a chat completion with the supplied tool definitions."""
         return await self._request(alias, mapping, policy, "tools", "chat/completions", {"messages": messages, "tools": tools}, probe)
 
     async def rerank(self, alias: str, mapping: ModelMapping | None, policy: RequestPolicy, query: str, documents: list[str], probe: bool = False) -> Any:
+        """Request document reranking through the configured gateway capability."""
         return await self._request(alias, mapping, policy, "reranking", "rerank", {"query": query, "documents": documents}, probe)
