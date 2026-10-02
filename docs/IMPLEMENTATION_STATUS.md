@@ -14,7 +14,7 @@ Markers: `[ ]` not started; `[~]` in progress; `[x]` complete; `[!]` blocked.
 - [x] Phase 1: core data platform code/build and whole-branch review complete; merged to `main` (`d425057`). Behavioral acceptance remains deferred.
 - [x] Phase 2: ingestion and packaged collection workflows (code/build and independent review complete; merged to `main` as `2f7c409`; behavioral acceptance deferred).
 - [x] Phase 3: search and embeddings production code/build/whole-branch review complete; behavioral acceptance deferred to the post-code test stage.
-- [~] Phase 4: P04-T1 (`10fcab7`/`56b4e0d`) and P04-T2 (`4f5ee2e`) code/build/review complete in `codex/bbd-p04`; T3 code/build/review complete (fe6207a) after two repairs; T4 active before whole-phase merge/archive. Historical dirty draft remains preserved.
+- [~] Phase 4: P04-T1 (`10fcab7`/`56b4e0d`), T2 (`4f5ee2e`), T3 (`fe6207a`) and T4 (`ea8a1fc`) production code/build/scoped review complete in `codex/bbd-p04`. Whole-phase merge/archive awaits compatible repair of duplicate migration indexes; application history unknown. Historical dirty draft preserved.
 - [ ] Phase 5: temporal knowledge and Graphiti.
 - [ ] Phase 6: Ask/RAG and citations.
 - [ ] Phase 7: agents, tools, and approvals.
@@ -38,4 +38,4 @@ Phase 0 verified on 2026-09-25: Ruff, mypy, pytest (15 passed, 1 integration tes
 - [x] R06 durable replay/SSE/provider: feature `325d20b`, integration `da4fb8c`, develop merge `35fc0c5`; full combined build and source/spec/quality review passed; worktree archived. Behavioral acceptance deferred.
 - [x] P02-RN1 receipt-to-library normalization: feature `b4f735b`, integration `9c33236`; full prescribed repair/combined builds and independent source/spec/quality reviews passed. Merged into develop `e759bb8` and worktree archived; later P04 composition and behavioral acceptance remain required.
 - [ ] Remaining reconciliation production code/build/review and later acceptance.
-- Active production task: P04-T4 knowledge UI and bounded React Flow (repair1 frontend compilation passed; full Docker build awaits engine restoration; independent review2 closed five source groups and requires four residual P2 repairs; two Luna agents active, T3 accepted fe6207a). Completed OSS auxiliary worktree archived after integration into the active phase. R04/R06/RN1 integrated and archived; old Phase 4 draft remains preserved. Tests begin after all original and supplemental production code is complete.
+- Active production work: P04 integration migration repair; owner application history is still unknown. T4 (`ea8a1fc`) code/build/scoped review complete after F1-F9 and type-filter repairs; full prescribed four-image build passed on frozen source. R04/R06/RN1 integrated and archived; old Phase 4 draft remains preserved. Tests begin after all original and supplemental production code is complete.
