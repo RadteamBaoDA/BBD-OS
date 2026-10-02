@@ -12,7 +12,7 @@
 
 **Entry gate:** Phase 3 validated structured-output alias, search and public library.
 
-**Implementation status:** P04-T1.1–T1.3 and P04-T2 production code, prescribed build and scoped independent reviews are complete on `codex/bbd-p04`. P04-T3 production code/build/review is complete; T4 remains. Runtime/provider acceptance is deferred. See `docs/task-reports/P04-T2.md`.
+**Implementation status:** P04-T1–T4 production code, prescribed builds and scoped independent reviews are complete in the pinned Phase 4 integration. Whole-phase source review and pinned develop integration build passed; merge commit remains pending. Runtime/provider/migration-history acceptance is deferred. See the task receipts and `docs/superpowers/plans/EXECUTION.md`.
 
 Code stage: implement production code and run affected production builds only. Do not create, modify or run tests, lint, or standalone typecheck until production code for all Phase 1-12 is complete. Behavioral acceptance is listed separately in the deferred test-stage section.
 
@@ -101,7 +101,7 @@ Concrete contract/configuration shape (illustrative IDs/timestamps are test data
 
 **Interfaces — consumes/produces:** Graph UI reads entity/neighbors APIs; graph evidence panel opens document revision. Search registry adds entity results. Public KnowledgeService methods are exported through modules/knowledge/public.py.
 
-- [ ] **P04-T4.1 - Implement production behavior.** Provide list/detail/create/edit, resolution review and merge/split confirmation. Use React Flow with on-demand neighbors, default 50 nodes and hard response cap 100; include keyboard-accessible relationship list. Show aliases, sources, documents and actual evidence; temporal tabs appear in Phase 5 and memories in Phase 6, not empty fabricated panels.
+- [x] **P04-T4.1 - Implement production behavior.** Provide list/detail/create/edit, resolution review and merge/split confirmation. Use React Flow with on-demand neighbors, default 50 nodes and hard response cap 100; include keyboard-accessible relationship list. Show aliases, sources, documents and actual evidence; temporal tabs appear in Phase 5 and memories in Phase 6, not empty fabricated panels.
 
 Concrete contract/configuration shape (illustrative IDs/timestamps are test data, not production defaults):
 
@@ -109,16 +109,16 @@ Concrete contract/configuration shape (illustrative IDs/timestamps are test data
 {"nodes":[],"edges":[],"truncated":false,"next_cursor":null}
 ```
 
-- [ ] **P04-T4.2 - Build the affected deliverable.** Run `./scripts/dev.ps1 build` (or `make build`) and fix production build failures before proceeding.
+- [x] **P04-T4.2 - Build the affected deliverable.** Run `./scripts/dev.ps1 build` (or `make build`) and fix production build failures before proceeding.
 
-- [ ] **P04-T4.3 - Record build evidence, commit and continue.** Record changed files, the exact production build command/result, review findings and unresolved gates in `EXECUTION.md`; commit the completed task and continue to the next ready task.
+- [x] **P04-T4.3 - Record build evidence, commit and continue.** Record changed files, the exact production build command/result, review findings and unresolved gates in `EXECUTION.md`; commit the completed task and continue to the next ready task.
 
 ## Phase Acceptance and Handoff
 
-- [ ] Build the phase deliverables with `./scripts/dev.ps1 build` (or `make build`).
-- [ ] Confirm packaging, Alembic metadata, API routes and module descriptors are included in affected production builds.
-- [ ] Complete independent source review and fix actionable findings, then repeat affected production builds.
-- [ ] Update `docs/IMPLEMENTATION_STATUS.md`, this checklist and `EXECUTION.md`; advance to the next ready task.
+- [x] Build the phase deliverables with `./scripts/dev.ps1 build` (or `make build`).
+- [x] Confirm packaging, Alembic metadata, API routes and module descriptors are included in affected production builds.
+- [x] Complete independent source review and fix actionable findings, then repeat affected production builds.
+- [x] Update `docs/IMPLEMENTATION_STATUS.md`, this checklist and `EXECUTION.md`; advance to the next ready task.
 
 Production-code completion for all Phases 1-12 is the gate to begin the separate deferred test stage.
 

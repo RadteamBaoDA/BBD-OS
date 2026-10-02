@@ -1,6 +1,6 @@
 # BBD-OS implementation status
 
-Updated: 2026-10-01 (R01/R02 integrated; R03-core/R05 integrated; R09 integrated; R04/R06 integrated and archived; RN1 integrated and archived; P04-T2 production/build/review complete; P04-T3 production/build/review complete; P04-T4 next; behavioral acceptance deferred).
+Updated: 2026-10-01 (R01/R02 integrated; R03-core/R05 integrated; R09 integrated; R04/R06 integrated and archived; RN1 integrated and archived; P04 active; behavioral acceptance deferred).
 
 Markers: `[ ]` not started; `[~]` in progress; `[x]` complete; `[!]` blocked.
 
@@ -14,7 +14,7 @@ Markers: `[ ]` not started; `[~]` in progress; `[x]` complete; `[!]` blocked.
 - [x] Phase 1: core data platform code/build and whole-branch review complete; merged to `main` (`d425057`). Behavioral acceptance remains deferred.
 - [x] Phase 2: ingestion and packaged collection workflows (code/build and independent review complete; merged to `main` as `2f7c409`; behavioral acceptance deferred).
 - [x] Phase 3: search and embeddings production code/build/whole-branch review complete; behavioral acceptance deferred to the post-code test stage.
-- [~] Phase 4: P04-T1 entity/relationship and P04-T2 bounded extraction/resolution code/build/review complete; P04-T3 production code/build/review complete; T4 remains. Runtime/provider acceptance is deferred. See `docs/task-reports/P04-T2.md`.
+- [x] Phase 4: P04-T1–T4 production code/build/scoped review, migration source repair (`1c5a453`), whole-phase source review, and pinned develop integration build complete. Merge commit remains pending; database migration application history and runtime/provider acceptance remain unknown/deferred. Historical dirty draft preserved.
 - [ ] Phase 5: temporal knowledge and Graphiti.
 - [ ] Phase 6: Ask/RAG and citations.
 - [ ] Phase 7: agents, tools, and approvals.
@@ -38,4 +38,4 @@ Phase 0 verified on 2026-09-25: Ruff, mypy, pytest (15 passed, 1 integration tes
 - [x] R06 durable replay/SSE/provider: feature `325d20b`, integration `da4fb8c`, develop merge `35fc0c5`; full combined build and source/spec/quality review passed; worktree archived. Behavioral acceptance deferred.
 - [x] P02-RN1 receipt-to-library normalization: feature `b4f735b`, integration `9c33236`; full prescribed repair/combined builds and independent source/spec/quality reviews passed. Merged into develop `e759bb8` and worktree archived; later P04 composition and behavioral acceptance remain required.
 - [ ] Remaining reconciliation production code/build/review and later acceptance.
-- Active production task: P04-T3 persistent entity corrections, merge and split. P04-T2 bounded extraction/resolution passed its prescribed build and scoped independent review; see `docs/task-reports/P04-T2.md`. R04/R06/RN1 integrated and archived; old Phase 4 draft remains preserved. Tests begin after all original and supplemental production code is complete.
+- Phase 4 pinned integration is source-reviewed and built: production documentation in 7a6c443/e6796a0; migration source repair 1c5a453; T4 (`ea8a1fc`) after F1–F9/type-filter repairs; final frozen four-image build and whole-phase review passed. Merge commit remains pending. Database application history and runtime acceptance remain deferred. R04/R06/RN1 integrated; historical dirty draft preserved. Tests begin after all original and supplemental production code is complete.
