@@ -143,3 +143,14 @@ To check whether embeddings exist, inspect `.gitnexus/meta.json` — the `stats.
 | Index, status, clean, wiki CLI commands | `.claude/skills/gitnexus/gitnexus-cli/SKILL.md` |
 
 <!-- gitnexus:end -->
+
+## Mandatory Code Documentation
+
+- Every generated or changed named production function/method/component/hook must have an adjacent JSDoc block in JavaScript/TypeScript or a Python docstring immediately inside its body. Document classes and module/public contracts where they own behavior.
+- Explain the function's purpose and relevant inputs, output, side effects, errors, authorization, ordering, concurrency, bounds and deletion/provenance invariants. Use @param/@returns/@throws when useful; keep TypeScript types in the signature instead of repeating them in prose. Python docstrings must identify the function's actual contract, not merely restate its name.
+- For other authored production languages, use their native documentation format for named functions (for example PowerShell comment-based help) and focused inline rationale. Keep test-only helpers and scripts deferred with the test stage.
+- Add focused inline comments at non-obvious branches, transactions, locking/retry/idempotency paths, parsing/normalization and UI state transitions. Explain why the rule exists. Do not add noise that narrates each obvious statement or invent guarantees the implementation does not provide.
+- Cover existing generated production code as it is brought into compliance. Preserve existing correct comments and OSS notices. Do not edit vendored dependencies, generated framework artifacts or lockfiles solely for comments. Keep test edits deferred under the implementation-stage rule; future generated tests follow this documentation convention.
+- Comment-only work must preserve application logic, public signatures and schema operations. Historical migration documentation may describe operations; it must not change revision IDs, ancestry or database behavior.
+- Include documentation compliance in each agent handoff and source review. GitNexus impact/change-scope rules and code/build-only validation still apply.
+- Update status/checkpoint files as work proceeds, but commit status documentation only with a large completed task or phase; do not make a standalone docs commit for every progress update.
