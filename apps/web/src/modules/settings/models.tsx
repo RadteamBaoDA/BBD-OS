@@ -12,6 +12,7 @@ type Models = { aliases: Record<string, Mapping>; capabilities: Capability[]; cr
 const aliases = ['reasoning-large', 'reasoning-small', 'fast', 'embedding', 'reranker', 'vision', 'local-private'];
 const capabilities = ['chat', 'streaming', 'embeddings', 'structured', 'tools', 'reranking'];
 
+/** Renders model settings in the consolidated settings workspace. */
 export function ModelSettings() {
   const { csrfToken } = useWorkspaceSession();
   const queryClient = useQueryClient();

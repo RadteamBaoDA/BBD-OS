@@ -25,11 +25,18 @@ async def list_relationships(
     cursor: str | None = None,
     entity_id: UUID | None = None,
 ) -> RelationshipPage:
+    """List bounded relationships for the authenticated owner."""
     return await public.list_relationships(session, limit, cursor, entity_id)
 
 
 @router.post("", response_model=RelationshipRead, status_code=201)
 async def create_relationship(payload: RelationshipCreate, session: Session, owner: OwnerWrite) -> RelationshipRead:
+    """Create an authorized relationship using the requested owner or derived origin.
+
+    Public validation checks endpoint/evidence membership and derives confidence
+    from evidence for derived facts; redirected/missing endpoints map to HTTP
+    errors. Route authorization does not rewrite the supplied origin.
+    """
     try:
         return await public.create_relationship(session, payload, actor_id=owner.owner_id)
     except RedirectedEntityConflict as exc:
@@ -45,6 +52,7 @@ async def delete_relationship(
     relationship_id: UUID, session: Session, owner: OwnerWrite,
     reason: Annotated[str, Query(min_length=1, max_length=300)] = "owner_relationship_delete",
 ) -> None:
+    """Delete a relationship using the authenticated owner and bounded audit reason."""
     try:
         if not await public.remove_relationship(session, relationship_id, actor_id=owner.owner_id, reason=reason):
             raise HTTPException(status_code=404, detail="Relationship not found")
@@ -62,6 +70,7 @@ async def list_evidence(
     limit: Annotated[int, Query(ge=1, le=50)] = 20,
     cursor: str | None = Query(default=None, max_length=512),
 ) -> EvidencePage:
+    """Return bounded relationship evidence or 404 when the relationship is absent."""
     rows, next_cursor = await public.list_relationship_evidence(session, relationship_id, limit, cursor)
     if rows is None:
         raise HTTPException(status_code=404, detail="Relationship not found")

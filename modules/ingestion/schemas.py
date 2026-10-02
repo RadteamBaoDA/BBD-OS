@@ -7,6 +7,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 
 
 class IngestionRecord(BaseModel):
+    """Validate one provider record and require a timezone-aware observation time."""
     model_config = ConfigDict(extra="forbid")
 
     provider_id: str = Field(min_length=1, max_length=512)
@@ -18,12 +19,14 @@ class IngestionRecord(BaseModel):
     @field_validator("observed_at")
     @classmethod
     def require_aware_observation_time(cls, value: datetime) -> datetime:
+        """Reject observation timestamps that cannot be interpreted as an instant."""
         if value.tzinfo is None or value.utcoffset() is None:
             raise ValueError("observed_at must include a timezone")
         return value
 
 
 class ReceiveBatch(BaseModel):
+    """Validate a source-generation-fenced batch with bounded records and cursors."""
     model_config = ConfigDict(extra="forbid")
 
     source_id: UUID
@@ -36,6 +39,7 @@ class ReceiveBatch(BaseModel):
 
     @model_validator(mode="after")
     def limit_serialized_payload(self) -> "ReceiveBatch":
+        """Reject batches whose encoded JSON payload exceeds 10 MiB."""
         payload = json.dumps(self.model_dump(mode="json"), separators=(",", ":"), ensure_ascii=False)
         if len(payload.encode("utf-8")) > 10 * 1024 * 1024:
             raise ValueError("Batch payload exceeds 10 MiB")
@@ -43,32 +47,38 @@ class ReceiveBatch(BaseModel):
 
 
 class Receipt(BaseModel):
+    """Report durable batch and run identities with the run's current status."""
     batch_id: UUID
     run_id: UUID
     status: Literal["queued", "running", "succeeded", "needs_ocr", "failed"]
 
 
 class RetryRunRequest(BaseModel):
+    """Select the failed ingestion stage to retry."""
     model_config = ConfigDict(extra="forbid")
     stage_key: str = Field(min_length=1, max_length=128)
 
 
 class CrawlReceipt(BaseModel):
+    """Return the durable ingestion run created for a crawl request."""
     run_id: UUID
 
 
 class EventDelivery(BaseModel):
+    """Expose an outbox event's delivery status and payload."""
     id: UUID
     status: str
     payload: dict[str, Any]
 
 
 class CollectorCredentialRead(BaseModel):
+    """Return a newly issued collector token with its owning source ID."""
     source_id: UUID
     token: str
 
 
 class StageRead(BaseModel):
+    """Expose one ingestion stage's retry state and processing counts."""
     stage_key: str
     status: Literal["pending", "queued", "running", "retrying", "succeeded", "failed"]
     attempts: int
@@ -83,6 +93,7 @@ class StageRead(BaseModel):
 
 
 class RunRead(BaseModel):
+    """Serialize an ingestion run and the statuses of its stages."""
     run_id: UUID
     source_id: UUID
     status: Literal["queued", "running", "succeeded", "needs_ocr", "failed"]
@@ -93,6 +104,7 @@ class RunRead(BaseModel):
 
 
 class SourceIngestionRead(BaseModel):
+    """Return the current run and a page of ingestion history for a source."""
     current_run: RunRead | None
     items: list[RunRead]
     next_cursor: str | None

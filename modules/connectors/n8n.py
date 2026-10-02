@@ -19,6 +19,7 @@ from modules.sources.schemas import ConnectorSource
 
 
 def workflow_state(cursor: str | None) -> dict[str, str | None]:
+    """Return the prior cursor and overlap floor used for bounded catch-up."""
     floor = overlap_floor(cursor)
     return {
         "cursor_before": cursor,
@@ -27,10 +28,12 @@ def workflow_state(cursor: str | None) -> dict[str, str | None]:
 
 
 def workflow_name(source_id: UUID, operation_id: UUID) -> str:
+    """Build a deterministic source-scoped name for one provisioning operation."""
     return f"BBD-OS connector {source_id} {operation_id.hex}"
 
 
 def workflow_webhook_path(source_id: UUID, source_type: str) -> str:
+    """Build the source-scoped manual webhook path for a supported connector type."""
     connector_type = {"api": "rest", "web": "url", "rss": "rss"}[source_type]
     return f"bbd-collect-{connector_type}-{source_id.hex}"
 
@@ -45,6 +48,7 @@ def build_workflow(
     manual_credential_id: str,
     provider_credential_id: str | None,
 ) -> dict[str, Any]:
+    """Bind packaged workflow settings and credentials to a source revision."""
     filename = {"rss": "rss.json", "web": "url.json", "api": "rest.json"}.get(source.type)
     if filename is None:
         raise ValueError("This source type has no packaged workflow")
@@ -112,6 +116,7 @@ def build_workflow(
     )
 
     def bind_source_id(value: Any) -> Any:
+        """Recursively replace packaged placeholders with this source's identifiers."""
         if isinstance(value, str):
             return (
                 value.replace("{{$env.BBD_SOURCE_ID}}", source_id)
@@ -134,11 +139,15 @@ def build_workflow(
 
 
 class N8nApi:
+    """Access bounded n8n workflow management endpoints without ambient proxies."""
+
     def __init__(self, service_url: str, api_key: str) -> None:
+        """Store the n8n service root and API key header."""
         self._base_url = service_url.rstrip("/")
         self._headers = {"X-N8N-API-KEY": api_key}
 
     async def find_workflows(self, name: str) -> list[dict[str, Any]]:
+        """Find exact-name workflows through at most twenty paginated API pages."""
         matches: list[dict[str, Any]] = []
         cursor: str | None = None
         for page in range(20):
@@ -168,6 +177,7 @@ class N8nApi:
         return matches
 
     async def get_workflow(self, workflow_id: str) -> dict[str, Any]:
+        """Fetch one workflow and require an object response."""
         async with httpx.AsyncClient(timeout=20, trust_env=False) as client:
             response = await client.get(
                 f"{self._base_url}/api/v1/workflows/{workflow_id}",
@@ -180,6 +190,7 @@ class N8nApi:
         return payload
 
     async def create_workflow(self, workflow: dict[str, Any]) -> str:
+        """Create a workflow and return its nonempty n8n identifier."""
         async with httpx.AsyncClient(timeout=30, trust_env=False) as client:
             response = await client.post(
                 f"{self._base_url}/api/v1/workflows",
@@ -193,6 +204,7 @@ class N8nApi:
         return identifier
 
     async def update_workflow(self, workflow_id: str, workflow: dict[str, Any]) -> None:
+        """Replace a known workflow from the supplied packaged definition."""
         async with httpx.AsyncClient(timeout=30, trust_env=False) as client:
             response = await client.put(
                 f"{self._base_url}/api/v1/workflows/{workflow_id}",
@@ -202,6 +214,7 @@ class N8nApi:
             response.raise_for_status()
 
     async def set_active(self, workflow_id: str, active: bool) -> None:
+        """Activate or deactivate a workflow by its n8n identifier."""
         action = "activate" if active else "deactivate"
         async with httpx.AsyncClient(timeout=20, trust_env=False) as client:
             response = await client.post(
@@ -246,6 +259,7 @@ def workflow_matches(expected: dict[str, Any], actual: dict[str, Any]) -> bool:
 
 
 async def read_rss(url: str, cursor: str | None) -> dict[str, object]:
+    """Fetch bounded RSS/Atom pages with URL checks, overlap filtering, and normalized records."""
     from modules.connectors.registry import normalize
 
     await validate_public_url(url)
@@ -278,6 +292,7 @@ async def read_rss(url: str, cursor: str | None) -> dict[str, object]:
                     body.extend(chunk)
             root = ElementTree.fromstring(bytes(body))
             def text(element: ElementTree.Element, names: set[str]) -> str:
+                """Return descendant text for the first matching local XML tag name."""
                 for child in element.iter():
                     if child.tag.rsplit("}", 1)[-1].lower() in names:
                         return "".join(child.itertext()).strip()
@@ -291,6 +306,7 @@ async def read_rss(url: str, cursor: str | None) -> dict[str, object]:
                 raw_updated = text(item, {"updated"})
                 observed_at = datetime.now(UTC)
                 def parse_feed_time(raw_value: str) -> datetime | None:
+                    """Parse ISO or RFC feed time and normalize naive values as UTC."""
                     if not raw_value:
                         return None
                     try:

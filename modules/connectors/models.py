@@ -10,6 +10,7 @@ from core.database import Base
 
 
 class ConnectorProvisioning(Base):
+    """Persist desired and applied connector configuration and workflow operation state."""
     __tablename__ = "connector_provisioning"
     __table_args__ = (
         Index("ix_connector_provisioning_reconcile", "state", "updated_at"),
@@ -49,6 +50,7 @@ class ConnectorProvisioning(Base):
 
 
 class ConnectorManagedCredential(Base):
+    """Track one source credential slot through create, recovery, and deletion."""
     __tablename__ = "connector_managed_credentials"
     __table_args__ = (
         Index("ix_connector_managed_credentials_state", "state"),

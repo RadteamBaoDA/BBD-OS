@@ -12,10 +12,12 @@ EntityType = Literal[
 
 
 def canonicalize_name(value: str) -> str:
+    """Normalize whitespace and case for entity-name identity comparisons."""
     return " ".join(value.split()).casefold()
 
 
 def validate_metadata(value: dict[str, Any]) -> dict[str, Any]:
+    """Reject non-JSON values and metadata whose compact UTF-8 form exceeds 64 KiB."""
     encoded = json.dumps(value, ensure_ascii=False, allow_nan=False, separators=(",", ":")).encode("utf-8")
     if len(encoded) > 65_536:
         raise ValueError("metadata exceeds 64 KiB")
@@ -23,6 +25,7 @@ def validate_metadata(value: dict[str, Any]) -> dict[str, Any]:
 
 
 class EntityCreate(BaseModel):
+    """Validate owner-created entity fields, aliases, metadata, and audit reason."""
     model_config = ConfigDict(extra="forbid")
     type: EntityType
     name: str = Field(min_length=1, max_length=300)
@@ -34,6 +37,7 @@ class EntityCreate(BaseModel):
     @field_validator("name")
     @classmethod
     def trim_name(cls, value: str) -> str:
+        """Collapse name whitespace and reject names that become blank."""
         value = " ".join(value.split())
         if not value:
             raise ValueError("name cannot be blank")
@@ -42,6 +46,7 @@ class EntityCreate(BaseModel):
     @field_validator("aliases")
     @classmethod
     def clean_aliases(cls, values: list[str]) -> list[str]:
+        """Normalize aliases and reject blanks, overlong values, or duplicate names."""
         aliases = [" ".join(value.split()) for value in values]
         if any(not value or len(value) > 300 for value in aliases):
             raise ValueError("aliases must contain 1 to 300 characters")
@@ -52,10 +57,12 @@ class EntityCreate(BaseModel):
     @field_validator("metadata")
     @classmethod
     def bounded_metadata(cls, value: dict[str, Any]) -> dict[str, Any]:
+        """Apply the shared JSON size and finiteness bound to entity metadata."""
         return validate_metadata(value)
 
 
 class EntityPatch(BaseModel):
+    """Validate an optimistic entity update with its expected revision and reason."""
     model_config = ConfigDict(extra="forbid")
     expected_revision: int = Field(ge=1)
     reason: str = Field(default="owner_update", min_length=1, max_length=300)
@@ -66,6 +73,7 @@ class EntityPatch(BaseModel):
     @field_validator("name")
     @classmethod
     def trim_name(cls, value: str | None) -> str | None:
+        """Normalize a supplied name while preserving an omitted/null value."""
         if value is None:
             return value
         value = " ".join(value.split())
@@ -76,10 +84,12 @@ class EntityPatch(BaseModel):
     @field_validator("metadata")
     @classmethod
     def bounded_metadata(cls, value: dict[str, Any] | None) -> dict[str, Any] | None:
+        """Bound replacement metadata while preserving an omitted/null value."""
         return validate_metadata(value) if value is not None else value
 
 
 class AliasCreate(BaseModel):
+    """Validate one owner-confirmed alias and its correction reason."""
     model_config = ConfigDict(extra="forbid")
     alias: str = Field(min_length=1, max_length=300)
     confirmed: bool = True
@@ -88,6 +98,7 @@ class AliasCreate(BaseModel):
     @field_validator("alias")
     @classmethod
     def trim_alias(cls, value: str) -> str:
+        """Collapse alias whitespace and reject a blank normalized alias."""
         value = " ".join(value.split())
         if not value:
             raise ValueError("alias cannot be blank")
@@ -95,6 +106,7 @@ class AliasCreate(BaseModel):
 
 
 class EntityAliasRead(BaseModel):
+    """Serialize an alias with confirmation, provenance, and confidence fields."""
     id: UUID
     entity_id: UUID
     alias: str
@@ -106,6 +118,7 @@ class EntityAliasRead(BaseModel):
 
 
 class EntityRead(BaseModel):
+    """Serialize canonical entity state, revision, field origins, and aliases."""
     id: UUID
     type: EntityType
     name: str | None
@@ -123,11 +136,13 @@ class EntityRead(BaseModel):
 
 
 class EntityPage(BaseModel):
+    """Return a bounded entity page and its optional continuation cursor."""
     items: list[EntityRead]
     next_cursor: str | None
 
 
 class EntityExtractionStatus(BaseModel):
+    """Expose extraction progress and any facts or candidates awaiting review."""
     document_version_id: UUID
     status: Literal["pending", "running", "succeeded", "blocked", "failed"]
     attempt: int
@@ -139,6 +154,7 @@ class EntityExtractionStatus(BaseModel):
 
 
 class EntityReferenceRead(BaseModel):
+    """Represent a requested entity ID resolved to its current canonical record."""
     requested_id: UUID
     canonical_id: UUID
     revision: int
@@ -147,6 +163,7 @@ class EntityReferenceRead(BaseModel):
 
 
 class EntityMembershipReferenceRead(BaseModel):
+    """Identify an evidence membership and its document chunk and timestamps."""
     id: UUID
     entity_id: UUID
     document_version_id: UUID
@@ -157,6 +174,7 @@ class EntityMembershipReferenceRead(BaseModel):
 
 
 class EntityEvidenceRead(BaseModel):
+    """Serialize evidence with version snapshot metadata and its source details."""
     id: UUID
     entity_id: UUID
     document_id: UUID
@@ -174,11 +192,13 @@ class EntityEvidenceRead(BaseModel):
 
 
 class EntityEvidencePage(BaseModel):
+    """Return a bounded entity-evidence page and optional continuation cursor."""
     items: list[EntityEvidenceRead]
     next_cursor: str | None
 
 
 class EntityReviewEvidence(BaseModel):
+    """Provide provenance and excerpt fields used to review extracted evidence."""
     document_id: UUID
     document_version_id: UUID
     version_number: int
@@ -193,6 +213,7 @@ class EntityReviewEvidence(BaseModel):
 
 
 class EntityReviewEndpoint(BaseModel):
+    """Describe whether a review candidate endpoint is assigned, absent, or ambiguous."""
     state: Literal["assigned", "unassigned", "ambiguous"]
     entity_id: UUID | None = None
     entity_name: str | None = None
@@ -201,6 +222,7 @@ class EntityReviewEndpoint(BaseModel):
 
 
 class EntityReviewCandidate(BaseModel):
+    """Serialize an entity or relationship candidate with snapshot and evidence context."""
     kind: Literal["entity", "relationship"] = "entity"
     candidate_id: UUID | None = None
     work_id: UUID
@@ -226,6 +248,7 @@ class EntityReviewCandidate(BaseModel):
 
 
 class EntityReviewAssignmentRequest(BaseModel):
+    """Fence an owner assignment against result, source, owner, and target revisions."""
     model_config = ConfigDict(extra="forbid")
     result_id: UUID
     snapshot_digest: str = Field(pattern=r"^[a-f0-9]{64}$")
@@ -238,6 +261,7 @@ class EntityReviewAssignmentRequest(BaseModel):
 
 
 class EntityReviewAssignmentResult(BaseModel):
+    """Report the assigned candidate, created memberships, and resulting revision."""
     candidate_id: UUID
     target_entity_id: UUID
     membership_ids: list[UUID]
@@ -245,6 +269,7 @@ class EntityReviewAssignmentResult(BaseModel):
 
 
 class EntityRelationshipReviewRequest(BaseModel):
+    """Fence relationship review against the extraction snapshot and generations."""
     model_config = ConfigDict(extra="forbid")
     result_id: UUID
     snapshot_digest: str = Field(pattern=r"^[a-f0-9]{64}$")
@@ -254,16 +279,19 @@ class EntityRelationshipReviewRequest(BaseModel):
 
 
 class EntityRelationshipReviewResult(BaseModel):
+    """Report the candidate and relationship created by owner review."""
     candidate_id: UUID
     relationship_id: UUID
 
 
 class EntityReviewPage(BaseModel):
+    """Return review candidates with an optional continuation cursor."""
     items: list[EntityReviewCandidate]
     next_cursor: str | None
 
 
 class EntityMergeRequest(BaseModel):
+    """Validate merge target and both entity revisions before correction."""
     model_config = ConfigDict(extra="forbid")
     into_id: UUID
     expected_revision: int = Field(ge=1)
@@ -273,6 +301,7 @@ class EntityMergeRequest(BaseModel):
 
 
 class EntitySplitRequest(BaseModel):
+    """Validate evidence memberships to move and the replacement entity payload."""
     model_config = ConfigDict(extra="forbid")
     evidence_ids: list[UUID] = Field(min_length=1, max_length=200)
     expected_revision: int = Field(ge=1)
@@ -283,12 +312,14 @@ class EntitySplitRequest(BaseModel):
     @field_validator("evidence_ids")
     @classmethod
     def unique_evidence(cls, value: list[UUID]) -> list[UUID]:
+        """Reject repeated membership IDs so one split applies each item once."""
         if len(set(value)) != len(value):
             raise ValueError("Evidence membership IDs must be unique")
         return value
 
 
 class EntitySuppressionRequest(BaseModel):
+    """Validate evidence memberships to suppress and the expected entity revision."""
     model_config = ConfigDict(extra="forbid")
     evidence_ids: list[UUID] = Field(min_length=1, max_length=200)
     expected_revision: int = Field(ge=1)
@@ -298,12 +329,14 @@ class EntitySuppressionRequest(BaseModel):
     @field_validator("evidence_ids")
     @classmethod
     def unique_evidence(cls, value: list[UUID]) -> list[UUID]:
+        """Reject repeated membership IDs so one suppression applies each once."""
         if len(set(value)) != len(value):
             raise ValueError("Evidence membership IDs must be unique")
         return value
 
 
 class EntityCorrectionResult(BaseModel):
+    """Report correction outcome, canonical target, replacements, and conflicts."""
     operation: Literal["merge", "split", "suppress"]
     entity_id: UUID
     canonical_entity_id: UUID
@@ -313,6 +346,7 @@ class EntityCorrectionResult(BaseModel):
 
 
 class EntityCorrectionConflict(BaseModel):
+    """Identify a correction conflict and the involved entity, evidence, and links."""
     code: str
     message: str
     entity_ids: list[UUID] = Field(default_factory=list)
@@ -321,6 +355,7 @@ class EntityCorrectionConflict(BaseModel):
 
 
 class EntityCorrectionPreview(BaseModel):
+    """Summarize merge or split scope and conflicts without applying the change."""
     operation: Literal["merge", "split"]
     entity_ids: list[UUID]
     membership_ids: list[UUID]
@@ -330,6 +365,7 @@ class EntityCorrectionPreview(BaseModel):
 
 
 class EvidenceRef(BaseModel):
+    """Reference a versioned chunk and optional endpoint memberships as evidence."""
     model_config = ConfigDict(extra="forbid")
     document_version_id: UUID
     chunk_id: UUID

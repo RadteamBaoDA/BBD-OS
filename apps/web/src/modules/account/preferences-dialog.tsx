@@ -36,6 +36,7 @@ type PreferencesDialogProps = {
   onOpenChange: (open: boolean) => void;
 };
 
+/** Checks a timezone identifier with the platform Intl implementation. */
 function isValidTimezone(value: string): boolean {
   try {
     new Intl.DateTimeFormat('en-US', { timeZone: value });
@@ -45,6 +46,7 @@ function isValidTimezone(value: string): boolean {
   }
 }
 
+/** Edits a draft preference pair, previews changes, and applies save, cancel, reload, and auth-generation behavior. */
 export function PreferencesDialog({ open, preferences, csrfToken, loading = false, loadError = false, retrying = false, onRetry, authGeneration = 0, onCloseAutoFocus, savingDisabled = false, onOpenChange }: PreferencesDialogProps) {
   const t = useTranslations('preferences');
   const client = useQueryClient();
@@ -142,7 +144,9 @@ export function PreferencesDialog({ open, preferences, csrfToken, loading = fals
     setPreview({ theme: draft.theme, locale: draft.locale, timezone: isValidTimezone(draft.timezone) ? draft.timezone : baseline.current.timezone }, authGeneration);
   }, [open, draft, authGeneration, setPreview]);
 
+  /** Restores committed preferences and clears the temporary preview when the dialog is dismissed. */
   const restore = () => {
+    // Closing without Save restores the committed pair after any live theme or locale preview.
     const confirmed = preferences
       ? { theme: preferences.theme, locale: preferences.locale, timezone: preferences.timezone }
       : baseline.current;
@@ -150,6 +154,7 @@ export function PreferencesDialog({ open, preferences, csrfToken, loading = fals
     setDraft(null);
   };
 
+  /** Invalidates the current reload attempt so a superseded response cannot update the dialog. */
   const invalidateReload = () => {
     editSessionRef.current += 1;
     reloadRequestRef.current += 1;
@@ -161,6 +166,7 @@ export function PreferencesDialog({ open, preferences, csrfToken, loading = fals
     save.reset();
   };
 
+  /** Closes the dialog after restoring the committed preference values. */
   const dismiss = () => {
     if (save.isPending) return;
     invalidateReload();
@@ -172,6 +178,7 @@ export function PreferencesDialog({ open, preferences, csrfToken, loading = fals
     draft.theme !== baseline.current.theme || draft.locale !== baseline.current.locale || draft.timezone !== baseline.current.timezone
   ));
   const hasConflict = save.error instanceof ApiError && save.error.status === 409;
+  /** Aborts the previous request and starts a reload attempt bound to this edit session and auth generation. */
   const startReload = () => {
     reloadControllerRef.current?.abort();
     const controller = new AbortController();
@@ -181,15 +188,18 @@ export function PreferencesDialog({ open, preferences, csrfToken, loading = fals
     setReloadError(false);
     return { controller, request, session: editSessionRef.current, generation: authGeneration };
   };
+  /** Accepts a reload result only while the dialog is mounted and open and its request, edit session, and auth generation remain current. */
   const isReloadCurrent = (attempt: ReturnType<typeof startReload>) => Boolean(
     attempt && mounted.current && openRef.current &&
     attempt.session === editSessionRef.current && attempt.request === reloadRequestRef.current &&
     attempt.generation === generationRef.current && isCurrentGeneration(attempt.generation)
   );
+  /** Clears the stored controller when it matches this attempt and resets pending state; callers must check attempt freshness first. */
   const finishReload = (attempt: ReturnType<typeof startReload>) => {
     if (reloadControllerRef.current === attempt.controller) reloadControllerRef.current = null;
     setReloadPending(false);
   };
+  /** Reloads through the optional callback while retaining the draft; keeps it on failure or stale results and replaces it only after a non-null result passes the freshness check. */
   const discardAndReload = async () => {
     const attempt = startReload();
     let latest: OwnerPreferences | null = null;
@@ -211,6 +221,7 @@ export function PreferencesDialog({ open, preferences, csrfToken, loading = fals
     setDraft({ ...latest, ...values });
     setPreview(values, authGeneration);
   };
+  /** Retries the optional preference reload and applies its result only while this dialog attempt remains current. */
   const retryLoad = async () => {
     const attempt = startReload();
     let latest: OwnerPreferences | null = null;

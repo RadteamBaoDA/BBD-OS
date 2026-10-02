@@ -27,6 +27,7 @@ async def list_sources(
     limit: Annotated[int, Query(ge=1, le=100)] = 50,
     cursor: str | None = None,
 ) -> SourceList:
+    """Return a bounded owner-only source page with its continuation cursor."""
     items, next_cursor = await public.list_sources(session, limit, cursor)
     return SourceList(
         items=[SourceRead.model_validate(item, from_attributes=True) for item in items],
@@ -36,12 +37,14 @@ async def list_sources(
 
 @router.post("", response_model=SourceRead, status_code=201)
 async def create_source(payload: SourceCreate, session: Session, _owner: OwnerWrite) -> SourceRead:
+    """Create a source under owner write authorization."""
     source = await public.create_source(session, payload)
     return SourceRead.model_validate(source, from_attributes=True)
 
 
 @router.get("/{source_id}", response_model=SourceRead)
 async def get_source(source_id: UUID, session: Session, _owner: OwnerRead) -> SourceRead:
+    """Return one owner-only source or 404 when absent."""
     source = await public.get_source(session, source_id)
     if source is None:
         raise HTTPException(status_code=404, detail="Source not found")
@@ -52,6 +55,7 @@ async def get_source(source_id: UUID, session: Session, _owner: OwnerRead) -> So
 async def update_source(
     source_id: UUID, payload: SourcePatch, session: Session, _owner: OwnerWrite
 ) -> SourceRead:
+    """Update non-null source fields through the lifecycle owner contract."""
     source = await public.get_source(session, source_id)
     if source is None:
         raise HTTPException(status_code=404, detail="Source not found")
@@ -72,6 +76,7 @@ async def delete_source(
     _owner: OwnerWrite,
     with_data: bool = False,
 ) -> Response:
+    """Archive a source or queue its data purge and return HTTP 204/202."""
     if with_data:
         operation = await public.start_source_purge(session, source_id)
         if operation is None:

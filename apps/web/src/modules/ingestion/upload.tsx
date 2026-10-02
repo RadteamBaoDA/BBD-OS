@@ -8,6 +8,7 @@ import { ApiError, apiRequest, csrfHeaders } from '@/core/api';
 import { useWorkspaceSession } from '@/core/app-shell/workspace-shell';
 import { listSources, sourceKeys, getRun } from '@/modules/sources/api';
 
+/** Renders file selection and upload state, then reports the accepted ingestion run. */
 export function Upload() {
   const { csrfToken } = useWorkspaceSession();
   const [sourceId, setSourceId] = useState('');
@@ -17,6 +18,7 @@ export function Upload() {
   const run = useQuery({ queryKey: ['ingestion-run', runId], queryFn: () => getRun(runId), enabled: !!runId, refetchInterval: (query) => ['succeeded', 'needs_ocr', 'failed'].includes(query.state.data?.status ?? '') ? false : 1500 });
   const available = sources.data?.pages.flatMap((page) => page.items).filter((source) => source.status === 'active' && (source.type === 'file' || source.type === 'manual')) ?? [];
 
+  /** Posts the selected file with its source ID and CSRF token, then tracks the returned run or shows the request error. */
   async function upload(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setError('');

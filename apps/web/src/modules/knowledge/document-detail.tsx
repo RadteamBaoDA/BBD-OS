@@ -12,6 +12,7 @@ import { useWorkspaceSession } from '@/core/app-shell/workspace-shell';
 import { getSource } from '@/modules/sources/api';
 import { deleteDocument, documentKeys, getDocument, getVersion, listVersions, updateContent, updateDocument } from './api';
 
+/** Loads a document and cited version, and saves metadata through the knowledge API. */
 export function DocumentDetail({ id, citedVersion }: { id: string; citedVersion: number | null }) {
   const { csrfToken } = useWorkspaceSession();
   const queryClient = useQueryClient();
@@ -49,6 +50,7 @@ export function DocumentDetail({ id, citedVersion }: { id: string; citedVersion:
     onSuccess: () => { queryClient.removeQueries({ queryKey: documentKeys.detail(id) }); queryClient.invalidateQueries({ queryKey: documentKeys.all }); router.replace('/knowledge/documents'); },
   });
 
+  /** Submits document metadata changes and reports request failures through the form state. */
   function submitMetadata(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     try {

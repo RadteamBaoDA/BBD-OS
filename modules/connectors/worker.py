@@ -20,6 +20,7 @@ async def _delete_credential(
     slot: str,
     operation_id: UUID,
 ) -> bool:
+    """Claim and delete a prepared credential operation, preserving unknown outcomes for reconciliation."""
     claimed = await provisioning.claim_credential_operation(
         session, source_id, slot, operation_id
     )
@@ -76,6 +77,7 @@ async def _resume_activation(
     credentials: N8nCredentials,
     settings: Settings,
 ) -> bool:
+    """Resume a persisted activation using the configured credential encryption key."""
     from modules.connectors.activation import drive_activation
 
     return await drive_activation(
@@ -87,6 +89,7 @@ async def _resume_activation(
     )
 
 async def reconcile_connectors(ctx: dict[str, object]) -> int:
+    """Progress bounded pending credential, workflow, unknown-create, and activation operations."""
     settings = cast(Settings, ctx["settings"])
     api_key = settings.n8n_api_key.get_secret_value()
     if not api_key:

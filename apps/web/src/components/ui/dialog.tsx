@@ -7,30 +7,35 @@ import { Dialog as DialogPrimitive } from "radix-ui"
 
 import { Button } from "@/components/ui/button"
 
+/** Renders the dialog UI wrapper and forwards its typed props to the underlying control. */
 function Dialog({
   ...props
 }: React.ComponentProps<typeof DialogPrimitive.Root>) {
   return <DialogPrimitive.Root data-slot="dialog" {...props} />
 }
 
+/** Renders the dialog trigger UI wrapper and forwards its typed props to the underlying control. */
 function DialogTrigger({
   ...props
 }: React.ComponentProps<typeof DialogPrimitive.Trigger>) {
   return <DialogPrimitive.Trigger data-slot="dialog-trigger" {...props} />
 }
 
+/** Renders the dialog portal UI wrapper and forwards its typed props to the underlying control. */
 function DialogPortal({
   ...props
 }: React.ComponentProps<typeof DialogPrimitive.Portal>) {
   return <DialogPrimitive.Portal data-slot="dialog-portal" {...props} />
 }
 
+/** Renders the dialog close UI wrapper and forwards its typed props to the underlying control. */
 function DialogClose({
   ...props
 }: React.ComponentProps<typeof DialogPrimitive.Close>) {
   return <DialogPrimitive.Close data-slot="dialog-close" {...props} />
 }
 
+/** Renders the dialog overlay UI wrapper and forwards its typed props to the underlying control. */
 function DialogOverlay({
   className,
   ...props
@@ -47,6 +52,7 @@ function DialogOverlay({
   )
 }
 
+/** Renders the dialog content UI wrapper and forwards its typed props to the underlying control. */
 function DialogContent({
   className,
   children,
@@ -83,6 +89,7 @@ function DialogContent({
   )
 }
 
+/** Renders the dialog header UI wrapper and forwards its typed props to the underlying control. */
 function DialogHeader({ className, ...props }: React.ComponentProps<"div">) {
   return (
     <div
@@ -93,6 +100,7 @@ function DialogHeader({ className, ...props }: React.ComponentProps<"div">) {
   )
 }
 
+/** Renders the dialog footer UI wrapper and forwards its typed props to the underlying control. */
 function DialogFooter({
   className,
   showCloseButton = false,
@@ -120,6 +128,7 @@ function DialogFooter({
   )
 }
 
+/** Renders the dialog title UI wrapper and forwards its typed props to the underlying control. */
 function DialogTitle({
   className,
   ...props
@@ -133,6 +142,7 @@ function DialogTitle({
   )
 }
 
+/** Renders the dialog description UI wrapper and forwards its typed props to the underlying control. */
 function DialogDescription({
   className,
   ...props

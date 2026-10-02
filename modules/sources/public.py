@@ -14,6 +14,7 @@ from modules.sources.schemas import ConnectorSource, SourceCreate, SourceFence, 
 
 
 async def create_source(session: AsyncSession, payload: SourceCreate) -> Source:
+    """Create a source and publish its initial state in the caller transaction."""
     source = Source(
         type=payload.type,
         name=payload.name,
@@ -28,6 +29,7 @@ async def create_source(session: AsyncSession, payload: SourceCreate) -> Source:
 
 
 async def ensure_demo_source(session: AsyncSession, source_id: UUID, namespace: str) -> bool:
+    """Create the namespaced fictional demo source once, rejecting ID collisions."""
     inserted = await session.scalar(
         pg_insert(Source)
         .values(
@@ -49,10 +51,12 @@ async def ensure_demo_source(session: AsyncSession, source_id: UUID, namespace: 
 
 
 async def get_source(session: AsyncSession, source_id: UUID) -> Source | None:
+    """Read a source ORM record by identifier."""
     return await session.get(Source, source_id)
 
 
 def _connector_source(source: Source) -> ConnectorSource:
+    """Build a defensive public connector projection from a source record."""
     return ConnectorSource(
         id=source.id,
         type=source.type,
@@ -63,11 +67,13 @@ def _connector_source(source: Source) -> ConnectorSource:
 
 
 async def get_connector_source(session: AsyncSession, source_id: UUID) -> ConnectorSource | None:
+    """Read and project a source for connector consumers."""
     source = await session.get(Source, source_id)
     return _connector_source(source) if source is not None else None
 
 
 async def _lock_source_row(session: AsyncSession, source_id: UUID) -> Source | None:
+    """Lock and refresh a source row for transaction-serialized mutations."""
     return await session.scalar(
         select(Source)
         .where(Source.id == source_id)
@@ -77,6 +83,7 @@ async def _lock_source_row(session: AsyncSession, source_id: UUID) -> Source | N
 
 
 async def lock_source(session: AsyncSession, source_id: UUID) -> SourceFence | None:
+    """Acquire the source lock and return the narrow lifecycle fence contract."""
     source = await _lock_source_row(session, source_id)
     if source is None:
         return None
@@ -102,6 +109,7 @@ async def set_connector_configuration(
     *,
     allow_paused: bool = False,
 ) -> ConnectorSource | None:
+    """Replace connector configuration when lifecycle and generation fences match."""
     source = await _lock_source_row(session, source_id)
     if source is None or source.status == "archived" or source.generation != expected_generation:
         return None
@@ -116,6 +124,7 @@ async def set_connector_configuration(
 async def record_collection_started(
     session: AsyncSession, source_id: UUID, expected_generation: int, at: datetime
 ) -> bool:
+    """Record a collection start only for the active expected source generation."""
     source = await _lock_source_row(session, source_id)
     if source is None or source.status != "active" or source.generation != expected_generation:
         return False
@@ -134,6 +143,7 @@ async def record_collection_result(
     *,
     no_changes: bool = False,
 ) -> bool:
+    """Record collection success or error if the source generation is current."""
     source = await _lock_source_row(session, source_id)
     if source is None or source.status != "active" or source.generation != expected_generation:
         return False
@@ -156,6 +166,7 @@ async def record_collection_result(
 async def record_processing_result(
     session: AsyncSession, source_id: UUID, expected_generation: int, at: datetime, error_code: str | None
 ) -> bool:
+    """Record processing success or error if the source generation is current."""
     source = await _lock_source_row(session, source_id)
     if source is None or source.status != "active" or source.generation != expected_generation:
         return False
@@ -174,6 +185,7 @@ async def record_processing_result(
 async def list_sources(
     session: AsyncSession, limit: int, cursor: str | None
 ) -> tuple[list[Source], str | None]:
+    """Return a descending keyset page of sources and its continuation cursor."""
     statement = select(Source).order_by(desc(Source.created_at), desc(Source.id))
     if cursor is not None:
         timestamp, identifier = decode_cursor(cursor)
@@ -188,6 +200,7 @@ async def list_sources(
 async def update_source(
     session: AsyncSession, source: Source, payload: SourcePatch
 ) -> Source | None:
+    """Apply a locked source patch, incrementing generation on lifecycle changes."""
     source = await session.scalar(
         select(Source)
         .where(Source.id == source.id)
@@ -237,6 +250,7 @@ async def pause_source_for_connector(
 async def archive_source(
     session: AsyncSession, source_id: UUID
 ) -> Source | None:
+    """Archive and fence a source, preventing future collection work."""
     source = await _lock_source_row(session, source_id)
     if source is None:
         return None
@@ -255,6 +269,7 @@ async def archive_source(
 async def start_source_purge(
     session: AsyncSession, source_id: UUID
 ) -> SourcePurgeOperation | None:
+    """Create or reuse durable purge work after archiving and fencing the source."""
     source = await _lock_source_row(session, source_id)
     if source is None:
         return None
@@ -292,6 +307,7 @@ async def start_source_purge(
 
 
 async def _fence_connector_source(session: AsyncSession, source: Source) -> None:
+    """Revoke source credentials and invalidate outstanding connector collection."""
     from modules.connectors import public as connectors
     from modules.ingestion import public as ingestion
 

@@ -22,6 +22,7 @@ OwnerWrite = Annotated[AuthSession, Depends(require_owner_write)]
 
 @router.get("/preferences", response_model=OwnerPreferencesRead)
 async def read_owner_preferences(session: Session, _owner: OwnerRead) -> OwnerPreferencesRead:
+    """Read owner preferences after the read-scope dependency authorizes access."""
     return await public.read_owner_preferences(session)
 
 
@@ -31,12 +32,14 @@ async def save_owner_preferences(
     session: Session,
     _owner: OwnerWrite,
 ) -> OwnerPreferencesRead:
+    """Save preferences for an authorized writer and commit the update."""
     saved = await public.save_owner_preferences(session, value)
     await session.commit()
     return saved
 
 
 async def _read(session: AsyncSession, request: Request) -> AISettingsRead:
+    """Build the AI settings response and attach gateway-matched capabilities."""
     value = await public.read_ai_settings(session, request.app.state.settings, request.app.state.redis)
     config = await public.get_ai_execution_config(session, request.app.state.settings, request.app.state.redis)
     value.capabilities = await models.list_capabilities(request.app.state.redis, value.aliases, config.gateway_identity)
@@ -45,11 +48,13 @@ async def _read(session: AsyncSession, request: Request) -> AISettingsRead:
 
 @router.get("/ai", response_model=AISettingsRead)
 async def read_ai(session: Session, request: Request, _owner: OwnerRead) -> AISettingsRead:
+    """Return authorized AI settings with cached capability status."""
     return await _read(session, request)
 
 
 @router.put("/ai", response_model=AISettingsRead)
 async def save_ai(value: AISettingsUpdate, session: Session, request: Request, _owner: OwnerWrite) -> AISettingsRead:
+    """Save AI settings, commit, then report capabilities for the saved gateway."""
     saved = await public.save_ai_settings(session, value, request.app.state.settings)
     await session.commit()
     saved.capabilities = await models.list_capabilities(request.app.state.redis, saved.aliases,
@@ -59,6 +64,11 @@ async def save_ai(value: AISettingsUpdate, session: Session, request: Request, _
 
 @router.post("/ai/discover")
 async def discover_models(body: ConnectionDraft, request: Request, session: Session, _owner: OwnerWrite) -> dict[str, list[str]]:
+    """Discover models using a validated draft endpoint and explicit credential.
+
+    The gateway rechecks endpoint policy before sending; upstream gateway errors
+    become HTTP 502 and missing draft credentials produce HTTP 409.
+    """
     endpoint = public.validate_endpoint(str(body.base_url), request.app.state.settings)
     if endpoint is None:
         raise HTTPException(status_code=422, detail="Gateway endpoint is required")
@@ -66,6 +76,7 @@ async def discover_models(body: ConnectionDraft, request: Request, session: Sess
     if not credential:
         raise HTTPException(status_code=409, detail="Configure a gateway credential first")
     async def recheck_send() -> None:
+        """Reapply deployment endpoint policy immediately before network access."""
         public.validate_endpoint(endpoint, request.app.state.settings)
 
     gateway = ModelGateway(request.app.state.redis, endpoint, credential,
@@ -80,6 +91,7 @@ async def discover_models(body: ConnectionDraft, request: Request, session: Sess
 
 @router.get("/models", response_model=ModelSettingsRead)
 async def read_models(session: Session, request: Request, _owner: OwnerRead) -> ModelSettingsRead:
+    """Return model aliases and capability status without exposing credentials."""
     value = await _read(session, request)
     return ModelSettingsRead(aliases=value.aliases, capabilities=value.capabilities,
         credential_configured=value.omniroute_credential_configured)
@@ -87,6 +99,7 @@ async def read_models(session: Session, request: Request, _owner: OwnerRead) -> 
 
 @router.patch("/models", response_model=ModelSettingsRead)
 async def patch_models(values: dict[str, ModelMapping], session: Session, request: Request, _owner: OwnerWrite) -> ModelSettingsRead:
+    """Merge valid alias changes into current settings using revision checking."""
     current = await _read(session, request)
     if not values or any(alias not in models.ALIASES for alias in values):
         raise HTTPException(status_code=422, detail="Unknown or empty model alias mapping")
@@ -103,11 +116,13 @@ async def patch_models(values: dict[str, ModelMapping], session: Session, reques
 
 @router.get("/privacy", response_model=PrivacySettings)
 async def read_privacy(session: Session, request: Request, _owner: OwnerRead) -> PrivacySettings:
+    """Return the privacy grants bound to the current AI destinations."""
     return (await _read(session, request)).privacy
 
 
 @router.patch("/privacy", response_model=PrivacySettings)
 async def patch_privacy(value: PrivacySettings, session: Session, request: Request, _owner: OwnerWrite) -> PrivacySettings:
+    """Update destination-bound privacy grants through the shared CAS save path."""
     current = await _read(session, request)
     config = await public.get_ai_execution_config(session, request.app.state.settings, request.app.state.redis)
     update = AISettingsUpdate(expected_revision=current.configuration_revision,

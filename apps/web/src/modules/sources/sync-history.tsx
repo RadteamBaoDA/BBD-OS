@@ -8,16 +8,19 @@ import { useDisplayPreferences } from '@/core/query-provider';
 import { AppLocaleId, normalizeFormattingLocale } from '@/core/i18n';
 import { connectorKeys, getSourceIngestion, retryRun, Source, sourceKeys } from './api';
 
+/** Formats an ISO timestamp with the supplied application locale and time zone. */
 function formatDate(value: string, locale: AppLocaleId, timezone: string): string {
   return new Intl.DateTimeFormat(normalizeFormattingLocale(locale), {
     dateStyle: 'medium', timeStyle: 'short', timeZone: timezone,
   }).format(new Date(value));
 }
 
+/** Maps a source or run status to the matching translation message key. */
 function statusKey(status: string): 'runQueued' | 'runRunning' | 'runSucceeded' | 'runNeedsOcr' | 'runFailed' {
   return status === 'running' ? 'runRunning' : status === 'succeeded' ? 'runSucceeded' : status === 'needs_ocr' ? 'runNeedsOcr' : status === 'failed' ? 'runFailed' : 'runQueued';
 }
 
+/** Renders ingestion run history for the supplied source. */
 export function SyncHistory({ source }: { source: Source }) {
   const t = useTranslations('sources');
   const display = useDisplayPreferences();
@@ -43,6 +46,7 @@ export function SyncHistory({ source }: { source: Source }) {
   const pages = history.data.pages;
   const current = pages[0]?.current_run ?? null;
   const runs = pages.flatMap((page) => page.items).filter((run) => run.run_id !== current?.run_id);
+  /** Renders one ingestion-run row using its status and whether it is the current run. */
   const renderRun = (run: NonNullable<typeof current>, isCurrent: boolean) => {
     const hasActiveStage = run.stages.some((stage) => ['pending', 'queued', 'running', 'retrying'].includes(stage.status));
     return <article className="source-run" key={run.run_id}>

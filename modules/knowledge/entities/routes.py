@@ -29,6 +29,7 @@ OwnerWrite = Annotated[AuthSession, Depends(require_owner_write)]
 
 @router.get("/api/v1/entities/extractions/{document_version_id}", response_model=EntityExtractionStatus)
 async def get_extraction_status(document_version_id: UUID, session: Session, _owner: OwnerRead) -> EntityExtractionStatus:
+    """Read owner-only extraction status for one version; return 404 when no work exists."""
     result = await public.get_extraction_status(session, document_version_id)
     if result is None:
         raise HTTPException(status_code=404, detail="Entity extraction status not found")
@@ -44,6 +45,7 @@ async def list_entities(
     entity_type: Annotated[str | None, Query(alias="type", max_length=32)] = None,
     q: Annotated[str | None, Query(max_length=300)] = None,
 ) -> EntityPage:
+    """Return an owner-authenticated, bounded entity page with optional filters."""
     return await KnowledgeService(session).entities(limit=limit, cursor=cursor, entity_type=entity_type, query=q)
 
 
@@ -53,6 +55,7 @@ async def list_review_candidates(
     limit: Annotated[int, Query(ge=1, le=100)] = 50,
     cursor: Annotated[str | None, Query(max_length=512)] = None,
 ) -> EntityReviewPage:
+    """List bounded owner-review candidates and map invalid cursors to 422."""
     try:
         return await KnowledgeService(session).entity_review(limit=limit, cursor=cursor)
     except ValueError as exc:
@@ -64,6 +67,7 @@ async def assign_review_candidate(
     candidate_id: UUID, payload: EntityReviewAssignmentRequest,
     session: Session, owner: OwnerWrite,
 ) -> EntityReviewAssignmentResult:
+    """Apply a write-authorized candidate assignment and map stale review conflicts to 409."""
     try:
         return await KnowledgeService(session).assign_review_candidate(candidate_id, payload, actor_id=owner.owner_id)
     except LookupError as exc:
@@ -77,6 +81,7 @@ async def resolve_relationship_review(
     candidate_id: UUID, payload: EntityRelationshipReviewRequest,
     session: Session, owner: OwnerWrite,
 ) -> EntityRelationshipReviewResult:
+    """Resolve a write-authorized relationship candidate against its snapshot evidence."""
     try:
         return await KnowledgeService(session).resolve_relationship_review(candidate_id, payload, actor_id=owner.owner_id)
     except LookupError as exc:
@@ -87,6 +92,7 @@ async def resolve_relationship_review(
 
 @router.post("/api/v1/entities", response_model=EntityRead, status_code=201)
 async def create_entity(payload: EntityCreate, session: Session, owner: OwnerWrite) -> EntityRead:
+    """Create an owner-authored entity and map duplicate aliases to 409."""
     try:
         return await public.create_entity(session, payload, actor_id=owner.owner_id)
     except IntegrityError as exc:
@@ -101,6 +107,7 @@ async def get_neighbors(
     limit: Annotated[int, Query(ge=2, le=100)] = 50,
     cursor: str | None = Query(default=None, max_length=512),
 ) -> NeighborPage:
+    """Return bounded owner-only neighbors or 404 when the focus entity is absent."""
     try:
         result = await KnowledgeService(session).entity_neighbors(entity_id, limit=limit, cursor=cursor)
     except ValueError as exc:
@@ -112,6 +119,7 @@ async def get_neighbors(
 
 @router.post("/api/v1/entities/{entity_id}/aliases", response_model=EntityRead, status_code=201)
 async def add_alias(entity_id: UUID, payload: AliasCreate, session: Session, owner: OwnerWrite) -> EntityRead:
+    """Add an alias through the owner write contract with redirect/conflict status mapping."""
     try:
         result = await public.add_alias(session, entity_id, payload, actor_id=owner.owner_id)
     except public.TerminalEntityConflict as exc:
@@ -132,6 +140,7 @@ async def delete_alias(
     entity_id: UUID, alias_id: UUID, session: Session, owner: OwnerWrite,
     reason: Annotated[str, Query(min_length=1, max_length=300)] = "owner_alias_delete",
 ) -> None:
+    """Delete one alias using the authenticated owner ID and bounded audit reason."""
     try:
         if not await public.delete_alias(session, entity_id, alias_id, actor_id=owner.owner_id, reason=reason):
             raise HTTPException(status_code=404, detail="Alias not found")
@@ -143,6 +152,7 @@ async def delete_alias(
 
 @router.get("/api/v1/entities/{entity_id}", response_model=EntityRead)
 async def get_entity(entity_id: UUID, session: Session, _owner: OwnerRead) -> EntityRead:
+    """Return an owner-only entity projection or 404 when its identity is unavailable."""
     entity = await KnowledgeService(session).entity(entity_id)
     if entity is None:
         raise HTTPException(status_code=404, detail="Entity not found")
@@ -155,6 +165,7 @@ async def list_evidence(
     limit: Annotated[int, Query(ge=1, le=100)] = 50,
     cursor: Annotated[str | None, Query(max_length=512)] = None,
 ) -> EntityEvidencePage:
+    """Return bounded owner-only evidence for an entity with invalid cursors mapped to 422."""
     try:
         page = await KnowledgeService(session).entity_evidence(entity_id, limit=limit, cursor=cursor)
     except ValueError as exc:
@@ -168,6 +179,7 @@ async def list_evidence(
 async def preview_merge(
     entity_id: UUID, payload: EntityMergeRequest, session: Session, _owner: OwnerRead,
 ) -> EntityCorrectionPreview:
+    """Preview merge scope and conflicts without applying a correction."""
     return await corrections.preview_merge(session, entity_id, payload)
 
 
@@ -175,6 +187,7 @@ async def preview_merge(
 async def preview_split(
     entity_id: UUID, payload: EntitySplitRequest, session: Session, _owner: OwnerRead,
 ) -> EntityCorrectionPreview:
+    """Preview split scope and conflicts without applying a correction."""
     return await corrections.preview_split(session, entity_id, payload)
 
 
@@ -182,6 +195,7 @@ async def preview_split(
 async def merge_entity(
     entity_id: UUID, payload: EntityMergeRequest, session: Session, owner: OwnerWrite,
 ) -> EntityCorrectionResult:
+    """Apply a merge as the authenticated owner and map correction conflicts to 404/409."""
     try:
         return await corrections.merge_entity(session, entity_id, payload, actor_id=owner.owner_id)
     except CorrectionConflictError as exc:
@@ -201,6 +215,7 @@ async def merge_entity(
 async def split_entity(
     entity_id: UUID, payload: EntitySplitRequest, session: Session, owner: OwnerWrite,
 ) -> EntityCorrectionResult:
+    """Apply an evidence split as the authenticated owner with structured conflicts."""
     try:
         return await corrections.split_entity(session, entity_id, payload, actor_id=owner.owner_id)
     except CorrectionConflictError as exc:
@@ -220,6 +235,7 @@ async def split_entity(
 async def suppress_candidates(
     entity_id: UUID, payload: EntitySuppressionRequest, session: Session, owner: OwnerWrite,
 ) -> EntityCorrectionResult:
+    """Persist owner suppression decisions for selected extraction candidates."""
     try:
         return await corrections.suppress_candidates(session, entity_id, payload, actor_id=owner.owner_id)
     except CorrectionConflictError as exc:
@@ -237,6 +253,7 @@ async def suppress_candidates(
 
 @router.patch("/api/v1/entities/{entity_id}", response_model=EntityRead)
 async def update_entity(entity_id: UUID, payload: EntityPatch, session: Session, owner: OwnerWrite) -> EntityRead:
+    """Apply a write-authorized revision-fenced entity update or return conflict/not-found."""
     try:
         entity = await public.update_entity(session, entity_id, payload, actor_id=owner.owner_id)
     except public.TerminalEntityConflict as exc:
@@ -255,6 +272,7 @@ async def delete_entity(
     entity_id: UUID, session: Session, owner: OwnerWrite,
     reason: Annotated[str, Query(min_length=1, max_length=300)] = "owner_entity_delete",
 ) -> None:
+    """Delete the canonical entity with owner reason and structured closure-conflict mapping."""
     try:
         if not await public.delete_entity(session, entity_id, actor_id=owner.owner_id, reason=reason):
             raise HTTPException(status_code=404, detail="Entity not found")

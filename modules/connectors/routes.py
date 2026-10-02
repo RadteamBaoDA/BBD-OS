@@ -37,6 +37,7 @@ OwnerWrite = Annotated[AuthSession, Depends(require_owner_write)]
 
 
 class ConnectorState(BaseModel):
+    """Represent a connector's source, configuration, cursor, and revision state."""
     model_config = ConfigDict(extra="forbid")
 
     source_id: UUID
@@ -51,12 +52,14 @@ class ConnectorState(BaseModel):
 
 
 class ManualSyncResult(BaseModel):
+    """Return identifiers and current status for manually requested collection."""
     run_id: UUID | None = None
     batch_id: UUID | None = None
     status: str = "queued"
 
 
 async def _source(session: AsyncSession, source_id: UUID) -> ConnectorSource:
+    """Load the connector source projection or raise HTTP 404."""
     source = await sources.get_connector_source(session, source_id)
     if source is None:
         raise HTTPException(status_code=404, detail="Source not found")
@@ -66,6 +69,7 @@ async def _source(session: AsyncSession, source_id: UUID) -> ConnectorSource:
 async def _collector(
     session: AsyncSession, source_id: UUID, authorization: str | None
 ) -> str:
+    """Authenticate a bearer collector token for the requested source."""
     scheme, _, token = (authorization or "").partition(" ")
     if scheme.lower() != "bearer" or not token or not await ingestion.collector_can_ingest(
         session, source_id, token
@@ -78,6 +82,7 @@ async def _collector(
 async def configure_source(
     source_id: UUID, payload: ConnectorConfigurationRequest, session: Session, _owner: OwnerWrite
 ) -> ConnectorState:
+    """Validate and persist connector settings using owner-write authorization."""
     source = await _source(session, source_id)
     if source.type not in registry.SUPPORTED_TYPES:
         raise HTTPException(status_code=422, detail="This source type has no packaged connector")
@@ -122,6 +127,7 @@ async def trigger_collection(
     request: Request,
     _owner: OwnerWrite,
 ) -> ManualSyncResult:
+    """Queue a manual collection run for an active supported connector."""
     source = await _source(session, source_id)
     settings = request.app.state.settings
     if source.status != "active" or source.type not in {"rss", "web", "api"}:
@@ -179,6 +185,7 @@ async def validate_source(
     payload: CollectionFence,
     authorization: Annotated[str | None, Header()] = None,
 ) -> ConnectorState:
+    """Validate an authorized source's connector configuration and URL policy."""
     await _collector(session, source_id, authorization)
     source = await _source(session, source_id)
     if not await provisioning.require_validation_fence(
@@ -214,6 +221,7 @@ async def preview_rss(
     connector_revision: int,
     authorization: Annotated[str | None, Header()] = None,
 ) -> ConnectorPreview:
+    """Fetch and return a bounded RSS preview for an authorized source."""
     await _collector(session, source_id, authorization)
     source = await _source(session, source_id)
     if not await provisioning.require_collection_fence(
@@ -262,6 +270,7 @@ async def receive_connector_batch(
     session: Session,
     authorization: Annotated[str | None, Header()] = None,
 ) -> Receipt:
+    """Accept a connector batch after bearer token and source fencing checks."""
     collector_token = await _collector(session, source_id, authorization)
     source = await _source(session, source_id)
     if not await provisioning.require_collection_fence(
@@ -294,6 +303,7 @@ async def acknowledge_no_changes(
     session: Session,
     authorization: Annotated[str | None, Header()] = None,
 ) -> ManualSyncResult:
+    """Record a successful collection that did not produce new observations."""
     await _collector(session, source_id, authorization)
     source = await _source(session, source_id)
     if not await provisioning.require_collection_fence(
@@ -322,6 +332,7 @@ async def submit_crawl(
     request: Request,
     authorization: Annotated[str | None, Header()] = None,
 ) -> CrawlResult:
+    """Queue a source-scoped crawl request after validating its collection fence."""
     await _collector(session, source_id, authorization)
     settings = request.app.state.settings
     source = await _source(session, source_id)

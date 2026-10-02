@@ -23,10 +23,16 @@ ALIASES = ("reasoning-large", "reasoning-small", "fast", "embedding", "reranker"
 
 
 def _fingerprint(value: str) -> str:
+    """Return a stable SHA-256 fingerprint without exposing the input value."""
     return hashlib.sha256(value.encode()).hexdigest()
 
 
 def _endpoint(value: str | None, settings: Settings) -> str | None:
+    """Validate and canonicalize an endpoint against deployment host policy.
+
+    Rejects credentials, query/fragment components, invalid ports, and scoped
+    IPv6; raises HTTP 422 for invalid or disallowed endpoints.
+    """
     if not value:
         return None
     parts = urlsplit(value)
@@ -61,10 +67,12 @@ def _endpoint(value: str | None, settings: Settings) -> str | None:
 
 
 def validate_endpoint(value: str | None, settings: Settings) -> str | None:
+    """Expose endpoint validation through the settings module's public contract."""
     return _endpoint(value, settings)
 
 
 def _cipher(settings: Settings) -> Fernet:
+    """Create the configured credential cipher or raise HTTP 503 if unavailable."""
     key = settings.ai_credential_encryption_key.get_secret_value()
     try:
         return Fernet(key.encode())
@@ -73,6 +81,7 @@ def _cipher(settings: Settings) -> Fernet:
 
 
 def _decrypt(ciphertext: str | None, settings: Settings) -> str:
+    """Decrypt a saved credential, mapping corrupt ciphertext to HTTP 503."""
     if not ciphertext:
         return ""
     try:
@@ -82,18 +91,22 @@ def _decrypt(ciphertext: str | None, settings: Settings) -> str:
 
 
 async def _row(session: AsyncSession) -> AISettingsRecord | None:
+    """Read the owner singleton while refreshing any identity-mapped row."""
     return await session.scalar(select(AISettingsRecord).where(AISettingsRecord.owner_id == OWNER_ID).execution_options(populate_existing=True))
 
 
 def _defaults(settings: Settings) -> tuple[str | None, str, dict[str, ModelMapping]]:
+    """Read deployment-provided endpoint, key, and supported model defaults."""
     endpoint = str(settings.omniroute_base_url) if settings.omniroute_base_url else None
     aliases = {name: ModelMapping(model=model, destination="remote") for name, model in settings.omniroute_models.items() if name in ALIASES}
     return endpoint, settings.omniroute_api_key.get_secret_value(), aliases
 
 
 def _privacy(raw: dict[str, object] | None, destination: str | None, web_destination: str | None) -> PrivacySettings:
+    """Expose only explicit privacy grants bound to the current destinations."""
     raw = raw or {}
     def granted(key: str, enabled: str) -> bool:
+        """Check that a grant is enabled and includes this exact destination."""
         values = raw.get(key)
         return bool(destination and raw.get(enabled) and isinstance(values, list) and destination in values)
 
@@ -112,11 +125,17 @@ def _privacy(raw: dict[str, object] | None, destination: str | None, web_destina
 
 
 def _identity(endpoint: str | None, credential: str) -> tuple[str, str | None]:
+    """Derive non-secret gateway and destination identifiers from configuration."""
     destination = f"omniroute:{_fingerprint(endpoint or '')[:32]}" if endpoint else None
     return _fingerprint(json.dumps((endpoint, _fingerprint(credential)), separators=(",", ":"))), destination
 
 
 async def get_ai_execution_config(session: AsyncSession, settings: Settings, redis: Redis | None = None) -> AIExecutionConfig:
+    """Resolve effective AI settings from persisted values and deployment defaults.
+
+    Enforces endpoint policy before returning credentials and scopes privacy
+    consent to the currently selected destinations.
+    """
     row = await _row(session)
     if row is None:
         endpoint, credential, aliases = _defaults(settings)
@@ -176,6 +195,7 @@ async def get_ai_execution_config(session: AsyncSession, settings: Settings, red
 
 
 def _read(config: AIExecutionConfig) -> AISettingsRead:
+    """Project execution settings into the API response without secret values."""
     return AISettingsRead(
         configuration_revision=config.configuration_revision, omniroute_base_url=config.omniroute_base_url,
         endpoint_destination_id=config.endpoint_destination_id,
@@ -190,10 +210,17 @@ def _read(config: AIExecutionConfig) -> AISettingsRead:
 
 
 async def read_ai_settings(session: AsyncSession, settings: Settings, redis: Redis | None = None) -> AISettingsRead:
+    """Return the public AI settings projection for the current owner."""
     return _read(await get_ai_execution_config(session, settings, redis))
 
 
 async def save_ai_settings(session: AsyncSession, update: AISettingsUpdate, settings: Settings) -> AISettingsRead:
+    """Validate and persist an optimistic, revision-checked AI settings update.
+
+    Locks the owner singleton, encrypts replacement credentials, and clears
+    destination-bound privacy consent when its endpoint changes; the caller owns
+    transaction commit/rollback.
+    """
     # Create then lock the owner singleton so concurrent first saves share the same CAS boundary.
     await session.execute(insert(AISettingsRecord).values(owner_id=OWNER_ID).on_conflict_do_nothing(index_elements=["owner_id"]))
     row = await session.scalar(select(AISettingsRecord).where(AISettingsRecord.owner_id == OWNER_ID).with_for_update())
@@ -267,6 +294,7 @@ async def save_ai_settings(session: AsyncSession, update: AISettingsUpdate, sett
 
 
 async def read_owner_preferences(session: AsyncSession) -> OwnerPreferencesRead:
+    """Return persisted preferences or the documented defaults for a new owner."""
     row = await session.scalar(
         select(OwnerPreferencesRecord)
         .where(OwnerPreferencesRecord.owner_id == OWNER_ID)
@@ -293,6 +321,11 @@ async def save_owner_preferences(
     session: AsyncSession,
     update: OwnerPreferencesUpdate,
 ) -> OwnerPreferencesRead:
+    """Persist an optimistic, revision-checked owner preference update.
+
+    Creates then locks the singleton row to serialize first writes; transaction
+    completion remains the caller's responsibility.
+    """
     await session.execute(
         insert(OwnerPreferencesRecord)
         .values(owner_id=OWNER_ID)

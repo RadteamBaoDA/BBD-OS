@@ -10,6 +10,7 @@ export const metadata: Metadata = {
   description: 'Private personal intelligence workspace',
 };
 
+/** Renders the root document and mounts shared providers around route content. */
 export default function RootLayout({ children }: Readonly<{ children: ReactNode }>) {
   return (
     <html lang="en-US" suppressHydrationWarning>

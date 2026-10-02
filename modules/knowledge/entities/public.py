@@ -54,16 +54,17 @@ from modules.knowledge.entities.schemas import (
 
 
 class RedirectedEntityConflict(ValueError):
-    pass
+    """Signal that a write used an entity ID redirected by a merge."""
 
 
 class TerminalEntityConflict(LookupError):
-    pass
+    """Signal that an entity identity was deleted and cannot be followed."""
 if TYPE_CHECKING:
     from modules.knowledge.documents.public import ExtractionEvidenceRef
 
 
 def _entity_read(entity: Entity, aliases: list[EntityAlias] | None = None) -> EntityRead:
+    """Project an entity and aliases while hiding fields without known provenance."""
     return EntityRead(
         id=entity.id,
         type=entity.type,
@@ -95,6 +96,7 @@ def _entity_read(entity: Entity, aliases: list[EntityAlias] | None = None) -> En
 
 
 async def _aliases(session: AsyncSession, entity_ids: list[UUID]) -> dict[UUID, list[EntityAlias]]:
+    """Load ordered display aliases, excluding unconfirmed source-derived aliases."""
     if not entity_ids:
         return {}
     result: dict[UUID, list[EntityAlias]] = {}
@@ -118,6 +120,7 @@ async def record_owner_action(
     affected_ids: list[UUID],
     revisions: dict[str, int | None] | None = None,
 ) -> None:
+    """Queue an owner correction audit record without committing the transaction."""
     clean_reason = " ".join(reason.split())
     if not clean_reason or len(clean_reason) > 300:
         raise ValueError("Owner action reason must contain 1 to 300 characters")
@@ -134,6 +137,7 @@ async def record_owner_action(
 async def list_entities(
     session: AsyncSession, limit: int, cursor: str | None, entity_type: str | None, query: str | None
 ) -> EntityPage:
+    """Return a cursor-paged list of canonical entities matching optional filters."""
     statement = select(Entity).where(~Entity.id.in_(select(EntityRedirect.old_entity_id)))
     if entity_type:
         statement = statement.where(Entity.type == entity_type)
@@ -155,6 +159,7 @@ async def list_entities(
 
 
 async def get_entity(session: AsyncSession, entity_id: UUID) -> EntityRead | None:
+    """Read a canonical entity through redirects, returning None when unavailable."""
     try:
         canonical_id = await resolve_canonical_entity_id(session, entity_id)
     except LookupError:
@@ -169,6 +174,12 @@ async def get_entity(session: AsyncSession, entity_id: UUID) -> EntityRead | Non
 async def get_entity_refs(
     session: AsyncSession, ids: list[UUID], *, for_write: bool = False
 ) -> list[EntityReferenceRead]:
+    """Resolve up to 100 unique entity IDs while preserving requested order.
+
+    Read mode follows redirects. Write mode rejects redirected and terminally
+    deleted IDs, then locks canonical rows in sorted order. Missing references
+    raise LookupError; duplicate or oversized input raises ValueError.
+    """
     if len(ids) > 100 or len(set(ids)) != len(ids):
         raise ValueError("Entity reference query must contain up to 100 unique IDs")
     if not ids:
@@ -223,6 +234,7 @@ async def resolve_canonical_entity_id(session: AsyncSession, entity_id: UUID) ->
 async def get_membership_refs(
     session: AsyncSession, ids: list[UUID], *, for_write: bool = False
 ) -> list[EntityMembershipReferenceRead]:
+    """Resolve unique memberships, acquiring stable entity/ID locks for writes."""
     if len(ids) > 200 or len(set(ids)) != len(ids):
         raise ValueError("Entity membership query must contain up to 200 unique IDs")
     if not ids:
@@ -247,6 +259,7 @@ async def get_membership_refs(
 async def list_entity_evidence(
     session: AsyncSession, entity_id: UUID, limit: int = 50, cursor: str | None = None
 ) -> EntityEvidencePage | None:
+    """Return evidence for a canonical entity with document-version provenance."""
     if not 1 <= limit <= 100:
         raise ValueError("Entity evidence page limit must be between 1 and 100")
     try:
@@ -287,11 +300,13 @@ async def list_entity_evidence(
 
 
 def _review_cursor(timestamp: datetime, work_id: UUID, index: int) -> str:
+    """Encode a review item position as unpadded URL-safe JSON cursor data."""
     raw = json.dumps([timestamp.isoformat(), str(work_id), index], separators=(",", ":")).encode()
     return base64.urlsafe_b64encode(raw).decode().rstrip("=")
 
 
 def _decode_review_cursor(value: str) -> tuple[datetime, UUID, int]:
+    """Validate and decode a review cursor, rejecting malformed positions."""
     try:
         if not value or len(value) > 512:
             raise ValueError
@@ -470,6 +485,7 @@ async def list_review_candidates(session: AsyncSession, limit: int = 50, cursor:
 
 
 def _review_snapshot_digest(candidate: dict[str, object]) -> str:
+    """Hash the immutable identity fields used to fence owner review actions."""
     keys = (
         ("kind", "candidate_id", "candidate_type", "candidate_name", "candidate_key", "match_fingerprint", "chunk_ids", "confidence")
         if candidate.get("kind") == "entity" else
@@ -480,6 +496,7 @@ def _review_snapshot_digest(candidate: dict[str, object]) -> str:
 
 
 def _review_entity_bindings(review: list[object]) -> dict[str, tuple[str, set[UUID]]]:
+    """Validate entity review selectors and return bounded fingerprint/chunk bindings."""
     bindings: dict[str, tuple[str, set[UUID]]] = {}
     for item in review:
         if not isinstance(item, dict) or item.get("kind") != "entity":
@@ -683,6 +700,7 @@ async def resolve_relationship_review(
         raise LookupError("Relationship evidence is no longer retained")
 
     async def endpoint_memberships() -> tuple[EntityEvidenceMembership, EntityEvidenceMembership]:
+        """Require one distinct endpoint membership per candidate on the cited chunk."""
         rows = list((await session.scalars(select(EntityEvidenceMembership).where(
             EntityEvidenceMembership.extraction_identity == str(work_hint.id),
             EntityEvidenceMembership.candidate_key.in_([source_key, target_key]),
@@ -823,6 +841,7 @@ async def schedule_extraction_work(
     session: AsyncSession, document_version_id: UUID, source_generation: int,
     extractor_version: str, prompt_version: str,
 ) -> EntityExtractionWork:
+    """Create or lock durable extraction work keyed by version and prompt identity."""
     if len(extractor_version) > 64 or len(prompt_version) > 64:
         raise ValueError("Extraction versions are too long")
     await session.execute(pg_insert(EntityExtractionWork).values(
@@ -846,6 +865,7 @@ async def schedule_extraction_work(
 async def claim_extraction_work(
     session: AsyncSession, work_id: UUID, lease_owner: str, now: datetime
 ) -> EntityExtractionWork | None:
+    """Claim due work under a lease, enforcing expiry and the five-attempt ceiling."""
     work = await session.scalar(select(EntityExtractionWork).where(EntityExtractionWork.id == work_id).with_for_update())
     if work is None or work.status not in {"pending", "running"}:
         return None
@@ -870,6 +890,7 @@ async def claim_extraction_work(
 
 
 async def list_recoverable_extraction_work(session: AsyncSession, limit: int = 25) -> list[UUID]:
+    """Lock and return bounded pending or expired extraction work IDs."""
     if not 1 <= limit <= 100:
         raise ValueError("Extraction recovery limit must be between 1 and 100")
     now = datetime.now(UTC)
@@ -888,6 +909,7 @@ async def list_recoverable_extraction_work(session: AsyncSession, limit: int = 2
 async def terminalize_exhausted_extraction_work(
     session: AsyncSession, limit: int = 25
 ) -> int:
+    """Fail expired running work at the attempt ceiling and clear its lease."""
     if not 1 <= limit <= 100:
         raise ValueError("Extraction terminalization limit must be between 1 and 100")
     now = datetime.now(UTC)
@@ -908,6 +930,7 @@ async def terminalize_exhausted_extraction_work(
 
 
 async def list_blocked_extraction_work(session: AsyncSession, limit: int = 25) -> list[tuple[UUID, UUID, int, str | None, str | None]]:
+    """List due policy/capability-blocked work with its dependency fingerprint."""
     if not 1 <= limit <= 100:
         raise ValueError("Blocked extraction page size must be between 1 and 100")
     rows = (await session.execute(
@@ -927,6 +950,7 @@ async def list_blocked_extraction_work(session: AsyncSession, limit: int = 25) -
 async def requeue_blocked_extraction_work(
     session: AsyncSession, work_id: UUID, previous_fingerprint: str | None, current_fingerprint: str
 ) -> bool:
+    """Requeue blocked work only after its dependency fingerprint has changed."""
     if previous_fingerprint is None or previous_fingerprint == current_fingerprint:
         return False
     work = await session.scalar(select(EntityExtractionWork).where(
@@ -951,6 +975,7 @@ async def requeue_blocked_extraction_work(
 async def defer_blocked_extraction_recheck(
     session: AsyncSession, work_id: UUID, fingerprint: str, *, minutes: int = 15
 ) -> None:
+    """Delay a matching blocked work item's next dependency recheck."""
     work = await session.scalar(select(EntityExtractionWork).where(
         EntityExtractionWork.id == work_id,
         EntityExtractionWork.status == "blocked",
@@ -961,6 +986,7 @@ async def defer_blocked_extraction_recheck(
 
 
 async def get_extraction_status(session: AsyncSession, document_version_id: UUID):
+    """Return the newest work status and stored facts for one document version."""
     from modules.knowledge.entities.schemas import EntityExtractionStatus
 
     row = (await session.execute(
@@ -984,6 +1010,7 @@ async def finish_extraction_work(
     session: AsyncSession, work_id: UUID, lease_owner: str, *, facts: list[dict[str, object]],
     review: list[dict[str, object]], model: str | None, usage: dict[str, object] | None,
 ) -> bool:
+    """Persist results and succeed only while the caller still owns a live lease."""
     work = await session.scalar(select(EntityExtractionWork).where(
         EntityExtractionWork.id == work_id, EntityExtractionWork.status == "running",
         EntityExtractionWork.lease_owner == lease_owner,
@@ -1009,6 +1036,16 @@ async def set_extraction_work_error(
     session: AsyncSession, work_id: UUID, lease_owner: str, error_code: str, *,
     blocked: bool = False, dependency_fingerprint: str | None = None,
 ) -> None:
+    """Mutate failure state only while the caller still owns a live lease.
+
+    Changes the ORM row in the caller's transaction without explicitly flushing
+    or committing; callers commit the session. Returns without mutation when
+    the live lease is absent or owned by someone else. Retry delay is exponential
+    in minutes up to 60; blocked work normally waits 15 minutes. Dependency
+    recovery considers only ``ai_policy_denied`` and ``structured_unsupported``
+    rows with a fingerprint. Local-only work has no fingerprint and is parked at
+    ``datetime.max`` rather than requeued after a dependency change.
+    """
     work = await session.scalar(select(EntityExtractionWork).where(
         EntityExtractionWork.id == work_id, EntityExtractionWork.status == "running",
         EntityExtractionWork.lease_owner == lease_owner,
@@ -1030,6 +1067,7 @@ async def set_extraction_work_error(
 async def list_resolution_candidates(
     session: AsyncSession, entity_type: str, candidate_names: list[str], limit: int = 1000
 ) -> tuple[list[dict[str, object]], bool]:
+    """Return bounded same-type entities and exact confirmed aliases for resolution."""
     if not 1 <= limit <= 1000 or not 1 <= len(candidate_names) <= 30:
         raise ValueError("Resolution context must be bounded")
     normalized_names = sorted({canonicalize_name(name) for name in candidate_names})
@@ -1064,6 +1102,7 @@ async def list_resolution_candidates(
 
 
 async def create_extracted_entity(session: AsyncSession, entity_type: str) -> UUID:
+    """Create an unnamed derived entity for later evidence-backed field publication."""
     entity = Entity(type=entity_type, name=None, canonical_name=None, name_origin=None, description_origin=None)
     session.add(entity)
     await session.flush()
@@ -1075,6 +1114,7 @@ async def record_extraction_membership(
     source_generation: int, extraction_identity: str, candidate_key: str,
     match_fingerprint: str, observed_at: datetime, confidence: float,
 ) -> UUID:
+    """Insert idempotent evidence membership after validating source generation and identity."""
     if (
         not extraction_identity or len(extraction_identity) > 256
         or not candidate_key or len(candidate_key) > 256
@@ -1111,6 +1151,7 @@ async def get_document_correction_decisions(
     candidates: dict[str, tuple[str, set[UUID]]],
     *, for_update: bool = False,
 ) -> dict[str, tuple[UUID, str, UUID | None] | None]:
+    """Resolve bounded evidence/document owner decisions, reporting ambiguous conflicts."""
     if len(candidates) > 30:
         raise ValueError("Correction decision lookup exceeds its candidate limit")
     if not candidates:
@@ -1225,6 +1266,7 @@ async def get_document_correction_decisions(
 
 
 async def create_entity(session: AsyncSession, payload: EntityCreate, *, actor_id: int) -> EntityRead:
+    """Create an owner-authored entity, aliases, audit row, and graph change atomically."""
     entity = Entity(
         type=payload.type,
         name=payload.name,
@@ -1266,6 +1308,14 @@ async def create_entity(session: AsyncSession, payload: EntityCreate, *, actor_i
 async def update_entity(
     session: AsyncSession, entity_id: UUID, payload: EntityPatch, *, actor_id: int
 ) -> EntityRead | None:
+    """Apply a canonical owner-field update with revision and redirect fences.
+
+    The owner-write route enforces authorization; ``actor_id`` is audit
+    provenance. Returns None if the row disappears, rejects merged/deleted IDs
+    with typed conflicts and stale revisions with ValueError, marks edited fields
+    owner-authored, removes their derived field support, then commits audit and
+    graph changes.
+    """
     try:
         canonical_id = await resolve_canonical_entity_id(session, entity_id)
     except LookupError as exc:
@@ -1315,6 +1365,12 @@ async def update_entity(
 async def add_alias(
     session: AsyncSession, entity_id: UUID, payload: AliasCreate, *, actor_id: int
 ) -> EntityRead | None:
+    """Add an owner-authored alias to a canonical entity and commit its audit.
+
+    The owner-write route authorizes the operation. Redirected or terminal IDs
+    raise typed conflicts; a missing canonical row returns None. A successful
+    insert records the actor/reason and publishes the graph change.
+    """
     try:
         canonical_id = await resolve_canonical_entity_id(session, entity_id)
     except LookupError as exc:
@@ -1351,6 +1407,12 @@ async def add_alias(
 async def delete_alias(
     session: AsyncSession, entity_id: UUID, alias_id: UUID, *, actor_id: int, reason: str = "owner_alias_delete"
 ) -> bool:
+    """Delete one alias from a canonical entity and commit its owner audit.
+
+    The owner-write route authorizes the operation. Redirected or terminal IDs
+    raise typed conflicts; a missing entity or alias returns False. Success
+    records the actor/reason and publishes the graph change.
+    """
     try:
         canonical_id = await resolve_canonical_entity_id(session, entity_id)
     except LookupError as exc:
@@ -1379,6 +1441,7 @@ async def delete_alias(
 async def delete_entity(
     session: AsyncSession, entity_id: UUID, *, actor_id: int, reason: str = "owner_entity_delete"
 ) -> bool:
+    """Delegate canonical deletion and its support cleanup to the correction owner."""
     from modules.knowledge.entities.corrections import delete_canonical_entity
 
     return await delete_canonical_entity(session, entity_id, actor_id=actor_id, reason=reason)
@@ -1387,6 +1450,7 @@ async def delete_entity(
 async def support_cleanup_ids(
     session: AsyncSession, *, document_id: UUID | None = None, source_id: UUID | None = None
 ) -> tuple[list[UUID], list[UUID]]:
+    """Return bounded membership and entity lock IDs for one document/source cleanup."""
     if (document_id is None) == (source_id is None):
         raise ValueError("Specify one document or source")
     statement = select(EntityEvidenceMembership.id, EntityEvidenceMembership.entity_id)
@@ -1406,6 +1470,7 @@ async def support_cleanup_ids(
 
 
 async def lock_entity_ids(session: AsyncSession, entity_ids: list[UUID]) -> None:
+    """Lock a bounded sorted set of entity rows for support cleanup."""
     ids = sorted(set(entity_ids), key=str)
     if len(ids) > 10_000:
         raise ValueError("Entity support cleanup exceeds its atomic limit")
@@ -1416,16 +1481,19 @@ async def lock_entity_ids(session: AsyncSession, entity_ids: list[UUID]) -> None
 
 
 async def remove_document_support(session: AsyncSession, document_id: UUID) -> int:
+    """Remove evidence memberships and unsupported derived fields for one document."""
     return await _remove_entity_support(session, document_id=document_id)
 
 
 async def remove_source_support(session: AsyncSession, source_id: UUID) -> int:
+    """Remove evidence memberships and unsupported derived fields for one source."""
     return await _remove_entity_support(session, source_id=source_id)
 
 
 async def _remove_entity_support(
     session: AsyncSession, *, document_id: UUID | None = None, source_id: UUID | None = None
 ) -> int:
+    """Delete scoped evidence and aliases, preserving owner aliases and supported values."""
     if (document_id is None) == (source_id is None):
         raise ValueError("Specify one document or source")
     membership_query = select(EntityEvidenceMembership).where(
@@ -1494,6 +1562,7 @@ async def _remove_entity_support(
 
 
 async def _clear_unsupported_derived_fields(session: AsyncSession, entity_ids: set[UUID]) -> None:
+    """Clear non-owner entity fields whose exact current evidence support was removed."""
     for entity_id in entity_ids:
         entity = await session.get(Entity, entity_id)
         if entity is not None:

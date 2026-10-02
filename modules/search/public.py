@@ -26,11 +26,13 @@ FALLBACK_WARNING = "Semantic search unavailable"
 
 
 def _cursor_scope(request: SearchRequest) -> str:
+    """Hash all paging-relevant request fields except cursor and page size."""
     content = request.model_dump(exclude={"cursor", "limit"}, mode="json")
     return hashlib.sha256(json.dumps(content, sort_keys=True).encode()).hexdigest()[:16]
 
 
 def _offset(request: SearchRequest) -> int:
+    """Decode a canonical cursor bound to the request and reject invalid offsets."""
     if request.cursor is None:
         return 0
     try:
@@ -45,10 +47,12 @@ def _offset(request: SearchRequest) -> int:
 
 
 def _encode_cursor(request: SearchRequest, offset: int) -> str:
+    """Encode the request scope and ranked offset as unpadded URL-safe base64."""
     return base64.urlsafe_b64encode(f"{_cursor_scope(request)}:{offset}".encode()).decode().rstrip("=")
 
 
 def _filters(statement, request: SearchRequest):
+    """Apply source, content-type, and effective observation-date predicates."""
     filters = request.filters
     if filters.source_ids:
         statement = statement.where(Document.source_id.in_(filters.source_ids))
@@ -62,6 +66,7 @@ def _filters(statement, request: SearchRequest):
 
 
 def _visible_rows(*columns):
+    """Build a current-ready document query restricted to active sources."""
     return (
         select(*columns)
         .join(DocumentVersion, DocumentVersion.id == DocumentChunk.document_version_id)
@@ -76,6 +81,7 @@ def _visible_rows(*columns):
 
 
 async def _lexical_ids(session: AsyncSession, request: SearchRequest) -> list[UUID]:
+    """Retrieve bounded lexical candidates using PostgreSQL simple-text ranking."""
     vector = func.to_tsvector(text("'simple'"), DocumentChunk.content)
     query = func.websearch_to_tsquery(text("'simple'"), request.query)
     statement = _filters(_visible_rows(DocumentChunk.id), request).where(vector.op("@@")(query)).order_by(
@@ -85,6 +91,7 @@ async def _lexical_ids(session: AsyncSession, request: SearchRequest) -> list[UU
 
 
 async def _vector_ids(session: AsyncSession, request: SearchRequest, generation: IndexGeneration, values: list[float]) -> list[UUID]:
+    """Retrieve bounded cosine-nearest chunks under the current visibility filters."""
     dimensions = generation.dimensions
     if dimensions is None:
         return []
@@ -120,6 +127,7 @@ async def _vector_ids(session: AsyncSession, request: SearchRequest, generation:
 
 
 async def search(session: AsyncSession, redis: Redis, settings: Settings, request: SearchRequest) -> SearchResponse:
+    """Run lexical or policy-checked hybrid retrieval and revalidate visible citations."""
     offset = _offset(request)
     lexical = await _lexical_ids(session, request)
     vector: list[UUID] = []
@@ -138,6 +146,7 @@ async def search(session: AsyncSession, redis: Redis, settings: Settings, reques
             ):
                 raise ValueError("No permitted active embedding generation")
             async def recheck_send() -> None:
+                """Reload gateway and privacy state immediately before embedding the query."""
                 latest, latest_mapping, latest_policy = await configured_embedding(session, settings, redis)
                 if (latest.gateway_identity != config.gateway_identity or latest_mapping != mapping
                         or not may_send(latest_policy, "embedding", latest_mapping,
@@ -211,6 +220,7 @@ async def search(session: AsyncSession, redis: Redis, settings: Settings, reques
 
 
 async def index_status(session: AsyncSession) -> SearchIndexStatus:
+    """Return counters for the latest generation or an unavailable empty state."""
     generation = await session.scalar(select(IndexGeneration).order_by(IndexGeneration.created_at.desc()).limit(1))
     if generation is None:
         return SearchIndexStatus(run_id=None, status="unavailable", model_id=None, dimensions=None, indexed_items=0, failed_items=0)

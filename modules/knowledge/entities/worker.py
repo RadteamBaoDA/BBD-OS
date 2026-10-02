@@ -38,10 +38,16 @@ EXTRACTION_ALIAS = "reasoning-small"
 
 
 def _factory(ctx: dict[str, object]) -> async_sessionmaker[AsyncSession]:
+    """Get the worker's configured asynchronous database session factory."""
     return cast(async_sessionmaker[AsyncSession], ctx["session_factory"])
 
 
 async def _dependency_snapshot(config: object, redis: Redis) -> tuple[str, bool]:
+    """Fingerprint non-secret extraction policy and report current capability.
+
+    Cached capability data is accepted only when model, gateway, revision, and
+    expiry match; the snapshot excludes endpoint and credential values.
+    """
     # AIExecutionConfig is returned by the settings owner. Hash only non-secret
     # policy/model/capability metadata; never persist endpoint or credential data.
     alias = EXTRACTION_ALIAS
@@ -98,6 +104,7 @@ async def _dependency_snapshot(config: object, redis: Redis) -> tuple[str, bool]
 
 
 def _policy_allows_extraction(config: object, mapping: object, destination: str | None, local_only: bool) -> bool:
+    """Apply destination, local-only, consent, and capability policy to extraction."""
     if mapping is None or not destination or getattr(config, "endpoint_policy_denied"):
         return False
     privacy = getattr(config, "privacy")
@@ -115,6 +122,7 @@ def _policy_allows_extraction(config: object, mapping: object, destination: str 
 
 
 async def process_document_ready(ctx: dict[str, object], event_id: str) -> None:
+    """Create or schedule extraction work for a durable ready-document event."""
     factory = _factory(ctx)
     event_uuid = UUID(event_id)
     async with factory() as session:
@@ -156,6 +164,7 @@ async def process_document_ready(ctx: dict[str, object], event_id: str) -> None:
 
 
 async def recover_entity_extraction_work(ctx: dict[str, object]) -> int:
+    """Recover eligible durable extraction jobs and return the queued count."""
     factory = _factory(ctx)
     redis = cast(ArqRedis, ctx["redis"])
     enqueued = 0
@@ -237,6 +246,17 @@ async def recover_entity_extraction_work(ctx: dict[str, object]) -> int:
 
 
 async def process_entity_extraction_work(ctx: dict[str, object], work_id_value: str) -> None:
+    """Run one lease-owned extraction job and publish only fenced graph changes.
+
+    Commits the 110-second work claim, then holds source/document locks across
+    the provider request and rechecks privacy policy immediately before send.
+    Policy/capability blocks with a saved dependency fingerprint can be requeued
+    after recovery detects a changed dependency. Local-only blocks have no
+    fingerprint and remain parked at ``datetime.max``; bounded-input blocks are
+    also blocked without dependency requeue. Transport and general failures use
+    the bounded work retry policy. Graph writes roll back if final lease
+    acknowledgement no longer belongs to this worker.
+    """
     factory = _factory(ctx)
     settings = cast(Settings, ctx["settings"])
     redis = cast(Redis, ctx["redis"])
@@ -269,6 +289,7 @@ async def process_entity_extraction_work(ctx: dict[str, object], work_id_value: 
                 await entities.set_extraction_work_error(session, work_id, lease_owner, "document_unavailable", blocked=True)
                 await session.commit()
                 return
+            # Keep source/document fences while remote work runs so deletion or generation changes cannot race publication.
             ready = await documents.get_ready_version_ref(session, version_id)
             if (
                 ready is None or ready.document_id != expected_document_id
@@ -307,6 +328,7 @@ async def process_entity_extraction_work(ctx: dict[str, object], work_id_value: 
                 return
 
             async def before_send() -> None:
+                """Recheck saved settings and privacy policy immediately before remote use."""
                 async with factory() as current_session:
                     current = await settings_public.get_ai_execution_config(current_session, settings, redis)
                     current_mapping = current.aliases.get(alias)
@@ -582,6 +604,7 @@ async def process_entity_extraction_work(ctx: dict[str, object], work_id_value: 
                             )
                 facts.append({"entity_id": str(entity_id), "candidate_key": candidate.key, "confidence": candidate.confidence})
             def retain_relationship_review(relation, reason: str, possible: list[str]) -> None:
+                """Snapshot unresolved relationship endpoints for later owner review."""
                 source_candidate = candidate_by_key[relation.source_key]
                 target_candidate = candidate_by_key[relation.target_key]
                 snapshot = {

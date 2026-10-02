@@ -30,9 +30,11 @@ const mergeConfirmationSchema = z.object({ targetId: z.string().trim().min(1).ma
 const splitConfirmationSchema = z.object({ splitName: z.string().trim().min(1).max(300), reason: z.string().trim().min(1).max(300) });
 type CorrectionValues = z.infer<typeof correctionSchema>;
 
+/** Extracts conflict details suitable for display from a request error. */
 function conflictDetails(error: unknown): string[] {
   if (!(error instanceof ApiError) || error.status !== 409 || !error.details || typeof error.details !== 'object') return [];
   const details = error.details as Record<string, unknown>;
+  /** Accepts only string conflict fields and truncates them to the caller’s display bound. */
   const boundedText = (value: unknown, limit: number) => typeof value === 'string' ? value.slice(0, limit) : null;
   const raw = Array.isArray(details.conflicts) ? details.conflicts : details.conflict ? [details.conflict] : [];
   return raw.slice(0, 5).flatMap((value) => {
@@ -48,6 +50,7 @@ function conflictDetails(error: unknown): string[] {
   }).slice(0, 20);
 }
 
+/** Loads an entity and its evidence, then coordinates revision-fenced identity corrections. */
 export function EntityDetail() {
   const t = useTranslations('entities');
   const { entityId } = useParams<{ entityId: string }>();
@@ -86,6 +89,7 @@ export function EntityDetail() {
   const targets = useInfiniteQuery({ queryKey: entityKeys.list(entity.data?.type, targetSearch), initialPageParam: undefined as string | undefined, queryFn: ({ pageParam }) => listEntities(pageParam, entity.data?.type, targetSearch.trim()), getNextPageParam: (page) => page.next_cursor ?? undefined, enabled: !!entity.data && targetSearch.trim().length >= 2 });
   const targetItems = targets.data?.pages.flatMap((page) => page.items).filter((item) => item.id !== entity.data?.id) ?? [];
   const targetOptions = targetItems.map((item) => selectedMergeTarget?.id === item.id ? selectedMergeTarget : item);
+  /** Invalidates entity and relationship queries after a successful correction. */
   const saved = () => { void client.invalidateQueries({ queryKey: entityKeys.all }); void client.invalidateQueries({ queryKey: ['relationships'] }); };
 
   useEffect(() => {
@@ -94,7 +98,9 @@ export function EntityDetail() {
     baseline.current = { id: value.id, revision: value.revision, name: value.name ?? '', description: value.description ?? '' };
     identity.reset({ name: value.name ?? '', description: value.description ?? '', reason: 'owner_review' });
   }, [entity.data, identity.formState.isDirty, identity.reset]);
+  /** Asks before discarding the current unsaved draft. */
   const confirmDiscard = useCallback(() => window.confirm(t('discardChangesQuestion')), [t]);
+  /** Invalidates the current draft session and accepts leaving the editor. */
   const acceptLeave = useCallback(() => {
     dirtyRef.current = false;
     baseline.current = null;
@@ -153,6 +159,7 @@ export function EntityDetail() {
     mutationFn: (snapshot: { evidence_ids: string[]; expected_revision: number; reason: string }) => suppressEntityEvidence(entity.data!.id, snapshot, session.csrfToken),
     onSuccess: () => { setSelected([]); setSelectionRevision(null); setSuppressSnapshot(null); saved(); void evidence.refetch(); },
   });
+  /** Builds the split request from selected evidence, the selection revision, and validated form values. */
   const splitPayload = (values: CorrectionValues) => ({ evidence_ids: selected, expected_revision: selectionRevision ?? 0, new_entity: { type: entity.data!.type, name: values.splitName, reason: values.reason }, reason: values.reason });
   const splitPreview = useMutation({ mutationFn: async (values: CorrectionValues) => { if (selectionRevision === null) throw new Error(t('selectEvidence')); const payload = splitPayload(values); const preview = await previewSplitEntity(entity.data!.id, payload); return { preview, payload }; } });
   const split = useMutation({
@@ -169,12 +176,16 @@ export function EntityDetail() {
   const currentMergePreview = mergePreview.data && mergePreview.data.sourceRevision === value.revision && mergePreview.data.intoId === selectedMergeTarget?.id && mergePreview.data.reason === reason.trim() && mergePreview.data.intoRevision === selectedMergeTarget?.revision ? mergePreview.data : null;
   const currentSplitPreview = splitPreview.data && splitPreview.data.payload.expected_revision === selectionRevision && splitPreview.data.payload.new_entity.name === splitName.trim() && splitPreview.data.payload.reason === reason.trim() && splitPreview.data.payload.evidence_ids.length === selected.length && splitPreview.data.payload.evidence_ids.every((id) => selected.includes(id)) ? splitPreview.data : null;
   const correctionErrors = [merge.error, mergePreview.error, split.error, splitPreview.error, suppress.error].filter(Boolean);
+  /** Maps a document or entity API error to the feature’s displayable error state. */
   const formatError = (error: Error) => (error instanceof ApiError ? `${error.message}${error.code ? ` (${error.code})` : ''}` : error.message).slice(0, 500);
   const staleIdentity = !!baseline.current && (baseline.current.revision !== value.revision || baseline.current.id !== value.id);
   const staleSelection = selected.length > 0 && selectionRevision !== value.revision;
   const relationshipRows = relationshipEvidence.data?.pages.flatMap((page) => page.items) ?? [];
+  /** Clears pending identity edits without committing them. */
   const clearIdentityDraft = () => { baseline.current = { id: value.id, revision: value.revision, name: value.name ?? '', description: value.description ?? '' }; identity.reset({ name: value.name ?? '', description: value.description ?? '', reason: 'owner_review' }); update.reset(); };
+  /** Stores the latest correction preview or submission issue for display. */
   const setCorrectionIssue = (field: 'targetId' | 'splitName' | 'reason', message: string) => correction.setError(field, { type: 'manual', message });
+  /** Validates the merge target and requests a preview for the current entity revisions. */
   const previewMergeForm = correction.handleSubmit((values) => {
     const parsed = mergeConfirmationSchema.safeParse(values);
     if (!parsed.success) { setCorrectionIssue('targetId', 'mergeTargetRequired'); return; }
@@ -184,6 +195,7 @@ export function EntityDetail() {
     }
     mergePreview.mutate({ ...values, ...parsed.data });
   });
+  /** Confirms a still-current merge preview and submits the merge mutation. */
   const confirmMergeForm = correction.handleSubmit((values) => {
     const parsed = mergeConfirmationSchema.safeParse(values);
     if (!parsed.success || !currentMergePreview || !selectedMergeTarget || selectedMergeTarget.id !== parsed.data.targetId) {
@@ -192,28 +204,33 @@ export function EntityDetail() {
     }
     merge.mutate();
   });
+  /** Validates the split form and previews the selected evidence against its captured revision. */
   const previewSplitForm = correction.handleSubmit((values) => {
     const parsed = splitConfirmationSchema.safeParse(values);
     if (!parsed.success) { setCorrectionIssue('splitName', 'splitNameRequired'); return; }
     if (!selected.length || staleSelection) return;
     splitPreview.mutate({ ...values, ...parsed.data });
   });
+  /** Confirms a split preview only while its name and reason still match the validated form. */
   const confirmSplitForm = correction.handleSubmit((values) => {
     const parsed = splitConfirmationSchema.safeParse(values);
     if (!parsed.success) { setCorrectionIssue('splitName', 'splitNameRequired'); return; }
     if (!currentSplitPreview || parsed.data.reason !== currentSplitPreview.payload.reason || parsed.data.splitName !== currentSplitPreview.payload.new_entity.name) return;
     split.mutate();
   });
+  /** Opens the confirmation state for removing the selected alias. */
   const openAliasRemoval = (aliasId: string, aliasName: string) => {
     void correction.handleSubmit((values) => {
       removeAlias.reset();
       setAliasRemovalSnapshot({ aliasId, aliasName, reason: values.reason.trim() });
     })();
   };
+  /** Submits the confirmed alias removal and refreshes entity state on success. */
   const confirmAliasRemoval = () => {
     if (!aliasRemovalSnapshot || removeAlias.isPending) return;
     removeAlias.mutate({ aliasId: aliasRemovalSnapshot.aliasId, reason: aliasRemovalSnapshot.reason });
   };
+  /** Submits evidence suppression only when the confirmed snapshot still matches the current selection. */
   const suppressForm = correction.handleSubmit((values) => {
     const snapshot = suppressSnapshot;
     if (!snapshot || !suppressConfirmed || staleSelection || snapshot.revision !== selectionRevision
@@ -221,6 +238,7 @@ export function EntityDetail() {
       || snapshot.reason !== values.reason.trim()) return;
     suppress.mutate({ evidence_ids: snapshot.evidenceIds, expected_revision: snapshot.revision, reason: snapshot.reason });
   });
+  /** Adds the selected evidence IDs to the current correction draft. */
   const addSelectedEvidence = (id: string, checked: boolean) => {
     setSelected((current) => checked ? [...new Set([...current, id])] : current.filter((item) => item !== id));
     if (checked && selectionRevision === null) setSelectionRevision(value.revision);

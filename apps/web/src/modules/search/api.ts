@@ -21,6 +21,7 @@ export type SearchResponse = { items: SearchHit[]; next_cursor: string | null; e
 export type SearchIndexStatus = { run_id: string | null; status: string; model_id: string | null; dimensions: number | null; indexed_items: number; failed_items: number };
 export type SearchFilters = { source_ids: string[]; date_from: string | null; date_to: string | null; content_types: string[] };
 
+/** Searches documents with the supplied query, filters, lexical or hybrid mode, and optional cursor. */
 export function searchDocuments(query: string, filters: SearchFilters, mode: 'lexical' | 'hybrid', cursor?: string) {
   return apiRequest<SearchResponse>('/api/v1/search', {
     method: 'POST',
@@ -29,10 +30,12 @@ export function searchDocuments(query: string, filters: SearchFilters, mode: 'le
   });
 }
 
+/** Searches entities by query with optional cursor pagination. */
 export function searchEntities(query: string, cursor?: string) {
   const params = new URLSearchParams({ limit: '20', q: query });
   if (cursor) params.set('cursor', cursor);
   return apiRequest<EntitySearchResponse>(`/api/v1/entities?${params}`);
 }
 
+/** Fetches the current search-index status. */
 export function getSearchIndexStatus() { return apiRequest<SearchIndexStatus>('/api/v1/search/index'); }

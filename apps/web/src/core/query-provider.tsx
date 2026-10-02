@@ -10,6 +10,7 @@ import { messages } from '@/core/messages';
 import { OwnerPreferences, PreferenceValues } from '@/core/preferences';
 import { RealtimeProvider } from '@/core/realtime-provider';
 
+/** Resolves a missing translated message from the English catalog using its namespace and key. */
 function englishMessageFallback(namespace: string | undefined, key: string): string {
   let value: unknown = messages['en-us'];
   for (const part of [...(namespace?.split('.') ?? []), ...key.split('.')]) {
@@ -34,12 +35,14 @@ type DisplayPreferenceContextValue = {
 
 const DisplayPreferenceContext = createContext<DisplayPreferenceContextValue | null>(null);
 
+/** Returns confirmed and preview display preferences for the current provider context. */
 export function useDisplayPreferences() {
   const value = useContext(DisplayPreferenceContext);
   if (!value) throw new Error('Display preferences are unavailable');
   return value;
 }
 
+/** Mounts React Query and locale-aware message providers around the application tree. */
 export function QueryProvider({ children }: { children: ReactNode }) {
   const [client] = useState(
     () => new QueryClient({
@@ -59,6 +62,7 @@ export function QueryProvider({ children }: { children: ReactNode }) {
   </QueryClientProvider>;
 }
 
+/** Owns application display preferences, including bootstrap values, confirmed owner values, temporary previews, and auth-generation resets. */
 function DisplayPreferencesProvider({ children }: { children: ReactNode }) {
   const { setTheme } = useTheme();
   const themeSetterRef = useRef(setTheme);
@@ -90,8 +94,11 @@ function DisplayPreferencesProvider({ children }: { children: ReactNode }) {
     if (confirmedPreferences) themeSetterRef.current(effective.theme);
   }, [effective.theme, Boolean(confirmedPreferences)]);
 
+  /** Checks whether asynchronous preference work still belongs to the active auth generation. */
   const isCurrentGeneration = useCallback((generation: number) => generationRef.current === generation, []);
+  /** Commits confirmed preference values only for the current authentication generation. */
   const confirmPreferences = useCallback((value: OwnerPreferences, generation: number) => {
+    // Async reads from a prior login must not replace the next session's confirmed preferences.
     if (generationRef.current !== generation) return;
     confirmedRef.current = value;
     setConfirmedPreferences(value);
@@ -99,10 +106,12 @@ function DisplayPreferencesProvider({ children }: { children: ReactNode }) {
     bootstrapRef.current = next;
     setBootstrapValues(next);
   }, []);
+  /** Sets or clears preview preferences only for the current authentication generation. */
   const setPreview = useCallback((value: PreferenceValues | null, generation: number) => {
     if (generationRef.current !== generation) return;
     setPreviewState(value ? { value, generation } : (current) => current?.generation === generation ? null : current);
   }, []);
+  /** Retains the current theme, locale, and time zone as bootstrap values, clears confirmed and preview state, and advances the auth generation. */
   const endAuthSession = useCallback(() => {
     const retained = confirmedRef.current
       ? { theme: confirmedRef.current.theme, locale: confirmedRef.current.locale, timezone: confirmedRef.current.timezone }

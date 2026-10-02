@@ -30,8 +30,11 @@ MAX_CORRECTION_EVIDENCE_REFS = 100
 
 
 class CorrectionConflictError(ValueError):
+    """Carry an API-ready correction conflict alongside its validation error."""
+
     def __init__(self, code: str, message: str, *, entity_ids: list[UUID] = [],
                  membership_ids: list[UUID] = [], relationship_ids: list[UUID] = []) -> None:
+        """Build a conflict DTO containing the involved entity and support IDs."""
         super().__init__(message)
         self.conflict = EntityCorrectionConflict(
             code=code, message=message, entity_ids=entity_ids,
@@ -41,6 +44,7 @@ class CorrectionConflictError(ValueError):
 
 @dataclass
 class _Closure:
+    """Hold the bounded entity, evidence, and relationship snapshot for correction."""
     entity_rows: list[Entity]
     memberships: list[EntityEvidenceMembership]
     aliases: list[EntityAlias]
@@ -57,9 +61,11 @@ class _Closure:
 
     @property
     def relationship_ids(self) -> list[UUID]:
+        """Return relationship IDs in the captured correction closure."""
         return [item.id for item in self.relationship_refs]
 
     def signature(self) -> str:
+        """Serialize every relevant row field for optimistic closure revalidation."""
         value = {
             "entities": [(str(row.id), row.revision, row.type, row.name, row.canonical_name, row.description, row.name_origin, row.description_origin, row.metadata_json) for row in self.entity_rows],
             "memberships": [(str(row.id), str(row.entity_id), str(row.document_id), str(row.source_id), str(row.document_version_id), str(row.chunk_id), row.extraction_identity, row.candidate_key, row.match_fingerprint, row.observed_at.isoformat(), row.extracted_at.isoformat(), row.confidence) for row in self.memberships],
@@ -80,6 +86,7 @@ class _Closure:
 
 @dataclass
 class _DeleteClosure:
+    """Hold the bounded entity and graph rows discovered for canonical deletion."""
     entity_rows: list[Entity]
     redirect_rows: list[EntityRedirect]
     memberships: list[EntityEvidenceMembership]
@@ -95,13 +102,16 @@ class _DeleteClosure:
 
     @property
     def entity_ids(self) -> list[UUID]:
+        """Return the sorted IDs of canonical and redirected entities in the closure."""
         return sorted((item.id for item in self.entity_rows), key=str)
 
     @property
     def relationship_ids(self) -> list[UUID]:
+        """Return sorted relationship IDs captured for deletion."""
         return sorted((item.id for item in self.relationship_refs), key=str)
 
     def signature(self) -> str:
+        """Serialize ownership, provenance, support, and graph state for revalidation."""
         return json.dumps({
         "entities": [(str(item.id), item.revision, item.name, item.canonical_name, item.description, item.name_origin, item.description_origin, item.metadata_json) for item in self.entity_rows],
             "redirects": [(str(item.old_entity_id), str(item.target_entity_id), str(item.actor_id), item.reason) for item in self.redirect_rows],
@@ -120,6 +130,7 @@ class _DeleteClosure:
 
 def _conflict(code: str, message: str, *, entity_ids: list[UUID] = [],
               membership_ids: list[UUID] = [], relationship_ids: list[UUID] = []) -> CorrectionConflictError:
+    """Build a structured correction conflict with the supplied affected IDs."""
     return CorrectionConflictError(code, message, entity_ids=entity_ids,
                                    membership_ids=membership_ids, relationship_ids=relationship_ids)
 
@@ -127,6 +138,7 @@ def _conflict(code: str, message: str, *, entity_ids: list[UUID] = [],
 async def _discover(
     session: AsyncSession, entity_ids: list[UUID], *, include_target_memberships: bool = False
 ) -> _Closure:
+    """Read and bound the merge/split support graph before acquiring its locks."""
     ids = sorted(set(entity_ids), key=str)
     entity_rows = list((await session.scalars(
         select(Entity).where(Entity.id.in_(ids)).order_by(Entity.id).execution_options(populate_existing=True)
@@ -246,6 +258,7 @@ async def _discover(
 async def _validate_merge_request(
     source_id: UUID, payload: EntityMergeRequest, closure: _Closure,
 ) -> tuple[Entity, Entity, list[EntityEvidenceMembership], dict[str, EntityAlias], list[EntityAlias]]:
+    """Check revisions, types, protected fields, aliases, scope, and edge merge rules."""
     target_id = payload.into_id
     source = next((item for item in closure.entity_rows if item.id == source_id), None)
     target = next((item for item in closure.entity_rows if item.id == target_id), None)
@@ -285,6 +298,7 @@ async def _validate_merge_request(
 async def _validate_split_request(
     entity_id: UUID, payload: EntitySplitRequest, closure: _Closure,
 ) -> tuple[Entity, list[EntityEvidenceMembership]]:
+    """Check revision, replacement identity, selected memberships, and edge split rules."""
     source = next((item for item in closure.entity_rows if item.id == entity_id), None)
     if source is None:
         raise _conflict("entity_missing", "Split entity no longer exists", entity_ids=[entity_id])
@@ -312,6 +326,7 @@ async def _validate_split_request(
 
 
 async def _discover_delete_closure(session: AsyncSession, entity_id: UUID) -> _DeleteClosure:
+    """Discover bounded redirect, evidence, alias, decision, and incident-edge rows."""
     root = await session.scalar(select(Entity).where(Entity.id == entity_id).execution_options(populate_existing=True))
     if root is None:
         raise _conflict("entity_missing", "Entity no longer exists", entity_ids=[entity_id])
@@ -401,6 +416,14 @@ async def _discover_delete_closure(session: AsyncSession, entity_id: UUID) -> _D
 async def delete_canonical_entity(
     session: AsyncSession, entity_id: UUID, *, actor_id: int, reason: str,
 ) -> bool:
+    """Delete a canonical root and its bounded support closure with an audit record.
+
+    The owner-write route supplies authorization and ``actor_id`` for the audit.
+    The function locks and revalidates the closure, removes owned support, and
+    retains cleared redirect stubs with ``target_entity_id=None`` so deleted IDs
+    stay terminal. It commits audit/realtime changes; oversized, changing, or
+    noncanonical closures raise ``CorrectionConflictError``.
+    """
     before = await _discover_delete_closure(session, entity_id)
     before_signature = before.signature()
     for source_id in before.source_ids:
@@ -485,6 +508,7 @@ async def delete_canonical_entity(
 async def _locked_closure(
     session: AsyncSession, entity_ids: list[UUID], *, include_target_memberships: bool = False
 ) -> _Closure:
+    """Lock evidence owners and sorted graph rows, then reject any changed snapshot."""
     before = await _discover(session, entity_ids, include_target_memberships=include_target_memberships)
     before_signature = before.signature()
     try:
@@ -537,6 +561,7 @@ async def _locked_closure(
 
 
 async def preview_merge(session: AsyncSession, source_id: UUID, payload: EntityMergeRequest) -> EntityCorrectionPreview:
+    """Return merge impact and conflicts without writing or locking a correction closure."""
     try:
         if source_id == payload.into_id:
             raise _conflict("self_merge", "An entity cannot be merged into itself", entity_ids=[source_id])
@@ -561,6 +586,7 @@ async def preview_merge(session: AsyncSession, source_id: UUID, payload: EntityM
 
 
 async def preview_split(session: AsyncSession, entity_id: UUID, payload: EntitySplitRequest) -> EntityCorrectionPreview:
+    """Return split impact and conflicts without applying the requested correction."""
     try:
         if await entities.resolve_canonical_entity_id(session, entity_id) != entity_id:
             raise _conflict("redirected_entity", "Use the canonical entity ID for corrections", entity_ids=[entity_id])
@@ -585,6 +611,7 @@ async def preview_split(session: AsyncSession, entity_id: UUID, payload: EntityS
 async def _check_future_scope(
     document_id: UUID | None, memberships: list[EntityEvidenceMembership],
 ) -> list[EntityEvidenceMembership]:
+    """Select evidence in the future document only when each row has a fingerprint."""
     if document_id is None:
         return []
     scoped = [item for item in memberships if item.document_id == document_id]
@@ -597,6 +624,7 @@ async def _record_assignments(
     session: AsyncSession, memberships: list[EntityEvidenceMembership], target_id: UUID, *,
     actor_id: int, reason: str, future_document_id: UUID | None,
 ) -> None:
+    """Upsert evidence- and optional document-scoped owner assignment decisions."""
     now = datetime.now(UTC)
     for membership in memberships:
         fingerprint = membership.match_fingerprint
@@ -639,6 +667,14 @@ async def _record_assignments(
 async def merge_entity(
     session: AsyncSession, source_id: UUID, payload: EntityMergeRequest, *, actor_id: int
 ) -> EntityCorrectionResult:
+    """Merge two canonical entities and commit their audited support migration.
+
+    Authorization is enforced by the owner-write route; ``actor_id`` is audit
+    provenance. The function locks/revalidates a bounded closure, redirects the
+    source identity to the target, preserves evidence/document assignment rules,
+    and rebinds only relationships whose support remains valid. Conflicts raise
+    ``CorrectionConflictError`` and successful changes commit with graph events.
+    """
     if source_id == payload.into_id:
         raise _conflict("self_merge", "An entity cannot be merged into itself", entity_ids=[source_id])
     if await entities.resolve_canonical_entity_id(session, source_id) != source_id or await entities.resolve_canonical_entity_id(session, payload.into_id) != payload.into_id:
@@ -749,6 +785,14 @@ async def merge_entity(
 async def split_entity(
     session: AsyncSession, entity_id: UUID, payload: EntitySplitRequest, *, actor_id: int
 ) -> EntityCorrectionResult:
+    """Move selected evidence into a new owner-authored entity and commit the audit.
+
+    The owner-write route authorizes the operation and supplies ``actor_id`` for
+    provenance. After locking and validating the bounded closure, it moves chosen
+    memberships and supported relationships; new identity fields remain
+    owner-authored rather than inheriting derived field support. Conflicts raise
+    ``CorrectionConflictError``.
+    """
     if await entities.resolve_canonical_entity_id(session, entity_id) != entity_id:
         raise _conflict("redirected_entity", "Use the canonical entity ID for corrections", entity_ids=[entity_id])
     closure = await _locked_closure(session, [entity_id])
@@ -840,6 +884,14 @@ async def split_entity(
 async def suppress_candidates(
     session: AsyncSession, entity_id: UUID, payload: EntitySuppressionRequest, *, actor_id: int
 ) -> EntityCorrectionResult:
+    """Commit owner suppression rules for selected evidence and future documents.
+
+    Authorization is enforced by the owner-write route; ``actor_id`` and reason
+    are recorded in the audit. The operation requires a current canonical
+    revision and records scoped decisions without deleting memberships/evidence
+    or incrementing the entity revision; conflicts raise
+    ``CorrectionConflictError``.
+    """
     if await entities.resolve_canonical_entity_id(session, entity_id) != entity_id:
         raise _conflict("redirected_entity", "Use the canonical entity ID for corrections", entity_ids=[entity_id])
     closure = await _locked_closure(session, [entity_id])

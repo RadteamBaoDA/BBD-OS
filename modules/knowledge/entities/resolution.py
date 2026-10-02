@@ -6,6 +6,7 @@ from modules.knowledge.entities.schemas import canonicalize_name
 
 
 def candidate_match_fingerprint(name: str, entity_type: str) -> str:
+    """Hash normalized type and name for stable owner-review correction matching."""
     return sha256(f"{entity_type}:{canonicalize_name(name)}".encode("utf-8")).hexdigest()
 
 

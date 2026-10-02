@@ -32,6 +32,7 @@ OwnerWrite = Annotated[AuthSession, Depends(require_owner_write)]
 
 
 def as_document_read(document: Document) -> DocumentRead:
+    """Project a document ORM row into the public response schema."""
     return DocumentRead(
         id=document.id,
         source_id=document.source_id,
@@ -62,6 +63,7 @@ async def list_documents(
     cursor: str | None = None,
     source_id: UUID | None = None,
 ) -> DocumentList:
+    """Return a bounded owner-only document page and continuation cursor."""
     items, next_cursor = await public.list_documents(session, limit, cursor, source_id)
     return DocumentList(items=[as_document_read(item) for item in items], next_cursor=next_cursor)
 
@@ -70,6 +72,7 @@ async def list_documents(
 async def create_document(
     payload: DocumentCreate, session: Session, _owner: OwnerWrite
 ) -> DocumentRead:
+    """Create a source-backed document under owner write authorization."""
     try:
         document = await public.create_document(session, payload)
     except LookupError as exc:
@@ -85,6 +88,7 @@ async def create_document(
 async def get_raw_document(
     document_id: UUID, request: Request, session: Session, _owner: OwnerRead
 ) -> FileResponse:
+    """Stream an owner-authorized raw file with private/no-store and nosniff headers."""
     document = await public.get_document(session, document_id)
     if document is None or document.raw_uri is None:
         raise HTTPException(status_code=404, detail="Raw document not found")
@@ -105,6 +109,7 @@ async def get_raw_document(
 async def get_document(
     document_id: UUID, session: Session, _owner: OwnerRead
 ) -> DocumentRead:
+    """Return one owner-only document or 404 when absent."""
     document = await public.get_document(session, document_id)
     if document is None:
         raise HTTPException(status_code=404, detail="Document not found")
@@ -118,6 +123,7 @@ async def update_document(
     session: Session,
     _owner: OwnerWrite,
 ) -> DocumentRead:
+    """Apply non-null owner metadata fields through the document public contract."""
     document = await public.get_document(session, document_id)
     if document is None:
         raise HTTPException(status_code=404, detail="Document not found")
@@ -133,6 +139,7 @@ async def update_document(
 async def delete_document(
     document_id: UUID, session: Session, _owner: OwnerWrite
 ) -> None:
+    """Delete one owner-authorized document and its supported graph data."""
     if not await public.delete_document(session, document_id):
         raise HTTPException(status_code=404, detail="Document not found")
 
@@ -144,6 +151,7 @@ async def update_content(
     session: Session,
     _owner: OwnerWrite,
 ) -> DocumentRead:
+    """Append an immutable content revision using the caller's expected version."""
     try:
         document = await public.append_content(
             session, document_id, payload.expected_version, payload.content
@@ -163,6 +171,7 @@ async def list_versions(
     limit: Annotated[int, Query(ge=1, le=100)] = 50,
     cursor: str | None = None,
 ) -> VersionList:
+    """Return ascending immutable versions in a bounded owner-only page."""
     versions, next_cursor = await public.list_versions(session, document_id, limit, cursor)
     if versions is None:
         raise HTTPException(status_code=404, detail="Document not found")
@@ -179,6 +188,7 @@ async def get_version(
     session: Session,
     _owner: OwnerRead,
 ) -> VersionRead:
+    """Return one owner-only immutable revision constrained to a valid version number."""
     version = await public.get_version(session, document_id, number)
     if version is None:
         raise HTTPException(status_code=404, detail="Document version not found")

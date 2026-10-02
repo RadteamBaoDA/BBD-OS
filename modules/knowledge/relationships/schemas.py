@@ -8,6 +8,7 @@ from modules.knowledge.entities.schemas import EvidenceRef, validate_metadata
 
 
 class EntityGraphRead(BaseModel):
+    """Serialize the minimal entity identity embedded in a graph result."""
     id: UUID
     type: str
     name: str | None
@@ -15,6 +16,12 @@ class EntityGraphRead(BaseModel):
 
 
 class RelationshipCreate(BaseModel):
+    """Validate an owner-authorized relationship request and its origin/evidence fields.
+
+    ``origin`` may be ``owner`` or ``derived``; request authorization does not
+    determine the stored fact's origin. Derived relationships require evidence
+    with both endpoint memberships, while owner relationships may omit evidence.
+    """
     model_config = ConfigDict(extra="forbid")
     source_entity_id: UUID
     target_entity_id: UUID
@@ -30,10 +37,12 @@ class RelationshipCreate(BaseModel):
     @field_validator("metadata")
     @classmethod
     def bounded_metadata(cls, value: dict[str, Any]) -> dict[str, Any]:
+        """Apply the entity metadata JSON and size constraints to relationship metadata."""
         return validate_metadata(value)
 
 
 class EvidenceRead(BaseModel):
+    """Serialize relationship evidence with exact version, chunk, and source provenance."""
     id: UUID
     relationship_id: UUID
     document_id: UUID
@@ -53,6 +62,7 @@ class EvidenceRead(BaseModel):
 
 
 class RelationshipRead(BaseModel):
+    """Serialize a relationship and its evidence-backed or owner-authored state."""
     id: UUID
     source_entity_id: UUID
     target_entity_id: UUID
@@ -67,27 +77,32 @@ class RelationshipRead(BaseModel):
 
 
 class RelationshipPage(BaseModel):
+    """Return a relationship page and its optional continuation cursor."""
     items: list[RelationshipRead]
     next_cursor: str | None
 
 
 class EvidencePage(BaseModel):
+    """Return relationship evidence with its optional continuation cursor."""
     items: list[EvidenceRead]
     next_cursor: str | None
 
 
 class NeighborRead(BaseModel):
+    """Pair one adjacent entity with the relationship connecting it to the focus."""
     entity: EntityGraphRead
     relationship: RelationshipRead
 
 
 class NeighborPage(BaseModel):
+    """Return bounded neighbors, truncation state, and any continuation cursor."""
     items: list[NeighborRead]
     truncated: bool
     next_cursor: str | None
 
 
 class CorrectionSupportRef(BaseModel):
+    """Identify support evidence and endpoint memberships used by a correction."""
     id: UUID
     document_id: UUID | None
     source_id: UUID | None
@@ -99,6 +114,7 @@ class CorrectionSupportRef(BaseModel):
 
 
 class CorrectionRelationshipRef(BaseModel):
+    """Describe a relationship and its supports for entity merge or split planning."""
     id: UUID
     source_entity_id: UUID
     target_entity_id: UUID

@@ -25,6 +25,16 @@ def prepare_credential_assignment(
     existing: Any,
     encryption_key: str,
 ) -> tuple[dict[str, object], dict[str, object] | None]:
+    """Prepare a credential binding and optional encrypted n8n operation intent.
+
+    Unresolved existing operations are rejected. ``secret=None`` keeps only a
+    ready credential with an ID and matching header binding; a supplied secret
+    reuses a ready exact binding/fingerprint match. Otherwise the secret is
+    encrypted into a create/update intent; unavailable encryption raises
+    ``CredentialEncryptionUnavailable``. Returns ``(assignment, None)`` for
+    keep/reuse, or ``(assignment, operation_intent)`` for a required mutation.
+    This helper does not persist either value.
+    """
     if existing is not None and existing.state in {
         "dispatching", "reconciliation_required", "delete_pending"
     }:
@@ -51,6 +61,7 @@ def prepare_credential_assignment(
         existing is not None and existing.state == "ready" and existing.credential_id
         and isinstance(existing_binding, dict) and existing_binding == expected
     ):
+        # Exact fingerprint and binding equality avoids a needless provider mutation.
         return ({"binding": expected, "credential_id": existing.credential_id}, None)
 
     operation_id = uuid4()

@@ -18,8 +18,10 @@ type RealtimeContextValue = {
 
 type ProtectedReadPath = '/api/v1/realtime/snapshot' | '/api/v1/auth/session';
 type SnapshotAttempt = { id: number; controller: AbortController };
+/** Marks a snapshot read that was canceled because a newer connection attempt took ownership. */
 class SupersededSnapshotAttempt extends Error {}
 
+/** Reads protected JSON data and rejects stale attempts, unauthorized responses, and unsuccessful HTTP results. */
 async function protectedJsonRead<T>(
   path: ProtectedReadPath,
   signal: AbortSignal,
@@ -71,12 +73,14 @@ const CURSOR_RE = /^([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 const MAX_QUEUED_DOCUMENTS = 500;
 
+/** Returns realtime connection and refresh state or throws when called outside its provider. */
 export function useRealtime() {
   const value = useContext(RealtimeContext);
   if (!value) throw new Error('Realtime status is unavailable');
   return value;
 }
 
+/** Parses JSON only when it matches the supported replay envelope schema. */
 function parseEnvelope<T extends ReplayEnvelope>(data: string): T | null {
   try {
     const value: unknown = JSON.parse(data);
@@ -87,17 +91,21 @@ function parseEnvelope<T extends ReplayEnvelope>(data: string): T | null {
   }
 }
 
+/** Validates the bounded realtime cursor wire format. */
 function validCursor(value: string): boolean {
   return value.length <= 60 && CURSOR_RE.test(value);
 }
 
+/** Checks that a cursor advances within the same stream identity. */
 function isCurrent(cursor: string, previous: string): boolean {
   const nextMatch = CURSOR_RE.exec(cursor);
   const previousMatch = CURSOR_RE.exec(previous);
   if (!nextMatch || !previousMatch || nextMatch[1] !== previousMatch[1]) return false;
+  // Compare sequence numbers numerically; lexical ordering misorders values once digit counts differ.
   return BigInt(nextMatch[2]) > BigInt(previousMatch[2]);
 }
 
+/** Owns the authenticated event stream, cursor replay, query invalidation, and bounded document refresh queue for descendants. */
 export function RealtimeProvider({ children }: { children: ReactNode }) {
   const client = useQueryClient();
   const display = useDisplayPreferences();
@@ -120,8 +128,10 @@ export function RealtimeProvider({ children }: { children: ReactNode }) {
   const fullRefreshQueued = useRef(false);
   const cursorRef = useRef('');
 
+  /** Queues document IDs for targeted refresh and switches to a full refresh when the bounded queue is exceeded or an event lacks an ID. */
   const queueDocumentUpdate = useCallback((id: string | null) => {
     documentRevision.current += 1;
+    // A missing ID or a full queue loses targeted coverage, so require a full document refresh.
     if (!id || fullRefreshQueued.current || queuedDocuments.current.size >= MAX_QUEUED_DOCUMENTS) {
       queuedDocuments.current.clear();
       unknownChangeRevision.current = documentRevision.current;
@@ -133,6 +143,7 @@ export function RealtimeProvider({ children }: { children: ReactNode }) {
     if (fullRefreshQueued.current) setDocumentRefreshRequired(true);
   }, []);
 
+  /** Invalidates source, ingestion, connector, operation, entity, relationship, and search queries after realtime changes. */
   const invalidateOperationalQueries = useCallback(async () => {
     await Promise.all([
       client.invalidateQueries({ queryKey: ['sources'] }),
@@ -149,6 +160,7 @@ export function RealtimeProvider({ children }: { children: ReactNode }) {
     ]);
   }, [client]);
 
+  /** Refreshes document data and clears only updates covered by the completed query refresh. */
   const consumeDocumentUpdates = useCallback(async () => {
     const generation = display.authGeneration;
     const consumed = new Map(queuedDocuments.current);
@@ -159,6 +171,7 @@ export function RealtimeProvider({ children }: { children: ReactNode }) {
         { throwOnError: true },
       );
       if (!display.isCurrentGeneration(generation)) return;
+      // Remove only revisions included in this snapshot so events queued during the fetch survive.
       for (const [id, revision] of consumed) {
         if (queuedDocuments.current.get(id) === revision) queuedDocuments.current.delete(id);
       }
@@ -192,9 +205,12 @@ export function RealtimeProvider({ children }: { children: ReactNode }) {
     let retryDelay = 1000;
     setBarrierGeneration(null);
     setStatus('connecting');
+    /** Checks whether asynchronous stream work still belongs to the active auth generation. */
     const isCurrentGeneration = () => active && display.isCurrentGeneration(generation);
+    /** Checks that a snapshot attempt belongs to the active auth generation and has not been aborted. */
     const ownsAttempt = (attempt: SnapshotAttempt) =>
       isCurrentGeneration() && currentAttempt === attempt && !attempt.controller.signal.aborted;
+    /** Aborts the prior snapshot and auth check before creating a new attempt token. */
     const supersedeAttempt = () => {
       currentAttempt?.controller.abort();
       authCheckController?.abort();
@@ -203,22 +219,26 @@ export function RealtimeProvider({ children }: { children: ReactNode }) {
       currentAttempt = attempt;
       return attempt;
     };
+    /** Aborts and clears the active snapshot attempt and auth check. */
     const cancelAttempt = () => {
       currentAttempt?.controller.abort();
       currentAttempt = null;
       authCheckController?.abort();
       authCheckController = null;
     };
+    /** Closes and clears the current event stream and its associated auth check. */
     const closeStream = () => {
       eventSource?.close();
       eventSource = null;
       authCheckController?.abort();
       authCheckController = null;
     };
+    /** Cancels and clears the scheduled snapshot retry timer. */
     const clearSnapshotRetry = () => {
       if (retryRef.current) clearTimeout(retryRef.current);
       retryRef.current = null;
     };
+    /** Fetches a session snapshot for the current stream attempt and reconciles its cursor before connecting. */
     const openSnapshot = async (
       reconnect: boolean, attempt: SnapshotAttempt, possibleDocumentChanges: boolean,
     ) => {
@@ -253,6 +273,7 @@ export function RealtimeProvider({ children }: { children: ReactNode }) {
         }
       }
     };
+    /** Schedules a bounded-delay snapshot retry only while the current generation remains active. */
     const scheduleSnapshotRetry = () => {
       if (!isCurrentGeneration() || retryRef.current) return;
       retryRef.current = setTimeout(() => {
@@ -262,6 +283,7 @@ export function RealtimeProvider({ children }: { children: ReactNode }) {
       }, retryDelay);
       retryDelay = Math.min(30_000, retryDelay * 2);
     };
+    /** Replays events from a snapshot cursor and marks broad refresh when event changes cannot be targeted. */
     const resync = (possibleDocumentChanges: boolean) => {
       const attempt = supersedeAttempt();
       closeStream();
@@ -269,6 +291,7 @@ export function RealtimeProvider({ children }: { children: ReactNode }) {
       setStatus('reconnecting');
       void openSnapshot(true, attempt, possibleDocumentChanges);
     };
+    /** Installs one named event listener on the active stream and routes messages through its callback. */
     const register = (
       stream: EventSource, attempt: SnapshotAttempt, name: string,
       callback: (event: MessageEvent<string>) => void,
@@ -284,6 +307,7 @@ export function RealtimeProvider({ children }: { children: ReactNode }) {
         if (eventSource === stream && ownsAttempt(attempt)) cursorRef.current = id;
       });
     };
+    /** Opens an event stream for the cursor and snapshot attempt after confirming that attempt still owns the connection. */
     const openStream = (cursor: string, attempt: SnapshotAttempt) => {
       if (!ownsAttempt(attempt) || !validCursor(cursor)) return;
       closeStream();
@@ -291,6 +315,7 @@ export function RealtimeProvider({ children }: { children: ReactNode }) {
       cursorRef.current = cursor;
       const stream = new EventSource(`/api/v1/realtime/events?cursor=${encodeURIComponent(cursor)}`);
       eventSource = stream;
+      /** Checks that the event stream and snapshot attempt still match the active connection. */
       const ownsStream = () => eventSource === stream && ownsAttempt(attempt);
       stream.onopen = () => {
         if (!ownsStream()) return;
@@ -304,6 +329,7 @@ export function RealtimeProvider({ children }: { children: ReactNode }) {
         authCheckController?.abort();
         const controller = new AbortController();
         authCheckController = controller;
+        /** Checks that the auth probe still belongs to the active stream and has not been aborted. */
         const ownsAuthCheck = () => ownsStream() && authCheckController === controller && !controller.signal.aborted;
         void protectedJsonRead<unknown>(
           '/api/v1/auth/session', controller.signal, ownsAuthCheck,
@@ -389,6 +415,7 @@ export function RealtimeProvider({ children }: { children: ReactNode }) {
         if (value.document_id) queueDocumentUpdate(value.document_id);
         else queueDocumentUpdate(null);
       });
+      /** Checks whether a control event came from the current event stream. */
       const ownControlEvent = () => ownsStream();
       stream.addEventListener('resync_required', () => { if (ownControlEvent()) resync(true); });
       stream.addEventListener('auth_expired', () => {
@@ -406,6 +433,7 @@ export function RealtimeProvider({ children }: { children: ReactNode }) {
     setStatus('connecting');
     const initialAttempt = supersedeAttempt();
     void openSnapshot(false, initialAttempt, false);
+    /** Handles session expiration by ending authenticated client state and stopping the active stream. */
     const authEnding = () => {
       active = false;
       cancelAttempt();

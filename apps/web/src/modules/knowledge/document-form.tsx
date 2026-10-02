@@ -16,6 +16,7 @@ import { createDocument, documentKeys } from './api';
 const schema = z.object({ source_id: z.string().min(1, 'Select a source.'), title: z.string().trim().min(1).max(500), content: z.string().max(1_048_576) });
 type Values = z.infer<typeof schema>;
 
+/** Creates a document from the selected source and form values, then invokes the supplied completion callback. */
 export function DocumentForm({ onCancel }: { onCancel: () => void }) {
   const { csrfToken } = useWorkspaceSession();
   const queryClient = useQueryClient();

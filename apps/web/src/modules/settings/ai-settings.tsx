@@ -20,6 +20,7 @@ const capabilityTypes = ['chat', 'streaming', 'embeddings', 'structured', 'tools
 const draftStorageKey = 'bbd:settings:ai:draft:v1';
 const defaultPrivacy: Privacy = { allow_remote_reasoning: false, allow_remote_embeddings: false, allow_remote_web_search: false, reasoning_destinations: [], embedding_destinations: [], web_search_destinations: [] };
 
+/** Loads and saves AI, provider, and privacy settings while guarding navigation when a draft is dirty. */
 export function AISettingsWorkspace() {
   const t = useTranslations('aiSettings');
   const { csrfToken } = useWorkspaceSession();
@@ -76,16 +77,19 @@ export function AISettingsWorkspace() {
   }, [query.data, dirty, draft, gatewayAction, searchAction, gatewayKey, searchKey, save.isPending]);
   useEffect(() => {
     if (!dirty && !save.isPending) return;
+    /** Prevents browser navigation while unsaved AI settings remain. */
     const warn = (event: BeforeUnloadEvent) => {
       if (allowNavigation.current) return;
       event.preventDefault();
       event.returnValue = '';
     };
+    /** Allows the auth-ending navigation and removes the saved AI settings draft snapshot. */
     const authEnding = () => {
       allowNavigation.current = true;
       sessionStorage.removeItem(draftStorageKey);
     };
     const navigationApi = (window as Window & { navigation?: EventTarget }).navigation;
+    /** Intercepts guarded route navigation while the settings draft is dirty. */
     const guardNavigation = (event: Event) => {
       if (allowNavigation.current) return;
       const navigateEvent = event as Event & { destination?: { url?: string } };
@@ -103,6 +107,7 @@ export function AISettingsWorkspace() {
       sessionStorage.removeItem(draftStorageKey);
       allowNavigation.current = true;
     };
+    /** Intercepts eligible links so leaving a dirty settings draft requires confirmation. */
     const guardLinks = (event: MouseEvent) => {
       if (allowNavigation.current) return;
       if (navigationApi) return;
@@ -131,7 +136,9 @@ export function AISettingsWorkspace() {
   const probe = useMutation({ mutationFn: ({ alias, capability }: { alias: string; capability: string }) => apiRequest<Capability>(`/api/v1/settings/models/${alias}/test`, { method: 'POST', headers: { ...csrfHeaders(csrfToken), 'Content-Type': 'application/json' }, body: JSON.stringify({ capability }) }), onSuccess: () => client.invalidateQueries({ queryKey: ['ai-settings'] }) });
   if (query.isPending) return <section className="content-panel skeleton" aria-label={t('loading')} />;
   if (query.isError || !saved) return <section className="content-panel"><h1>{t('unavailable')}</h1><p className="error">{t(apiFailureKey(query.error) ?? 'loadFailed')}</p><Button className="secondary" onClick={() => query.refetch()}>{t('retry')}</Button></section>;
+  /** Applies a partial update to the AI settings draft. */
   const set = (patch: Partial<AISettings>) => setDraft({ ...saved, ...patch });
+  /** Merges a partial privacy update into the current AI settings draft. */
   const setPrivacy = (patch: Partial<Privacy>) => set({ privacy: { ...defaultPrivacy, ...saved.privacy, ...patch } });
   return <section className="content-panel"><span className="brand">{t('gateway')}</span><h1>{t('title')}</h1><p className="muted">{t('description')}</p>
     <p className="muted" role="status">{save.isPending ? t('saving') : dirty ? t('unsaved') : t('saved')}</p>

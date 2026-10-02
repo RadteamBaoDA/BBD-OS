@@ -11,17 +11,47 @@ $repo = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 Push-Location $repo
 try {
   function Invoke-Checked([string]$Program, [string[]]$Arguments) {
+    <#
+    .SYNOPSIS
+    Run an external program and fail the current task when it exits unsuccessfully.
+
+    .PARAMETER Program
+    Executable name or path to invoke.
+
+    .PARAMETER Arguments
+    Argument vector passed to the executable without joining it into a command string.
+
+    .OUTPUTS
+    Forwards output emitted by the external program.
+
+    .NOTES
+    Throws when the native process exit code is nonzero.
+    #>
     & $Program @Arguments
     if ($LASTEXITCODE -ne 0) { throw "$Program failed with exit code $LASTEXITCODE" }
   }
 
   function New-Secret {
+    <#
+    .SYNOPSIS
+    Generate a 48-byte cryptographically random secret encoded as unpadded Base64URL.
+
+    .OUTPUTS
+    System.String
+    #>
     $bytes = [byte[]]::new(48)
     [System.Security.Cryptography.RandomNumberGenerator]::Fill($bytes)
     return [Convert]::ToBase64String($bytes).TrimEnd('=').Replace('+', '-').Replace('/', '_')
   }
 
   function Get-ComposeArgs {
+    <#
+    .SYNOPSIS
+    Return the base and development Compose file arguments used by local stack commands.
+
+    .OUTPUTS
+    System.String[]
+    #>
     return @('-f', 'docker-compose.yml', '-f', 'docker-compose.dev.yml')
   }
 

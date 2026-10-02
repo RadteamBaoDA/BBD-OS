@@ -14,6 +14,7 @@ SUPPORTED = {
 
 
 def validate_upload(filename: str | None, declared_mime: str | None, file: BinaryIO) -> tuple[str, str, str]:
+    """Validate extension, declared type, signature, archive structure, and UTF-8; rewind before returning."""
     extension = Path(filename or "").suffix.lower()
     supported = SUPPORTED.get(extension)
     if supported is None:

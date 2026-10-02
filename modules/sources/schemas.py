@@ -11,6 +11,7 @@ SourceStatus = Literal["active", "paused", "archived"]
 
 
 class SourceCreate(BaseModel):
+    """Validate the type, name, and optional provider for a new source."""
     model_config = ConfigDict(extra="forbid")
 
     type: SourceType
@@ -19,6 +20,7 @@ class SourceCreate(BaseModel):
 
 
 class SourcePatch(BaseModel):
+    """Validate supported source name and lifecycle status updates."""
     model_config = ConfigDict(extra="forbid")
 
     name: str | None = Field(default=None, min_length=1, max_length=200)
@@ -26,6 +28,7 @@ class SourcePatch(BaseModel):
 
 
 class SourceRead(BaseModel):
+    """Serialize source lifecycle, collection, processing, and generation state."""
     model_config = ConfigDict(from_attributes=True)
 
     id: UUID
@@ -72,11 +75,13 @@ class ConnectorSource(BaseModel):
 
 
 class SourceList(BaseModel):
+    """Return a source page and its optional continuation cursor."""
     items: list[SourceRead]
     next_cursor: str | None
 
 
 class OperationRead(BaseModel):
+    """Expose the status and timestamps of a source operation."""
     operation_id: UUID
     source_id: UUID
     status: Literal["queued", "running", "succeeded", "failed"]

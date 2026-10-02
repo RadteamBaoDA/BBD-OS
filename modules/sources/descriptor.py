@@ -3,6 +3,8 @@ from dataclasses import dataclass
 
 @dataclass(frozen=True)
 class SourceDescriptor:
+    """Declare the source lifecycle module's public routes and capabilities."""
+
     id: str = "sources"
     name: str = "Sources"
     version: str = "1.0.0"

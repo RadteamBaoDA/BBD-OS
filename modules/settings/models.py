@@ -13,6 +13,11 @@ from core.database import Base
 
 
 class AISettingsRecord(Base):
+    """Persist the owner-scoped AI gateway, model, and privacy configuration.
+
+    The owner primary key and database checks enforce the single-user boundary;
+    encrypted credential fields remain ciphertext at rest.
+    """
     __tablename__ = "ai_settings"
     __table_args__ = (
         CheckConstraint("owner_id = 1", name="ck_ai_settings_single_owner"),
@@ -37,6 +42,10 @@ class AISettingsRecord(Base):
 
 
 class OwnerPreferencesRecord(Base):
+    """Persist the owner's revisioned theme, locale, and timezone preferences.
+
+    The singleton owner key and checks constrain this record to supported settings.
+    """
     __tablename__ = "owner_preferences"
     __table_args__ = (
         CheckConstraint("owner_id = 1", name="ck_owner_preferences_single_owner"),
@@ -58,6 +67,11 @@ _MAPPINGS = "bbd:settings:model-mappings"
 
 
 async def legacy_aliases(redis: Redis | None, settings: Settings) -> dict[str, ModelMapping]:
+    """Load configured model aliases and overlay valid legacy Redis mappings.
+
+    Invalid cached JSON is ignored; Redis is optional and returned mappings are
+    limited to the supported aliases.
+    """
     configured = {name: ModelMapping(model=model, destination="remote") for name, model in settings.omniroute_models.items() if name in ALIASES}
     if redis is not None:
         for alias, value in (await redis.hgetall(_MAPPINGS)).items():
@@ -70,14 +84,27 @@ async def legacy_aliases(redis: Redis | None, settings: Settings) -> dict[str, M
 
 
 async def save_capability(redis: Redis, result: CapabilityResult) -> None:
+    """Cache a capability result using its expiry as a Redis TTL.
+
+    Remaining lifetime is clamped to at least one second, so an already-expired
+    result can remain cache-visible for that final second.
+    """
     ttl = max(1, int((datetime.fromisoformat(result.expires_at) - datetime.now(UTC)).total_seconds()))
     key = capability_key(result.alias, result.model, result.version, result.capability, result.gateway_identity)
     await redis.set(key, result.model_dump_json(), ex=ttl)
 
 
 async def list_capabilities(redis: Redis, mappings: dict[str, ModelMapping], gateway_identity: str) -> list[CapabilityResult]:
+    """Return TTL-managed cached capabilities matching aliases and gateway identity.
+
+    Malformed entries and results for a different model version or gateway are
+    omitted. Redis SCAN iterates incrementally for every alias; COUNT=100 is a
+    work hint, not a maximum page size or total-result bound. Expiry is not
+    compared here; this reader relies on the stored Redis TTL.
+    """
     results: list[CapabilityResult] = []
     for alias, mapping in mappings.items():
+        # Redis COUNT is a scan batch hint; it does not cap matches or total work.
         async for key in redis.scan_iter(match=capability_alias_pattern(alias), count=100):
             try:
                 value = CapabilityResult.model_validate_json(await redis.get(key))
@@ -89,6 +116,11 @@ async def list_capabilities(redis: Redis, mappings: dict[str, ModelMapping], gat
 
 
 def new_capability_result(alias: str, mapping: ModelMapping, capability: str, gateway_identity: str, result: str, configuration_revision: int = 0) -> CapabilityResult:
+    """Build a capability record with a 24-hour validity window.
+
+    The caller supplies the gateway identity and configuration revision so cached
+    results can be scoped to the settings that produced them.
+    """
     now = datetime.now(UTC)
     return CapabilityResult(alias=alias, model=mapping.model, version=mapping.version,
         gateway_identity=gateway_identity, configuration_revision=configuration_revision, capability=capability, result=result,

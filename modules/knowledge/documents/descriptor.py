@@ -3,6 +3,8 @@ from dataclasses import dataclass
 
 @dataclass(frozen=True)
 class DocumentDescriptor:
+    """Declare document storage's source dependency and public interfaces."""
+
     id: str = "knowledge.documents"
     name: str = "Documents"
     version: str = "1.0.0"

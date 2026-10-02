@@ -38,10 +38,12 @@ const intervals = [15, 30, 60, 360, 1440] as const;
 const apiSourceTypes = { rss: 'rss', web: 'web', rest: 'api' } as const;
 type Provider = keyof typeof apiSourceTypes;
 
+/** Checks whether a provider identifier belongs to the supported provider set. */
 function isProvider(value: string): value is Provider {
   return value === 'rss' || value === 'web' || value === 'rest';
 }
 
+/** Maps a provider identifier to its localized catalog key. */
 function providerKey(providerId: string): string {
   return ({
     rss: 'providerRss', web: 'providerWeb', rest: 'providerRest', github: 'providerGithub',
@@ -49,6 +51,7 @@ function providerKey(providerId: string): string {
   } as Record<string, string>)[providerId] ?? 'provider';
 }
 
+/** Builds the editable default configuration for the selected provider. */
 function defaultConfiguration(provider: Provider): ConnectorConfig {
   return {
     js_render: false,
@@ -61,18 +64,21 @@ function defaultConfiguration(provider: Provider): ConnectorConfig {
   };
 }
 
+/** Formats an ISO timestamp with the supplied application locale and time zone. */
 function formatDate(value: string, locale: AppLocaleId, timezone: string): string {
   return new Intl.DateTimeFormat(normalizeFormattingLocale(locale), {
     dateStyle: 'medium', timeStyle: 'short', timeZone: timezone,
   }).format(new Date(value));
 }
 
+/** Converts a request or validation failure into the editor’s supported error message key. */
 function errorText(error: unknown): string {
   if (error instanceof ApiError && error.status === 409) return 'conflict';
   if (error instanceof Error && error.message === 'source_name_required') return 'sourceNameRequired';
   return 'actionFailed';
 }
 
+/** Edits a connector draft, validates and saves revision-fenced configuration, and controls activation and credentials. */
 export function ConnectorEditor({
   source,
   onClose,
@@ -126,7 +132,9 @@ export function ConnectorEditor({
   const serverConfigurationRef = useRef<ConnectorConfiguration | null>(null);
   const dirtyRef = useRef(dirty);
   dirtyRef.current = dirty || Boolean(secret);
+  /** Asks before discarding the current unsaved draft. */
   const confirmDiscard = useCallback(() => !dirtyRef.current || window.confirm(t('draftLeave')), [t]);
+  /** Invalidates the current draft session and accepts leaving the editor. */
   const acceptLeave = useCallback(() => {
     requestGeneration.current += 1;
     requestController.current?.abort();
@@ -161,6 +169,7 @@ export function ConnectorEditor({
     setConflict(false);
     setError('');
   }, [source]);
+  /** Runs the registered navigation guard before replacing the selected source. */
   const confirmTransition = useCallback(() => {
     if (!confirmDiscard()) return false;
     acceptLeave();
@@ -175,6 +184,7 @@ export function ConnectorEditor({
     confirmDiscard,
     acceptLeave,
   }), [acceptLeave, confirmDiscard, registerLeaveGuard]);
+  /** Collects the local source and revision bounds used to reject older server configuration. */
   function configurationFences(id: string) {
     return [serverConfigurationRef.current ?? undefined, queryClient.getQueryData<ConnectorConfiguration>(connectorKeys.configuration(id))] as const;
   }
@@ -201,6 +211,7 @@ export function ConnectorEditor({
   const visibleActivationState = activationQuery.isError ? 'unknown' : activationQuery.data?.state ?? activationState;
   const visibleActivationError = activationQuery.isError ? null : activationQuery.data?.error_code ?? activationError;
 
+  /** Applies an accepted server configuration to the draft and its associated revision state. */
   const applyServerConfiguration = useCallback((value: ConnectorConfiguration) => {
     serverConfigurationRef.current = value;
     sourceGenerationRef.current = value.source_generation;
@@ -241,6 +252,7 @@ export function ConnectorEditor({
   }, [configurationQuery.data, applyServerConfiguration, revision]);
 
   useEffect(() => {
+    /** Discards the connector draft and resets source identity and configuration when authentication ends. */
     const endAuthSession = () => {
       acceptLeave();
       setSourceId('');
@@ -265,6 +277,7 @@ export function ConnectorEditor({
     ...(authMethod === 'http_header' ? { auth_header_name: authHeaderName } : {}),
   }), [revision, configuration, authMethod, authHeaderName]);
 
+  /** Updates one typed configuration field and marks the editor draft changed. */
   function changeConfiguration<K extends keyof ConnectorConfig>(key: K, value: ConnectorConfig[K]) {
     setConfiguration((current) => ({ ...current, [key]: value }));
     markDraftChanged();
@@ -272,6 +285,7 @@ export function ConnectorEditor({
     setNotice('');
   }
 
+  /** Advances the draft version and marks the current configuration dirty. */
   function markDraftChanged() {
     draftVersion.current += 1;
     dirtyRef.current = true;
@@ -279,6 +293,7 @@ export function ConnectorEditor({
   }
 
   type RequestToken = { generation: number; editorGeneration: string; sourceId: string | null; authGeneration: number; controller: AbortController; draftVersion: number };
+  /** Starts a serialized editor request and captures the generations needed to reject stale completion. */
   function beginRequest(action: string): RequestToken | null {
     if (busyRef.current) return null;
     requestController.current?.abort();
@@ -288,17 +303,21 @@ export function ConnectorEditor({
     setBusyAction(action);
     return { generation: requestGeneration.current, editorGeneration: editorGenerationRef.current, sourceId: sourceId || null, authGeneration: display.authGeneration, controller, draftVersion: draftVersion.current };
   }
+  /** Checks that a request still belongs to the active editor, source, and authenticated session. */
   function requestIsCurrent(token: RequestToken): boolean {
+    // A response from an old editor, source, auth session, or aborted request must not publish state.
     return token.generation === requestGeneration.current
       && token.editorGeneration === editorGenerationRef.current
       && display.isCurrentGeneration(token.authGeneration)
       && !token.controller.signal.aborted;
   }
+  /** Clears the busy state only when the completing request still owns the active editor generation. */
   function endRequest(token: RequestToken) {
     if (!requestIsCurrent(token)) return;
     busyRef.current = '';
     setBusyAction('');
   }
+  /** Confirms navigation away, invalidates in-flight requests, and closes the connector editor. */
   function closeEditor() {
     if (!confirmTransition()) return;
     requestGeneration.current += 1;
@@ -308,6 +327,7 @@ export function ConnectorEditor({
     onClose();
   }
 
+  /** Resumes a paused source and refreshes connector and source queries while the request remains current. */
   async function resumeSource() {
     const id = sourceId;
     if (!id) return;
@@ -331,6 +351,7 @@ export function ConnectorEditor({
     }
   }
 
+  /** Reloads server-owned connector and activation state while preserving newer local drafts and rejecting stale revisions. */
   async function refreshOwnerState(id: string, token: RequestToken): Promise<boolean> {
     if (!id) return false;
     await queryClient.cancelQueries({ queryKey: connectorKeys.configuration(id) });
@@ -366,6 +387,7 @@ export function ConnectorEditor({
     return true;
   }
 
+  /** Confirms discarding the current draft, then reloads and applies the newest accepted server configuration. */
   async function reloadServerConfiguration() {
     const id = sourceId;
     if (!id || !window.confirm(t('reloadDiscardConfirmation'))) return;
@@ -409,6 +431,7 @@ export function ConnectorEditor({
     }
   }
 
+  /** Creates a connector source on first save when necessary and returns its source identifier. */
   async function ensureSource(token: RequestToken): Promise<string> {
     if (sourceId) return sourceId;
     if (!name.trim()) throw new Error('source_name_required');
@@ -421,6 +444,7 @@ export function ConnectorEditor({
     return created.id;
   }
 
+  /** Validates the current connector draft and accepts the result only if its source, revision, and draft version still match. */
   async function validateDraft() {
     if (!sourceId) return;
     const token = beginRequest('validate');
@@ -444,6 +468,7 @@ export function ConnectorEditor({
     }
   }
 
+  /** Persists the connector draft, verifies the acknowledged server revision, and updates cached owner state. */
   async function saveConfiguration(token = beginRequest('save')): Promise<{ id: string; revision: number } | null> {
     if (!token) return null;
     const draft = { ...settings, configuration: { ...configuration } };
@@ -459,6 +484,7 @@ export function ConnectorEditor({
       if (!requestIsCurrent(token)) return null;
       await queryClient.cancelQueries({ queryKey: connectorKeys.configuration(id) });
       if (!requestIsCurrent(token)) return null;
+      // Re-read owner state after the write; the mutation response alone may not be the newest revision.
       const acknowledged = await getMonotonicConnectorConfiguration(id, token.controller.signal, () =>
         configurationFences(id));
       if (!requestIsCurrent(token)) return null;
@@ -509,6 +535,7 @@ export function ConnectorEditor({
     }
   }
 
+  /** Saves pending connector settings before activation and refreshes owner state after success or failure. */
   async function saveAndEnable() {
     const token = beginRequest('save_enable');
     if (!token) return;
@@ -560,6 +587,7 @@ export function ConnectorEditor({
     }
   }
 
+  /** Retries connector activation and refreshes server-owned status without applying stale request results. */
   async function retryActivation() {
     const token = beginRequest('activate');
     const id = sourceId;
@@ -596,6 +624,7 @@ export function ConnectorEditor({
     }
   }
 
+  /** Removes a stored provider credential only when there is no unsaved draft or secret input. */
   async function removeCredential() {
     if (dirtyRef.current || secret) return;
     const token = beginRequest('remove');
@@ -624,6 +653,7 @@ export function ConnectorEditor({
     }
   }
 
+  /** Creates the connector source from the current provider and name, then advances the editor to that source. */
   async function createSource() {
     const token = beginRequest('create');
     if (!token) return;
@@ -637,6 +667,7 @@ export function ConnectorEditor({
     }
   }
 
+  /** Formats provider availability and unsupported-operation information for the connector catalog. */
   const catalogStatus = (entry: ConnectorCatalogEntry) => entry.availability === 'available'
     ? t('available') : entry.availability === 'planned' ? t('planned') : t('unavailable');
 

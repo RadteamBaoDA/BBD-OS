@@ -10,6 +10,7 @@ from core.database import Base
 
 
 class Source(Base):
+    """Persist a collection identity, lifecycle generation, and sync state."""
     __tablename__ = "sources"
     __table_args__ = (
         CheckConstraint(
@@ -46,6 +47,7 @@ class Source(Base):
 
 
 class SourcePurgeOperation(Base):
+    """Track durable source purge progress and the raw object URIs to remove."""
     __tablename__ = "source_purge_operations"
     __table_args__ = (
         CheckConstraint("status IN ('queued', 'running', 'succeeded', 'failed')", name="ck_source_purge_operations_status"),

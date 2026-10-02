@@ -19,6 +19,7 @@ const entityTypes = ['person', 'organization', 'company', 'project', 'repository
 const createSchema = z.object({ type: z.enum(entityTypes), name: z.string().trim().min(1).max(300), reason: z.string().trim().min(1).max(300) });
 type CreateValues = z.infer<typeof createSchema>;
 
+/** Lists and filters entities and review candidates for the knowledge workspace. */
 export function EntityList() {
   const t = useTranslations('entities');
   const [query, setQuery] = useState('');

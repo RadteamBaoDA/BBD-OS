@@ -8,6 +8,7 @@ from core.model_gateway.schemas import ModelMapping, PrivacySettings
 
 
 class OwnerPreferencesRead(BaseModel):
+    """Expose persisted theme, locale, timezone, and configuration revision state."""
     configuration_revision: int = Field(ge=1)
     persisted: bool = False
     theme: Literal["light", "dark", "system"]
@@ -16,6 +17,7 @@ class OwnerPreferencesRead(BaseModel):
 
 
 class OwnerPreferencesUpdate(BaseModel):
+    """Validate a revision-fenced owner preference update."""
     model_config = ConfigDict(extra="forbid")
 
     expected_revision: int = Field(ge=1)
@@ -26,6 +28,7 @@ class OwnerPreferencesUpdate(BaseModel):
     @field_validator("timezone")
     @classmethod
     def validate_timezone(cls, value: str) -> str:
+        """Accept only timezone identifiers resolvable by the IANA zone database."""
         try:
             ZoneInfo(value)
         except (ZoneInfoNotFoundError, ValueError) as exc:

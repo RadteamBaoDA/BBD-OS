@@ -54,6 +54,7 @@ async def _commit_ingestion_change(
     stage: IngestionStage,
     extras: tuple[ReplayDraft, ...] = (),
 ) -> None:
+    """Commit stage state and related realtime changes through replay protection."""
     await commit_with_replay(
         session,
         [make_ingestion_change(run.source_id, run.id, run.status, stage.stage_key, stage.status), *extras],
@@ -61,6 +62,7 @@ async def _commit_ingestion_change(
 
 
 async def _refresh_run_status(session: AsyncSession, run: IngestionRun) -> None:
+    """Derive run status from its stages, preserving the first failure code."""
     stages = list((await session.scalars(
         select(IngestionStage).where(IngestionStage.run_id == run.id)
     )).all())
@@ -76,12 +78,16 @@ async def _refresh_run_status(session: AsyncSession, run: IngestionRun) -> None:
 
 
 class ConnectorRetryError(OSError):
+    """Represent a retryable connector failure with an optional server delay."""
+
     def __init__(self, message: str, retry_after: float | None = None) -> None:
+        """Store the Retry-After hint alongside the transport error."""
         super().__init__(message)
         self.retry_after = retry_after
 
 
 def _retry_after_seconds(response: httpx.Response) -> float | None:
+    """Parse Retry-After seconds or date values, capped at 60 seconds."""
     value = response.headers.get("retry-after")
     if not value:
         return None
@@ -104,6 +110,7 @@ async def _collect_web_job(
     run_id: UUID,
     stage_id: UUID,
 ) -> None:
+    """Call the browser collector for a persisted web stage and validate its result."""
     settings = cast(Settings, ctx["settings"])
     config = cast(dict[str, object], event.payload["configuration"])
     token = settings.browser_shared_token.get_secret_value()
@@ -251,6 +258,7 @@ async def _fail_ingestion_stage(
     stage_id: UUID,
     error_code: str,
 ) -> None:
+    """Persist a terminal stage failure and refresh the owning run status."""
     async with factory() as session:
         run_hint = await session.get(IngestionRun, run_id)
         if run_hint is None:
@@ -292,6 +300,14 @@ async def _fail_ingestion_stage(
 
 
 async def process_ingestion_event(ctx: dict[str, object], event_id: str) -> None:
+    """Process one durable ingestion stage with a committed lease and source fence.
+
+    Commits the running stage lease before bounded work outside that transaction,
+    then rechecks source generation before completion. Timeout, OSError,
+    OperationalError and connector retry hints schedule durable delays up to five
+    attempts and raise ARQ Retry; other failures terminalize the stage. A stale
+    or inactive source is terminal rather than retried.
+    """
     factory = cast(async_sessionmaker[AsyncSession], ctx["session_factory"])
     identifier = UUID(event_id)
     async with factory() as session:
@@ -363,6 +379,7 @@ async def process_ingestion_event(ctx: dict[str, object], event_id: str) -> None
         logger.info("Ingestion stage started run_id=%s stage_id=%s attempt=%s", run.id, stage.id, stage.attempts)
         await _commit_ingestion_change(session, run, stage)
 
+    # External collection runs after the lease commit; it cannot share the database transaction.
     try:
         # Stage work is deliberately bounded; later ingestion tasks add extraction consumers.
         async with asyncio.timeout(STAGE_TIMEOUT_SECONDS):
@@ -764,6 +781,14 @@ async def process_normalize_event(ctx: dict[str, object], event_id: str) -> None
 
 
 async def process_uploaded_file(ctx: dict[str, object], event_id: str) -> None:
+    """Parse one staged upload after committing processing state and its lease.
+
+    Runs the bounded parser outside the database transaction, then rechecks the
+    active source generation before saving text and chunks. Parser exceptions are
+    recorded as terminal failures rather than automatically retried; an empty
+    PDF result with warnings is saved as ``needs_ocr``. The route owns deletion
+    of raw bytes when intake fails or deduplicates.
+    """
     factory = cast(async_sessionmaker[AsyncSession], ctx["session_factory"])
     settings = cast(Settings, ctx["settings"])
     identifier = UUID(event_id)
@@ -822,6 +847,7 @@ async def process_uploaded_file(ctx: dict[str, object], event_id: str) -> None:
             (make_knowledge_change(source_id, document_id),),
         )
 
+    # Parser work is external to the committed processing-state transaction; failures are recorded below.
     try:
         raw_path = storage_path(settings.data_dir, str(event.payload["raw_uri"]))
         parsed = await parse_file_bounded(
@@ -934,6 +960,7 @@ async def process_uploaded_file(ctx: dict[str, object], event_id: str) -> None:
 
 
 async def cleanup_storage_orphans(ctx: dict[str, object]) -> int:
+    """Remove unreferenced stored files and return the cleanup count."""
     factory = cast(async_sessionmaker[AsyncSession], ctx["session_factory"])
     settings = cast(Settings, ctx["settings"])
     async with factory() as session:

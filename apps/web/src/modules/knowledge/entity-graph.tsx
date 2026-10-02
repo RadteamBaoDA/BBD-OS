@@ -14,9 +14,11 @@ const NODE_LIMIT = 100;
 const EDGE_LIMIT = 100;
 const PAGE_SIZE = 50;
 
+/** Renders keyboard-accessible pan, zoom, reset, fit, and optional expand controls for the graph. */
 function GraphActions({ focusId, canExpand, isExpanding, onExpand }: { focusId: string; canExpand: boolean; isExpanding: boolean; onExpand: () => void }) {
   const t = useTranslations('entities');
   const flow = useReactFlow();
+  /** Moves the graph viewport by the supplied horizontal and vertical offsets. */
   const pan = (x: number, y: number) => { const viewport = flow.getViewport(); void flow.setViewport({ ...viewport, x: viewport.x + x, y: viewport.y + y }, { duration: 0 }); };
   return <div className="flex flex-wrap gap-2" role="group" aria-label={t('controlsA11yLabel')}>
     <Button type="button" className="secondary" aria-label={t('panLeft')} onClick={() => pan(120, 0)}>← {t('panLeft')}</Button>
@@ -31,6 +33,7 @@ function GraphActions({ focusId, canExpand, isExpanding, onExpand }: { focusId: 
   </div>;
 }
 
+/** Renders an entity’s related graph and emits the selected relationship to its owner. */
 export function EntityGraph({ entityId, title, selectedRelationshipId, onSelectRelationship }: {
   entityId: string;
   title: string;
@@ -61,6 +64,7 @@ export function EntityGraph({ entityId, title, selectedRelationshipId, onSelectR
   const reachedLimit = nodes.size >= NODE_LIMIT || uniqueEdges.length >= EDGE_LIMIT;
   const lastPage = graph.data?.pages.at(-1);
   const truncated = lastPage?.truncated === true || (reachedLimit && !!lastPage?.next_cursor) || (rows.length >= EDGE_LIMIT && !!lastPage?.next_cursor);
+  /** Uses the entity’s known name or its localized type label when the name is absent. */
   const entityLabel = (entity: { name: string | null; type: string }) => entity.name ?? t(`type_${entity.type}` as 'type_person');
   const flowNodes: Node[] = [...nodes.values()].map((node, index) => { const label = entityLabel(node); return { id: node.id, position: index === 0 ? { x: 0, y: 0 } : { x: 260 * Math.cos((2 * Math.PI * (index - 1)) / Math.max(1, nodes.size - 1)), y: 180 * Math.sin((2 * Math.PI * (index - 1)) / Math.max(1, nodes.size - 1)) }, data: { label }, ariaLabel: `${t('nodeA11yTitle')}: ${label}`, type: 'default' }; });
   const flowEdges: Edge[] = edges.map(({ relationship }) => ({ id: relationship.id, source: relationship.source_entity_id, target: relationship.target_entity_id, label: relationship.type, ariaLabel: `${t('edgeA11yTitle')}: ${relationship.type}`, selectable: true, focusable: true, style: relationship.id === selectedRelationshipId ? { stroke: 'var(--primary)', strokeWidth: 3 } : undefined }));
@@ -72,6 +76,7 @@ export function EntityGraph({ entityId, title, selectedRelationshipId, onSelectR
         const flow = flowRef.current;
         if (!flow || (event.target instanceof HTMLElement && event.target.closest('.react-flow__panel'))) return;
         const viewport = flow.getViewport();
+        /** Adjusts the graph viewport by the supplied pointer movement. */
         const panBy = (x: number, y: number) => { event.preventDefault(); void flow.setViewport({ ...viewport, x: viewport.x + x, y: viewport.y + y }, { duration: 0 }); };
         if (event.key === 'ArrowLeft') panBy(80, 0);
         else if (event.key === 'ArrowRight') panBy(-80, 0);

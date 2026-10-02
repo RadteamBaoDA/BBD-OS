@@ -17,6 +17,7 @@ _ALL_CREDENTIAL_SLOTS = ("collector", "manual_trigger", "provider")
 
 @dataclass(frozen=True)
 class ConnectorObservation:
+    """Capture owner-visible connector state while omitting credential material."""
     fence: SourceFence
     desired_revision: int
     applied_revision: int
@@ -33,6 +34,7 @@ def _connector_observation(
     row: ConnectorProvisioning | None,
     slots: dict[str, ConnectorManagedCredential],
 ) -> ConnectorObservation | None:
+    """Project locked connector rows into a redacted observable state snapshot."""
     if source is None:
         return None
     if row is None:
@@ -74,6 +76,7 @@ def _connector_observation(
 async def capture_connector_observation(
     session: AsyncSession, source_id: UUID
 ) -> ConnectorObservation | None:
+    """Read a coherent source/provisioning/credential snapshot under lock order."""
     source, row, slots = await lock_connector(session, source_id, _ALL_CREDENTIAL_SLOTS)
     return _connector_observation(source, row, slots)
 
@@ -84,6 +87,13 @@ async def commit_connector_observation(
     *,
     operation_id: UUID | None = None,
 ) -> None:
+    """Commit connector state and publish a source event when its safe view changed.
+
+    Always flushes and commits the caller's session, even when the redacted
+    snapshot is unchanged and no realtime event is emitted. ``operation_id``
+    correlates an emitted source change with its durable provider operation.
+    With ``before=None`` there is no comparable snapshot and no event draft.
+    """
     await session.flush()
     drafts: list[ReplayDraft] = []
     if before is not None:
@@ -184,6 +194,7 @@ async def lock_connector(
 async def get_managed_credential(
     session: AsyncSession, source_id: UUID, slot: str
 ) -> ConnectorManagedCredential | None:
+    """Read one credential slot without acquiring the provisioning lock chain."""
     return await session.scalar(
         select(ConnectorManagedCredential)
         .where(
@@ -197,6 +208,13 @@ async def get_managed_credential(
 async def activation_status(
     session: AsyncSession, source_id: UUID
 ) -> ConnectorProvisioning | None:
+    """Read a session-bound provisioning ORM row as a current-state hint.
+
+    Returns None when no row exists. The row remains managed by the supplied
+    session; callers must not treat it as a detached DTO or use it after that
+    session closes. This lookup refreshes the identity-map row but does not
+    acquire the connector provisioning lock.
+    """
     return await session.scalar(
         select(ConnectorProvisioning)
         .where(ConnectorProvisioning.source_id == source_id)
@@ -209,6 +227,7 @@ def _step(
     target: str | None,
     request: dict[str, object] | None = None,
 ) -> dict[str, object]:
+    """Build a durable prepared step with a unique ID and empty history."""
     return {
         "id": str(uuid4()),
         "kind": kind,
@@ -232,6 +251,7 @@ def new_workflow_operation(
     body: dict[str, object] | None,
     activation_id: UUID | None = None,
 ) -> dict[str, object]:
+    """Create a workflow operation envelope and its first prepared step."""
     step_kind = (
         "update" if kind == "enable" and workflow_id
         else "lookup" if kind == "enable"
@@ -254,6 +274,7 @@ def new_workflow_operation(
 
 
 def _new_deactivation(row: ConnectorProvisioning, generation: int) -> dict[str, object] | None:
+    """Build cleanup work for the known workflow, or None when no workflow exists."""
     if not row.workflow_id:
         return None
     operation_id = uuid4()
@@ -273,6 +294,7 @@ def _required_credentials_match(
     required: dict[str, dict[str, object]],
     slots: dict[str, ConnectorManagedCredential],
 ) -> bool:
+    """Require ready credential IDs, bindings, and any succeeded operation identities."""
     for slot, value in required.items():
         if not isinstance(value, dict):
             return False
@@ -304,6 +326,7 @@ async def save_desired(
     expected_revision: int,
     configuration: dict[str, object],
 ) -> ConnectorProvisioning | None:
+    """Revision-fence desired configuration and reconcile interrupted activation/workflow state."""
     _, row, slots = await lock_connector(
         session, source_id, ("collector", "manual_trigger", "provider")
     )
@@ -395,6 +418,7 @@ async def begin_enable(
     required_credentials: dict[str, dict[str, object]] | None = None,
     activation_id: UUID | None = None,
 ) -> UUID | None:
+    """Persist a workflow enable operation only while source and activation fences match."""
     source, row, slots = await lock_connector(
         session, source_id, tuple((required_credentials or {}).keys())
     )
@@ -437,6 +461,13 @@ async def begin_activation_bundle(
     required_credentials: dict[str, dict[str, object]],
     credential_intents: dict[str, dict[str, object]],
 ) -> bool:
+    """Stage activation intent and credential operations under source/slot locks.
+
+    Returns True only when source generation, desired revision, and all credential
+    bindings still match. It flushes but does not commit. A False result may follow
+    partial credential-row and ``required_credentials`` dictionary mutations, so
+    the caller must roll back; on True the caller must commit the prepared bundle.
+    """
     slots_to_lock = tuple(sorted(set(required_credentials) | set(credential_intents)))
     source, row, slots = await lock_connector(session, source_id, slots_to_lock)
     if (
@@ -524,6 +555,7 @@ async def begin_activation_bundle(
 async def reject_activation(
     session: AsyncSession, source_id: UUID, revision: int, error_code: str
 ) -> bool:
+    """Reject a matching activation revision when no workflow operation is in flight."""
     _, row, _ = await lock_connector(session, source_id)
     if row is None or row.desired_revision != revision or row.workflow_operation is not None:
         return False
@@ -543,6 +575,7 @@ async def prepare_workflow_step(
     target: str | None,
     request: dict[str, object] | None = None,
 ) -> bool:
+    """Replace a dispatched step with its next prepared action if IDs still match."""
     _, row, _ = await lock_connector(session, source_id)
     operation = copy.deepcopy(row.workflow_operation) if row is not None else None
     step = operation.get("step") if isinstance(operation, dict) else None
@@ -562,6 +595,7 @@ async def prepare_workflow_step(
 async def fence_source_collection(
     session: AsyncSession, source: SourceFence
 ) -> bool:
+    """Disable connector collection at the source generation and schedule cleanup."""
     _, row, slots = await lock_connector(
         session, source.id, ("collector", "manual_trigger", "provider")
     )
@@ -624,6 +658,7 @@ async def require_collection_fence(
     *,
     lock: bool = False,
 ) -> bool:
+    """Require active source and fully applied desired revision, optionally locking state."""
     current_source = await sources.lock_source(session, source.id)
     if (
         current_source is None
@@ -657,6 +692,7 @@ async def require_validation_fence(
     source_generation: int,
     revision: int,
 ) -> bool:
+    """Lock and check source generation plus desired connector revision for validation."""
     current_source = await sources.lock_source(session, source.id)
     if (
         current_source is None or current_source.status != "active"
@@ -684,6 +720,13 @@ async def claim_credential_operation(
     slot: str,
     operation_id: UUID,
 ) -> dict[str, object] | None:
+    """Durably claim a prepared credential operation before external dispatch.
+
+    Rechecks source, activation/delete intent, generation, and revision; returns
+    the dispatched envelope or None when absent/stale. Claiming commits the
+    dispatch barrier (and stale-intent cleanup when applicable), preventing blind
+    re-dispatch after an uncertain provider response.
+    """
     before = await capture_connector_observation(session, source_id)
     source, desired, slots = await lock_connector(
         session, source_id, ("collector", "manual_trigger", "provider")
@@ -744,6 +787,7 @@ async def claim_credential_operation(
     envelope["dispatch_started_at"] = datetime.now(UTC).isoformat()
     row.operation_envelope = envelope
     row.state = "dispatching"
+    # Commit the dispatch barrier before the driver makes the external n8n call.
     await commit_connector_observation(session, before)
     return envelope
 
@@ -755,6 +799,7 @@ async def drive_credential_operation(
     client: Any,
     encryption_key: str,
 ) -> bool:
+    """Decrypt and execute one credential operation, retaining ambiguous outcomes for recovery."""
     from modules.connectors.credentials import (
         CredentialOutcomeUnknown,
         CredentialRequestRejected,
@@ -838,6 +883,12 @@ async def complete_credential_operation(
     credential_id: str | None,
     binding: dict[str, object],
 ) -> bool:
+    """Acknowledge a matching dispatched credential operation in the caller transaction.
+
+    Clears encrypted request material and fences stale activation intent; returns
+    False for an operation that no longer owns the dispatched slot. Flushes only,
+    leaving commit to the driver that also records the safe observation/event.
+    """
     source, desired, slots = await lock_connector(
         session, source_id, ("collector", "manual_trigger", "provider")
     )
@@ -886,6 +937,11 @@ async def fail_credential_operation(
     *,
     unknown: bool,
 ) -> bool:
+    """Record a known rejection or ambiguous outcome in the caller transaction.
+
+    Unknown outcomes retain recovery information; returns False for a stale
+    operation identity. Flushes only, so the operation driver owns commit/rollback.
+    """
     source, desired, slots = await lock_connector(
         session, source_id, ("collector", "manual_trigger", "provider")
     )
@@ -961,6 +1017,7 @@ async def create_delete_intent(
     slot: str,
     expected_revision: int,
 ) -> tuple[ConnectorProvisioning, ConnectorManagedCredential, UUID] | None:
+    """Prepare deletion only for a ready credential on a paused, disabled source."""
     source, desired, slots = await lock_connector(session, source_id, (slot,))
     row = slots.get(slot)
     if (
@@ -998,6 +1055,11 @@ async def acknowledge_credential_delete(
     operation_id: UUID,
     target_id: str,
 ) -> bool:
+    """Acknowledge a provider deletion only for the matching dispatched identity.
+
+    Clears the local credential slot and flushes; returns False for a stale or
+    mismatched claim. The deletion driver commits the resulting safe state.
+    """
     _, _, slots = await lock_connector(session, source_id, (slot,))
     row = slots.get(slot)
     envelope = copy.deepcopy(row.operation_envelope) if row is not None else None
@@ -1021,6 +1083,13 @@ async def acknowledge_credential_delete(
 async def claim_workflow_step(
     session: AsyncSession, source_id: UUID
 ) -> dict[str, object] | None:
+    """Durably claim a prepared workflow step after rechecking current fences.
+
+    Returns the dispatched operation or None when there is no eligible step;
+    None can still commit blocked-credential or stale-intent cleanup. A claim
+    commits its dispatch barrier before external n8n work, preventing automatic
+    blind replay when the provider outcome is uncertain.
+    """
     before = await capture_connector_observation(session, source_id)
     existing = await activation_status(session, source_id)
     required = (
@@ -1069,6 +1138,7 @@ async def claim_workflow_step(
     step["dispatch_started_at"] = datetime.now(UTC).isoformat()
     operation["step"] = step
     row.workflow_operation = operation
+    # Commit the step's dispatch barrier before the workflow driver calls n8n.
     await commit_connector_observation(session, before)
     return operation
 
@@ -1081,6 +1151,11 @@ async def acknowledge_workflow_step(
     *,
     workflow_id: str | None = None,
 ) -> bool:
+    """Acknowledge a matching dispatched step and flush its workflow transition.
+
+    Returns False for a stale operation/step identity. The driver performs the
+    final commit together with the safe source observation/event.
+    """
     existing = await activation_status(session, source_id)
     current_operation = existing.workflow_operation if existing is not None else None
     required = (
@@ -1171,6 +1246,11 @@ async def resolve_unknown_workflow_create(
     step_id: str,
     workflow_id: str,
 ) -> bool:
+    """Attach a recovered workflow ID when its dispatched create still matches.
+
+    Reconciles against current source fences, then flushes the transition for the
+    caller to commit; returns False when the operation/step identity is stale.
+    """
     source, row, _ = await lock_connector(session, source_id)
     operation = copy.deepcopy(row.workflow_operation) if row is not None else None
     step = operation.get("step") if isinstance(operation, dict) else None
@@ -1244,6 +1324,11 @@ async def fail_workflow_step(
     *,
     unknown: bool,
 ) -> bool:
+    """Record a rejected or ambiguous workflow result and flush recovery state.
+
+    Schedules deactivation when desired state has changed; returns False for a
+    stale step identity. The workflow driver owns the final transaction commit.
+    """
     source, row, _ = await lock_connector(session, source_id)
     operation = copy.deepcopy(row.workflow_operation) if row is not None else None
     step = operation.get("step") if isinstance(operation, dict) else None
@@ -1399,6 +1484,7 @@ async def mark_reconciliation(
     workflow_id: str | None = None,
     applied_revision: int | None = None,
 ) -> bool:
+    """Update provisioning status only while the expected desired revision is current."""
     _, row, _ = await lock_connector(session, source_id)
     if row is None or row.desired_revision != desired_revision:
         return False
@@ -1413,6 +1499,7 @@ async def mark_reconciliation(
 
 
 async def unresolved_credential_error(session: AsyncSession, source_id: UUID) -> str | None:
+    """Return a stable error code when any source credential operation needs recovery."""
     rows = await session.scalars(
         select(ConnectorManagedCredential).where(
             ConnectorManagedCredential.source_id == source_id,

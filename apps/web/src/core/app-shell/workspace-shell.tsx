@@ -20,12 +20,14 @@ import { OwnerPreferences, PreferencesDialog } from '@/modules/account/preferenc
 type Session = { authenticated: true; csrfToken: string };
 const SessionContext = createContext<Session | null>(null);
 
+/** Returns the authenticated workspace session, including its CSRF token; throws when used outside the session provider. */
 export function useWorkspaceSession() {
   const session = useContext(SessionContext);
   if (!session) throw new Error('Workspace session is unavailable');
   return session;
 }
 
+/** Owns workspace session loading, sign-out, preference reload, and the shared navigation shell for child routes. */
 export function WorkspaceShell({ children }: { children: ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
@@ -58,6 +60,7 @@ export function WorkspaceShell({ children }: { children: ReactNode }) {
     }
   }, [session.data, preferences.data, generation, display.confirmPreferences, display.isCurrentGeneration]);
 
+  /** Clears authenticated workspace state and ends the current client session. */
   const endSession = useCallback(() => {
     if (sessionEndedRef.current) return;
     sessionEndedRef.current = true;
@@ -71,7 +74,9 @@ export function WorkspaceShell({ children }: { children: ReactNode }) {
   }, [client, display.endAuthSession, router]);
 
   useEffect(() => {
+    /** Routes an unauthorized event through the shared session-ending handler. */
     const unauthorized = () => endSession();
+    /** Updates the cached session from the detail of a session-refresh event. */
     const refreshed = (event: Event) => client.setQueryData(['session'], (event as CustomEvent<Session>).detail);
     window.addEventListener('bbd:unauthorized', unauthorized);
     window.addEventListener('bbd:session-refreshed', refreshed);
@@ -93,6 +98,7 @@ export function WorkspaceShell({ children }: { children: ReactNode }) {
     onSuccess: endSession,
   });
 
+  /** Loads owner preferences for the dialog retry; returns null on request failure, abort, or stale auth generation. */
   const reloadPreferences = useCallback(async (signal: AbortSignal) => {
     try {
       const value = await apiRequest<OwnerPreferences>('/api/v1/settings/preferences', { signal });
@@ -115,11 +121,13 @@ export function WorkspaceShell({ children }: { children: ReactNode }) {
   const savedPreferences = preferences.data ?? display.confirmedPreferences ?? null;
   const settingsActive = pathname.startsWith('/settings');
   const active = mainNavigation.find((item) => item.id !== 'settings' && (pathname === item.href || pathname.startsWith(`${item.href}/`)))?.id ?? (settingsActive ? 'settings' : '');
+  /** Opens the account or preferences surface selected by the menu action. */
   const openFromMenu = (dialog: 'account' | 'preferences') => {
     suppressMenuFocusRef.current = true;
     if (dialog === 'account') setAccountOpen(true);
     else setPreferencesOpen(true);
   };
+  /** Returns focus to the triggering menu control after a dialog closes. */
   const restoreMenuFocus = (event: Event) => {
     event.preventDefault();
     menuTriggerRef.current?.focus();

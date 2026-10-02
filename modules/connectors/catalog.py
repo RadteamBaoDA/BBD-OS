@@ -4,6 +4,8 @@ from pydantic import BaseModel, ConfigDict, Field
 
 
 class CatalogEntry(BaseModel):
+    """Describe a provider's supported configuration, scope, and operations."""
+
     model_config = ConfigDict(frozen=True)
 
     provider_id: str
@@ -101,8 +103,10 @@ _ENTRIES = (
 
 
 def list_catalog() -> tuple[CatalogEntry, ...]:
+    """Return the immutable provider catalog in its declared display order."""
     return _ENTRIES
 
 
 def get_catalog_entry(provider_id: str) -> CatalogEntry | None:
+    """Return the catalog record for an exact provider ID, or None if absent."""
     return next((entry for entry in _ENTRIES if entry.provider_id == provider_id), None)

@@ -9,13 +9,16 @@ from core.database import Base
 
 
 class Vector(UserDefinedType):
+    """Represent PostgreSQL's pgvector type in SQLAlchemy column metadata."""
     cache_ok = True
 
     def get_col_spec(self, **kw: object) -> str:
+        """Return the PostgreSQL column type name used in generated SQL."""
         return "vector"
 
 
 class IndexGeneration(Base):
+    """Persist one embedding configuration and its index-generation lifecycle."""
     __tablename__ = "search_index_generations"
     __table_args__ = (
         CheckConstraint("status IN ('queued', 'running', 'active', 'failed', 'retired')", name="ck_search_index_generations_status"),
@@ -35,6 +38,7 @@ class IndexGeneration(Base):
 
 
 class SearchIndexItem(Base):
+    """Track embedding status and vector data for one chunk in a generation."""
     __tablename__ = "search_index_items"
     __table_args__ = (
         CheckConstraint("status IN ('pending', 'succeeded', 'failed')", name="ck_search_index_items_status"),

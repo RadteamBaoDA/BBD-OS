@@ -1,11 +1,13 @@
 import Link from 'next/link';
 import type { SearchHit } from './api';
 
+/** Formats a search hit timestamp for display using its source metadata and locale. */
 function displayDate(hit: SearchHit) {
   const date = hit.published_at ?? hit.observed_at;
   return date ? new Date(date).toLocaleString() : 'Date unknown';
 }
 
+/** Renders search hits with locale-aware date and source details. */
 export function SearchResults({ items }: { items: SearchHit[] }) {
   return <ul className="record-list" aria-label="Search results">{items.map((hit) => <li className="record-row" key={hit.chunk_id}>
     <div className="record-content">

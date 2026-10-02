@@ -108,40 +108,50 @@ export const connectorKeys = {
   ingestion: (id: string) => ['source-ingestion', id] as const,
 };
 
+/** Lists source records in pages of 50 and includes the optional opaque cursor. */
 export function listSources(cursor?: string) {
   return apiRequest<SourcePage>(`/api/v1/sources?limit=50${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ''}`);
 }
 
+/** Fetches one source by its identifier. */
 export function getSource(id: string) { return apiRequest<Source>(`/api/v1/sources/${id}`); }
 
+/** Creates a manual source with the supplied name and CSRF token. */
 export function createManualSource(name: string, csrfToken: string) {
   return apiRequest<Source>('/api/v1/sources', { method: 'POST', headers: { 'Content-Type': 'application/json', ...csrfHeaders(csrfToken) }, body: JSON.stringify({ type: 'manual', name }) });
 }
 
+/** Archives a source through the source DELETE endpoint using CSRF protection. */
 export function archiveSource(id: string, csrfToken: string) {
   return apiRequest<void>(`/api/v1/sources/${id}`, { method: 'DELETE', headers: csrfHeaders(csrfToken) });
 }
 
+/** Requests source deletion with source data purge and returns the asynchronous purge operation. */
 export function purgeSource(id: string, csrfToken: string) {
   return apiRequest<PurgeOperation>(`/api/v1/sources/${id}?with_data=true`, { method: 'DELETE', headers: csrfHeaders(csrfToken) });
 }
 
+/** Sets a source to active or paused, forwarding the abort signal and CSRF token. */
 export function updateSourceStatus(id: string, status: 'active' | 'paused', csrfToken: string, signal?: AbortSignal) {
   return apiRequest<Source>(`/api/v1/sources/${id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json', ...csrfHeaders(csrfToken) }, body: JSON.stringify({ status }), signal });
 }
 
+/** Fetches the connector catalog and forwards an optional abort signal. */
 export function getConnectorCatalog(signal?: AbortSignal) {
   return apiRequest<ConnectorCatalogEntry[]>('/api/v1/connectors/catalog', { signal });
 }
 
+/** Creates a typed connector source with the supplied name, CSRF token, and optional abort signal. */
 export function createConnectorSource(type: 'rss' | 'web' | 'api', name: string, csrfToken: string, signal?: AbortSignal) {
   return apiRequest<Source>('/api/v1/sources', { method: 'POST', headers: { 'Content-Type': 'application/json', ...csrfHeaders(csrfToken) }, body: JSON.stringify({ type, name }), signal });
 }
 
+/** Fetches the connector configuration and forwards an optional abort signal. */
 export function getConnectorConfiguration(id: string, signal?: AbortSignal) {
   return apiRequest<ConnectorConfiguration>(`/api/v1/connectors/${id}/configuration`, { signal });
 }
 
+/** Checks matching source configuration snapshots against every same-source revision and generation fence. */
 export function connectorConfigurationIsAtLeast(
   candidate: ConnectorConfiguration,
   fences: readonly (ConnectorConfiguration | undefined)[],
@@ -150,6 +160,7 @@ export function connectorConfigurationIsAtLeast(
     || (candidate.expected_revision >= fence.expected_revision && candidate.source_generation >= fence.source_generation));
 }
 
+/** Selects the newest snapshot that is not older than the other snapshots for the requested source. */
 export function newestConnectorConfiguration(
   snapshots: readonly (ConnectorConfiguration | undefined)[],
   sourceId: string,
@@ -158,6 +169,7 @@ export function newestConnectorConfiguration(
   return candidates.find((candidate) => connectorConfigurationIsAtLeast(candidate, candidates)) ?? null;
 }
 
+/** Accepts the candidate when it satisfies all revision fences, otherwise falls back to the newest fenced snapshot. */
 export function selectMonotonicConnectorConfiguration(
   candidate: ConnectorConfiguration,
   fences: readonly (ConnectorConfiguration | undefined)[],
@@ -167,6 +179,7 @@ export function selectMonotonicConnectorConfiguration(
     : newestConnectorConfiguration(fences, candidate.source_id);
 }
 
+/** Fetches connector configuration, rejects a mismatched source ID, and selects a result that does not regress local revision fences. */
 export async function getMonotonicConnectorConfiguration(
   id: string,
   signal: AbortSignal | undefined,
@@ -179,43 +192,54 @@ export async function getMonotonicConnectorConfiguration(
     ?? [...fences].reverse().find((value) => value?.source_id === id) ?? incoming;
 }
 
+/** Submits a connector draft for validation and forwards an optional abort signal; it does not save the configuration. */
 export function validateDraftConnector(id: string, settings: DraftValidationRequest, signal?: AbortSignal) {
   return apiRequest<DraftValidation>(`/api/v1/connectors/${id}/validate-draft`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(settings), signal });
 }
 
+/** Saves connector settings with CSRF protection and the optional abort signal. */
 export function saveConnectorConfiguration(id: string, settings: ConnectorSettings, csrfToken: string, signal?: AbortSignal) {
   return apiRequest<ConnectorActivation>(`/api/v1/connectors/${id}/configuration`, { method: 'PUT', headers: { 'Content-Type': 'application/json', ...csrfHeaders(csrfToken) }, body: JSON.stringify(settings), signal });
 }
 
+/** Fetches the connector activation state and forwards an optional abort signal. */
 export function getConnectorActivation(id: string, signal?: AbortSignal) {
   return apiRequest<ConnectorActivation>(`/api/v1/connectors/${id}/activation`, { signal });
 }
 
+/** Activates a connector at the expected revision and either replaces or retains its credential according to the supplied secret. */
 export function activateConnector(id: string, expectedRevision: number, secret: string | undefined, csrfToken: string, signal?: AbortSignal) {
   const secretAction = secret ? 'replace' : 'keep';
   return apiRequest<ConnectorActivation>(`/api/v1/connectors/${id}/activate`, { method: 'POST', headers: { 'Content-Type': 'application/json', ...csrfHeaders(csrfToken) }, body: JSON.stringify({ expected_revision: expectedRevision, secret_action: secretAction, ...(secret ? { secret } : {}) }), signal });
 }
 
+/** Deactivates the connector using CSRF protection and the optional abort signal. */
 export function deactivateConnector(id: string, csrfToken: string, signal?: AbortSignal) {
   return apiRequest<ConnectorActivation>(`/api/v1/connectors/${id}/deactivate`, { method: 'POST', headers: csrfHeaders(csrfToken), signal });
 }
 
+/** Removes the provider credential only at the supplied expected revision, using CSRF protection. */
 export function removeProviderCredential(id: string, expectedRevision: number, csrfToken: string, signal?: AbortSignal) {
   return apiRequest<ConnectorActivation>(`/api/v1/connectors/${id}/credentials/provider?expected_revision=${expectedRevision}`, { method: 'DELETE', headers: csrfHeaders(csrfToken), signal });
 }
 
+/** Starts connector collection with CSRF protection and returns the accepted run or batch identifiers. */
 export function triggerCollection(id: string, csrfToken: string) {
   return apiRequest<{ run_id: string | null; batch_id: string | null; status: string }>(`/api/v1/connectors/sources/${id}/collect`, { method: 'POST', headers: csrfHeaders(csrfToken) });
 }
 
+/** Fetches an ingestion run by ID. */
 export function getRun(id: string) { return apiRequest<IngestionRun>(`/api/v1/ingestion/runs/${id}`); }
 
+/** Lists a source’s ingestion runs in pages of 20 using the optional cursor. */
 export function getSourceIngestion(id: string, cursor?: string) {
   return apiRequest<SourceIngestion>(`/api/v1/ingestion/sources/${id}/runs?limit=20${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ''}`);
 }
 
+/** Retries the selected ingestion stage using CSRF protection. */
 export function retryRun(id: string, stageKey: string, csrfToken: string) {
   return apiRequest<{ run_id: string }>(`/api/v1/ingestion/runs/${id}/retry`, { method: 'POST', headers: { 'Content-Type': 'application/json', ...csrfHeaders(csrfToken) }, body: JSON.stringify({ stage_key: stageKey }) });
 }
 
+/** Fetches a system operation by ID. */
 export function getOperation(id: string) { return apiRequest<PurgeOperation>(`/api/v1/system/operations/${id}`); }

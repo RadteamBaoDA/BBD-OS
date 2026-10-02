@@ -10,6 +10,7 @@ from core.database import Base
 
 
 class Entity(Base):
+    """Persist canonical entity fields, provenance origins, and owner revision."""
     __tablename__ = "entities"
     __table_args__ = (
         CheckConstraint(
@@ -37,6 +38,7 @@ class Entity(Base):
 
 
 class EntityAlias(Base):
+    """Persist a normalized alias with confirmation and derivation provenance."""
     __tablename__ = "entity_aliases"
     __table_args__ = (
         UniqueConstraint("entity_id", "normalized_alias", name="uq_entity_aliases_entity_normalized"),
@@ -55,6 +57,7 @@ class EntityAlias(Base):
 
 
 class EntityEvidenceMembership(Base):
+    """Link an entity to exact document-version evidence with retry identity."""
     __tablename__ = "entity_evidence_memberships"
     __table_args__ = (
         CheckConstraint("confidence >= 0 AND confidence <= 1", name="ck_entity_evidence_confidence"),
@@ -82,6 +85,7 @@ class EntityEvidenceMembership(Base):
 
 
 class EntityAliasEvidence(Base):
+    """Associate alias support with the entity membership that justifies it."""
     __tablename__ = "entity_alias_evidence"
     __table_args__ = (
         UniqueConstraint("alias_id", "membership_id", name="uq_entity_alias_evidence"),
@@ -119,6 +123,7 @@ class EntityFieldEvidence(Base):
 
 
 class EntityOwnerAction(Base):
+    """Record an owner correction and affected IDs and revisions for audit."""
     __tablename__ = "entity_owner_actions"
     __table_args__ = (Index("ix_entity_owner_actions_created", "created_at", "id"),)
 
@@ -132,6 +137,7 @@ class EntityOwnerAction(Base):
 
 
 class EntityRedirect(Base):
+    """Retain the owner-authored redirect from a merged entity to its target."""
     __tablename__ = "entity_redirects"
     __table_args__ = (Index("ix_entity_redirect_target", "target_entity_id"),)
 
@@ -143,6 +149,7 @@ class EntityRedirect(Base):
 
 
 class EntityCorrectionDecision(Base):
+    """Persist an owner assignment or suppression at evidence or document scope."""
     __tablename__ = "entity_correction_decisions"
     __table_args__ = (
         CheckConstraint("decision IN ('assign', 'suppress')", name="ck_entity_correction_decision_kind"),
@@ -163,6 +170,7 @@ class EntityCorrectionDecision(Base):
 
 
 class EntityExtractionWork(Base):
+    """Track versioned extraction attempts, leases, retry timing, and dependencies."""
     __tablename__ = "entity_extraction_work"
     __table_args__ = (
         CheckConstraint("status IN ('pending', 'running', 'succeeded', 'blocked', 'failed')", name="ck_entity_extraction_work_status"),
@@ -189,6 +197,7 @@ class EntityExtractionWork(Base):
 
 
 class EntityExtractionResult(Base):
+    """Persist bounded extraction facts and review candidates for completed work."""
     __tablename__ = "entity_extraction_results"
     __table_args__ = (UniqueConstraint("work_id", name="uq_entity_extraction_results_work"),)
 

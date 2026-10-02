@@ -30,6 +30,7 @@ MAX_CLEANUP_SUPPORTS = 10_000
 def _relationship_read(
     relationship: Relationship, evidence: list[EvidenceRead] | None = None
 ) -> RelationshipRead:
+    """Project a stored relationship and optional evidence into its public DTO."""
     return RelationshipRead(
         id=relationship.id,
         source_entity_id=relationship.source_entity_id,
@@ -111,6 +112,7 @@ async def publish_extracted_relationship(
 
 
 async def _evidence_read(session: AsyncSession, rows: list[RelationshipEvidence]) -> list[EvidenceRead]:
+    """Join support rows to document-owned provenance and excerpts."""
     if not rows:
         return []
     pairs = list(dict.fromkeys((row.document_version_id, row.chunk_id) for row in rows))
@@ -143,6 +145,7 @@ async def _evidence_read(session: AsyncSession, rows: list[RelationshipEvidence]
 async def list_relationships(
     session: AsyncSession, limit: int, cursor: str | None, entity_id: UUID | None = None
 ) -> RelationshipPage:
+    """Return a cursor-paged relationship list, optionally incident to one entity."""
     statement = select(Relationship)
     if entity_id is not None:
         statement = statement.where(
@@ -163,6 +166,7 @@ async def list_relationships(
 async def list_relationship_evidence(
     session: AsyncSession, relationship_id: UUID, limit: int, cursor: str | None
 ) -> tuple[list[EvidenceRead] | None, str | None]:
+    """Page one relationship's evidence; None indicates the relationship is absent."""
     if await session.get(Relationship, relationship_id) is None:
         return None, None
     statement = select(RelationshipEvidence).where(RelationshipEvidence.relationship_id == relationship_id)
@@ -179,11 +183,13 @@ async def list_relationship_evidence(
 
 
 def _encode_neighbor_cursor(focus_id: UUID, created_at: datetime, relationship_id: UUID) -> str:
+    """Bind a relationship cursor to its focus entity before encoding it."""
     raw = json.dumps([str(focus_id), encode_cursor(created_at, relationship_id)], separators=(",", ":")).encode()
     return base64.urlsafe_b64encode(raw).decode().rstrip("=")
 
 
 def _decode_neighbor_cursor(cursor: str, focus_id: UUID) -> tuple[object, UUID]:
+    """Decode a canonical cursor and reject cursors created for another entity."""
     if len(cursor) > 512 or "=" in cursor:
         raise ValueError("Invalid neighbor cursor")
     try:
@@ -201,6 +207,7 @@ def _decode_neighbor_cursor(cursor: str, focus_id: UUID) -> tuple[object, UUID]:
 async def get_neighbors(
     session: AsyncSession, entity_id: UUID, limit: int = 50, cursor: str | None = None
 ) -> NeighborPage | None:
+    """Return bounded adjacent entities with their connecting relationships."""
     if not 2 <= limit <= 100:
         raise ValueError("Neighbor page limit must be between 2 and 100 total nodes")
     try:
@@ -241,6 +248,14 @@ async def get_neighbors(
 async def create_relationship(
     session: AsyncSession, payload: RelationshipCreate, *, actor_id: int
 ) -> RelationshipRead:
+    """Create and commit a relationship with exact endpoint/evidence support.
+
+    Authorization is enforced by the owner-write route; ``actor_id`` records the
+    audit actor. The input may be owner or derived origin. Derived relationships
+    require both endpoint memberships for each evidence ref and use the maximum
+    evidence confidence; the function locks write refs and commits audit plus
+    graph notification.
+    """
     if payload.source_entity_id == payload.target_entity_id:
         raise ValueError("Relationship endpoints must be different")
     if payload.origin == "derived" and not payload.evidence:
@@ -330,6 +345,12 @@ async def create_relationship(
 async def remove_relationship(
     session: AsyncSession, relationship_id: UUID, *, actor_id: int, reason: str = "owner_relationship_delete"
 ) -> bool:
+    """Delete a relationship after endpoint locks and commit its owner audit.
+
+    Authorization is enforced by the owner-write route; ``actor_id`` is audit
+    provenance. Returns False when the relationship is absent, rejects terminal
+    endpoints, and commits the deletion audit with a graph tombstone on success.
+    """
     hint = await session.get(Relationship, relationship_id)
     if hint is None:
         return False
@@ -356,6 +377,7 @@ async def support_cleanup_ids(
     session: AsyncSession, *, refs: list[tuple[UUID, UUID]], document_id: UUID | None = None,
     source_id: UUID | None = None, membership_ids: list[UUID] | None = None,
 ) -> tuple[list[UUID], list[UUID]]:
+    """Resolve bounded relationships and endpoint entities affected by support cleanup."""
     if (document_id is None) == (source_id is None):
         raise ValueError("Specify one document or source")
     statement = select(RelationshipEvidence.relationship_id).where(
@@ -380,6 +402,7 @@ async def support_cleanup_ids(
 
 
 async def lock_relationship_ids(session: AsyncSession, relationship_ids: list[UUID]) -> None:
+    """Lock a bounded sorted relationship set for cleanup or correction."""
     ids = sorted(set(relationship_ids), key=str)
     if len(ids) > MAX_CLEANUP_SUPPORTS:
         raise ValueError("Relationship support cleanup exceeds its atomic limit")
@@ -441,6 +464,7 @@ async def lock_delete_closure(
 async def remove_entity_closure(
     session: AsyncSession, entity_ids: list[UUID], relationship_ids: list[UUID], support_ids: list[UUID]
 ) -> None:
+    """Delete the verified incident relationship closure and its support rows."""
     ids = sorted(set(entity_ids), key=str)
     current = list((await session.scalars(
         select(Relationship.id).where(
@@ -456,6 +480,7 @@ async def remove_entity_closure(
 async def list_correction_relationship_refs(
     session: AsyncSession, entity_ids: list[UUID]
 ) -> list[CorrectionRelationshipRef]:
+    """Read a bounded incident edge/support snapshot for correction planning."""
     ids = sorted(set(entity_ids), key=str)
     if len(ids) > 100:
         raise ValueError("Correction entity closure exceeds its atomic limit")
@@ -504,6 +529,7 @@ async def list_correction_relationship_refs(
 async def lock_correction_closure(
     session: AsyncSession, entity_ids: list[UUID], expected_relationship_ids: set[UUID]
 ) -> None:
+    """Lock and revalidate the relationship/support snapshot before correction writes."""
     refs = await list_correction_relationship_refs(session, entity_ids)
     if {item.id for item in refs} != expected_relationship_ids:
         raise ValueError("Correction relationship closure changed; retry preview")
@@ -523,6 +549,7 @@ def validate_entity_merge_plan(
     refs: list[CorrectionRelationshipRef],
     source_redirect_ids: set[UUID] | None = None,
 ) -> None:
+    """Reject merge plans that create self-edges or conflicting metadata."""
     source_ids = {source_entity_id, *(source_redirect_ids or set())}
     groups: dict[tuple[object, ...], list[CorrectionRelationshipRef]] = {}
     for ref in refs:
@@ -543,6 +570,7 @@ def validate_entity_split_plan(
     entity_id: UUID, membership_ids: set[UUID],
     refs: list[CorrectionRelationshipRef],
 ) -> None:
+    """Reject split plans with unresolved endpoint support or self-edges."""
     for ref in refs:
         if ref.origin == "owner" and ref.supports:
             raise ValueError("Split has unexpected evidence attached to an owner-authored relationship")
@@ -563,6 +591,7 @@ async def apply_entity_merge(
     expected_relationship_ids: set[UUID], closure_entity_ids: list[UUID],
     source_redirect_ids: set[UUID],
 ) -> list[tuple[UUID, UUID]]:
+    """Redirect incident edges, merge duplicate supports, and return replacement IDs."""
     refs = await list_correction_relationship_refs(session, closure_entity_ids)
     if {item.id for item in refs} != expected_relationship_ids:
         raise ValueError("Correction relationship closure changed; retry preview")
@@ -608,6 +637,7 @@ async def apply_entity_split(
     session: AsyncSession, entity_id: UUID, new_entity_id: UUID,
     membership_ids: set[UUID], expected_relationship_ids: set[UUID],
 ) -> list[tuple[UUID, UUID]]:
+    """Move endpoint-supported edges to the replacement entity and return mappings."""
     refs = await list_correction_relationship_refs(session, [entity_id])
     if {item.id for item in refs} != expected_relationship_ids:
         raise ValueError("Correction relationship closure changed; retry preview")
@@ -667,6 +697,7 @@ async def apply_entity_split(
 
 
 async def _refresh_derived_confidence(session: AsyncSession, relationship_ids: set[UUID]) -> None:
+    """Recompute derived relationship confidence from remaining evidence rows."""
     if not relationship_ids:
         return
     await session.flush()
@@ -684,12 +715,14 @@ async def _refresh_derived_confidence(session: AsyncSession, relationship_ids: s
 async def remove_document_support(
     session: AsyncSession, *, document_id: UUID, refs: list[tuple[UUID, UUID]], membership_ids: list[UUID]
 ) -> int:
+    """Remove evidence rows scoped to a document and refresh affected derived edges."""
     return await _remove_support(session, document_id=document_id, refs=refs, membership_ids=membership_ids)
 
 
 async def remove_source_support(
     session: AsyncSession, *, source_id: UUID, refs: list[tuple[UUID, UUID]], membership_ids: list[UUID]
 ) -> int:
+    """Remove evidence rows scoped to a source and refresh affected derived edges."""
     return await _remove_support(session, source_id=source_id, refs=refs, membership_ids=membership_ids)
 
 
@@ -697,6 +730,7 @@ async def _remove_support(
     session: AsyncSession, *, refs: list[tuple[UUID, UUID]], membership_ids: list[UUID],
     document_id: UUID | None = None, source_id: UUID | None = None,
 ) -> int:
+    """Delete bounded matching evidence and remove unsupported derived relationships."""
     statement = select(RelationshipEvidence).where(or_(
         RelationshipEvidence.document_id == document_id if document_id else RelationshipEvidence.source_id == source_id,
         tuple_(RelationshipEvidence.document_version_id, RelationshipEvidence.chunk_id).in_(refs) if refs else False,

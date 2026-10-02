@@ -12,6 +12,7 @@ import { useWorkspaceSession } from '@/core/app-shell/workspace-shell';
 
 type GoogleStatus = { configured: boolean; linked: boolean };
 
+/** Renders the Google account connection state and its supported linking action. */
 export function GoogleLink() {
   const t = useTranslations('account');
   const { csrfToken } = useWorkspaceSession();

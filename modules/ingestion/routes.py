@@ -27,6 +27,7 @@ async def issue_collector_credential(
     session: Session,
     _owner: OwnerWrite,
 ) -> CollectorCredentialRead:
+    """Issue an owner-authorized source token only when managed activation permits it."""
     if not await connectors.allow_external_collector_credential_issue(session, source_id):
         raise HTTPException(status_code=409, detail="Managed collector grants rotate during connector activation")
     try:
@@ -43,6 +44,7 @@ async def receive_batch(
     session: Session,
     authorization: Annotated[str | None, Header()] = None,
 ) -> Receipt:
+    """Authenticate a collector bearer token and submit a bounded ingestion batch."""
     scheme, _, token = (authorization or "").partition(" ")
     if scheme.lower() != "bearer" or not token or not await public.collector_can_ingest(
         session, payload.source_id, token
@@ -54,6 +56,7 @@ async def receive_batch(
 
 @router.get("/runs/{run_id}", response_model=RunRead)
 async def get_run(run_id: UUID, session: Session, _owner: OwnerRead) -> RunRead:
+    """Return owner-only run and stage state or 404 when the run is absent."""
     result = await public.get_run(session, run_id)
     if result is None:
         raise HTTPException(status_code=404, detail="Ingestion run not found")
@@ -77,6 +80,7 @@ async def list_source_runs(
     limit: int = Query(default=20, ge=1, le=50),
     cursor: str | None = Query(default=None, max_length=512),
 ) -> SourceIngestionRead:
+    """Return bounded owner-only run history and current run for one source."""
     result = await public.list_source_runs(session, source_id, limit=limit, cursor=cursor)
     if result is None:
         raise HTTPException(status_code=404, detail="Source not found")
@@ -85,6 +89,7 @@ async def list_source_runs(
 
 @router.post("/runs/{run_id}/retry", response_model=Receipt, status_code=202)
 async def retry_run(run_id: UUID, payload: RetryRunRequest, session: Session, _owner: OwnerWrite) -> Receipt:
+    """Retry one owner-selected stage and return its durable run identity."""
     run = await public.retry_run(session, run_id, payload.stage_key)
     if run is None:
         raise HTTPException(status_code=404, detail="Ingestion run not found")
@@ -99,6 +104,7 @@ async def upload_document(
     session: Session,
     _owner: OwnerWrite,
 ) -> Receipt:
+    """Validate and durably store a bounded upload, removing raw bytes if intake fails or deduplicates."""
     settings = request.app.state.settings
     if upload.size is not None and upload.size > settings.upload_max_bytes:
         raise HTTPException(status_code=413, detail="Upload exceeds the configured size limit")

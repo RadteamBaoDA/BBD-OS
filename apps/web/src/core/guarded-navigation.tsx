@@ -19,14 +19,17 @@ type GuardedNavigation = {
 const GuardedNavigationContext = createContext<GuardedNavigation | null>(null);
 const sourcePaths = new Set(['/sources', '/settings/sources']);
 
+/** Checks whether a pathname is one of the registered data-source routes. */
 function isSourcesPath(pathname: string) {
   return sourcePaths.has(pathname);
 }
 
+/** Checks whether a pathname identifies an entity detail route. */
 function isEntityDetailPath(pathname: string) {
   return /^\/knowledge\/entities\/[^/]+\/?$/.test(pathname);
 }
 
+/** Provides navigation that checks registered unsaved-change guards and handles full-page source-route transitions. */
 export function GuardedNavigationProvider({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
@@ -42,6 +45,7 @@ export function GuardedNavigationProvider({ children }: { children: ReactNode })
     observedPath.current = pathname;
   }, [pathname]);
 
+  /** Registers the active editor leave guard and returns a cleanup that removes only that same guard. */
   const registerLeaveGuard = useCallback((guard: LeaveGuard) => {
     guardRef.current = guard;
     return () => {
@@ -49,12 +53,14 @@ export function GuardedNavigationProvider({ children }: { children: ReactNode })
     };
   }, []);
 
+  /** Reloads the source route when client navigation would leave it with stale route-owned state. */
   const ensureSourcesDocument = useCallback(() => {
     if (!isSourcesPath(pathname) || isSourcesPath(documentPath.current)) return true;
     window.location.replace(window.location.href);
     return false;
   }, [pathname]);
 
+  /** Reloads an entity detail route once per destination to refresh route-owned entity data. */
   const ensureEntityDocument = useCallback(() => {
     if (!isEntityDetailPath(pathname) || entityDocumentPath.current === pathname) return true;
     if (entityReloadRequested.current !== pathname) {
@@ -64,6 +70,7 @@ export function GuardedNavigationProvider({ children }: { children: ReactNode })
     return false;
   }, [pathname]);
 
+  /** Navigates while consulting the active unsaved-change guard and preserving full-page transitions for source routes. */
   const navigate = useCallback((href: string, mode: NavigationMode = 'push') => {
     const destination = new URL(href, window.location.href);
     const leavesPage = destination.origin !== window.location.origin || destination.pathname !== pathname;
@@ -81,6 +88,7 @@ export function GuardedNavigationProvider({ children }: { children: ReactNode })
 
     const leavesSources = isSourcesPath(pathname) && destination.pathname !== pathname;
     if (leavesSources) {
+      // Source editor state is route-owned, so a document navigation tears it down after guard acceptance.
       guard?.acceptLeave();
       window.location.assign(destination.href);
       return true;
@@ -99,6 +107,7 @@ export function GuardedNavigationProvider({ children }: { children: ReactNode })
   }, [pathname, router]);
 
   useEffect(() => {
+    /** Intercepts eligible links, including external destinations, when guarded source routes or unsaved drafts require controlled navigation. */
     const onClick = (event: MouseEvent) => {
       if (event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
       const target = event.target;
@@ -118,12 +127,14 @@ export function GuardedNavigationProvider({ children }: { children: ReactNode })
       event.stopImmediatePropagation();
       navigate(destination.href);
     };
+    /** Prompts the browser before closing while the active editor reports unsaved changes. */
     const onBeforeUnload = (event: BeforeUnloadEvent) => {
       const guard = guardRef.current;
       if (!guard?.hasUnsavedChanges()) return;
       event.preventDefault();
       event.returnValue = '';
     };
+    /** Accepts leaving the editor when the browser hides the current page. */
     const onPageHide = () => guardRef.current?.acceptLeave();
     document.addEventListener('click', onClick, true);
     window.addEventListener('beforeunload', onBeforeUnload);
@@ -140,6 +151,7 @@ export function GuardedNavigationProvider({ children }: { children: ReactNode })
   </GuardedNavigationContext.Provider>;
 }
 
+/** Returns the guarded-navigation context or throws when called outside its provider. */
 export function useGuardedNavigation() {
   const value = useContext(GuardedNavigationContext);
   if (!value) throw new Error('Guarded navigation is unavailable');

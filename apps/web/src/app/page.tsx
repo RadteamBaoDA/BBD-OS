@@ -8,6 +8,7 @@ import { apiRequest } from '@/core/api';
 type SetupStatus = { setupRequired: boolean };
 type Session = { authenticated: true; csrfToken: string };
 
+/** Routes the initial visit to setup, the application, or sign-in from live status checks. */
 export default function HomePage() {
   const router = useRouter();
   const setup = useQuery({ queryKey: ['setup-status'], queryFn: () => apiRequest<SetupStatus>('/api/v1/auth/setup-status') });

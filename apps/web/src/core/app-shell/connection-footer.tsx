@@ -5,6 +5,7 @@ import type { RealtimeStatus } from '@/core/realtime-provider';
 
 export type ApiConnectionStatus = 'connecting' | 'reconnecting' | 'unavailable' | 'connected' | 'expired';
 
+/** Renders separate API and realtime health states and exposes the supplied retry action while it is available. */
 export function ConnectionFooter({ apiStatus, realtimeStatus, onRetry, retrying = false }: { apiStatus: ApiConnectionStatus; realtimeStatus: RealtimeStatus; onRetry?: () => void; retrying?: boolean }) {
   const t = useTranslations('shell');
   return <footer className="connection-footer" aria-label={t('connectionStatus')}>

@@ -3,6 +3,8 @@ from dataclasses import dataclass
 
 @dataclass(frozen=True)
 class SearchDescriptor:
+    """Declare search's public capabilities and its document-chunk dependency."""
+
     id: str = "search"
     name: str = "Search"
     version: str = "1.0.0"

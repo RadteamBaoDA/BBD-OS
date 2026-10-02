@@ -31,6 +31,7 @@ OwnerWrite = Annotated[AuthSession, Depends(require_owner_write)]
 
 
 class ConnectorSettingsRequest(BaseModel):
+    """Validate revisioned connector configuration and auth mode input."""
     model_config = ConfigDict(extra="forbid")
 
     expected_revision: int = Field(ge=0)
@@ -40,6 +41,7 @@ class ConnectorSettingsRequest(BaseModel):
 
     @model_validator(mode="after")
     def validate_auth(self) -> "ConnectorSettingsRequest":
+        """Require a header name only when header authentication is selected."""
         if self.auth_method == "http_header" and not self.auth_header_name:
             raise ValueError("auth_header_name is required for header authentication")
         if self.auth_method == "none" and self.auth_header_name is not None:
@@ -48,10 +50,12 @@ class ConnectorSettingsRequest(BaseModel):
 
 
 class DraftValidationRequest(ConnectorSettingsRequest):
+    """Add the source generation required to validate a connector draft."""
     expected_source_generation: int = Field(ge=1)
 
 
 class ActivationRequest(BaseModel):
+    """Represent a revisioned activation and keep/replace secret action."""
     model_config = ConfigDict(extra="forbid")
 
     expected_revision: int = Field(ge=1)
@@ -60,6 +64,7 @@ class ActivationRequest(BaseModel):
 
     @model_validator(mode="after")
     def validate_secret_action(self) -> "ActivationRequest":
+        """Reject missing replacement secrets and secrets sent with keep."""
         if self.secret_action == "replace" and (self.secret is None or not self.secret.get_secret_value()):
             raise ValueError("A non-empty replacement secret is required")
         if self.secret_action == "keep" and self.secret is not None:
@@ -68,6 +73,7 @@ class ActivationRequest(BaseModel):
 
 
 class ActivationRead(BaseModel):
+    """Expose connector activation revisions, state, and recovery support."""
     source_id: UUID
     desired_revision: int
     applied_revision: int
@@ -77,6 +83,7 @@ class ActivationRead(BaseModel):
 
 
 class ConnectorConfigurationRead(BaseModel):
+    """Expose source-scoped connector settings without returning secret values."""
     source_id: UUID
     source_type: str
     source_generation: int
@@ -92,6 +99,7 @@ class ConnectorConfigurationRead(BaseModel):
 
 
 class DraftValidationRead(BaseModel):
+    """Report successful draft validation against a source generation."""
     source_id: UUID
     source_generation: int
     expected_revision: int
@@ -104,6 +112,7 @@ class DraftValidationRead(BaseModel):
 async def get_configuration(
     source_id: UUID, session: Session, _owner: OwnerRead
 ) -> ConnectorConfigurationRead:
+    """Read a managed connector configuration for an authorized owner."""
     snapshot = await connector_owner.get_connector_configuration(session, source_id)
     if snapshot is None:
         raise HTTPException(status_code=404, detail="Source not found")
@@ -132,6 +141,7 @@ async def validate_draft_configuration(
     session: Session,
     _owner: OwnerRead,
 ) -> DraftValidationRead:
+    """Validate draft settings only while the active source generation matches."""
     source = await _source(session, source_id)
     if source.status != "active" or source.type not in registry.SUPPORTED_TYPES:
         raise HTTPException(status_code=409, detail="Active packaged connector required")
@@ -162,6 +172,7 @@ async def validate_draft_configuration(
 
 
 async def _source(session: AsyncSession, source_id: UUID) -> ConnectorSource:
+    """Load a source projection or raise HTTP 404 when it does not exist."""
     source = await sources.get_connector_source(session, source_id)
     if source is None:
         raise HTTPException(status_code=404, detail="Source not found")
@@ -170,6 +181,7 @@ async def _source(session: AsyncSession, source_id: UUID) -> ConnectorSource:
 
 @router.get("/catalog")
 async def get_catalog(_owner: OwnerRead) -> list[catalog.CatalogEntry]:
+    """Return connector catalog entries to an authorized owner."""
     return list(catalog.list_catalog())
 
 
@@ -180,6 +192,12 @@ async def put_configuration(
     session: Session,
     _owner: OwnerWrite,
 ) -> ActivationRead:
+    """Save revision-checked desired settings without starting a new activation.
+
+    Reconciles/cancels prior activation and workflow intent as needed, commits
+    the saved configuration, and returns the resulting activation projection.
+    Owner-write authorization is enforced by the route dependency.
+    """
     source = await _source(session, source_id)
     if source.status != "active" or source.type not in registry.SUPPORTED_TYPES:
         raise HTTPException(status_code=409, detail="Active packaged connector required")
@@ -222,6 +240,7 @@ async def put_configuration(
 async def validate_configuration(
     source_id: UUID, session: Session, _owner: OwnerRead
 ) -> ActivationRead:
+    """Validate saved connector settings against configuration and URL policy."""
     source = await _source(session, source_id)
     try:
         data = registry.validate(source)
@@ -238,6 +257,7 @@ async def validate_configuration(
 async def get_activation(
     source_id: UUID, session: Session, _owner: OwnerRead
 ) -> ActivationRead:
+    """Read activation status for an authorized source owner."""
     await _source(session, source_id)
     row = await provisioning.activation_status(session, source_id)
     if row is None:
@@ -259,6 +279,14 @@ async def activate_source(
     request: Request,
     _owner: OwnerWrite,
 ) -> ActivationRead:
+    """Persist a revision-fenced activation bundle, then drive n8n operations.
+
+    Owner-write authorization is enforced by the route dependency. The intent is
+    committed before external calls. After dispatch, HTTP 503 can mean durable
+    recovery work remains and a known n8n rejection maps to HTTP 422; validation
+    failures can also return 422 before persistence. A non-2xx response after
+    dispatch does not prove no external side effect occurred.
+    """
     source = await _source(session, source_id)
     row = await provisioning.activation_status(session, source_id)
     if row is None or row.desired_revision != payload.expected_revision:
@@ -411,6 +439,7 @@ async def deactivate_source(
     session: Session,
     _owner: OwnerWrite,
 ) -> ActivationRead:
+    """Pause connector collection and persist the resulting activation state."""
     source = await sources.pause_source_for_connector(session, source_id)
     if source is None:
         raise HTTPException(status_code=404, detail="Source not found")
@@ -430,6 +459,12 @@ async def remove_provider_credential(
     session: Session,
     _owner: OwnerWrite,
 ) -> ActivationRead:
+    """Disable provider authentication and queue a fenced credential deletion.
+
+    Owner-write authorization is enforced by the route dependency. The local
+    configuration and delete intent commit before reconciliation; the external
+    n8n credential remains until the later delete acknowledgement clears it.
+    """
     source = await sources.get_connector_source(session, source_id)
     row = await provisioning.activation_status(session, source_id)
     if source is None or row is None:
@@ -477,6 +512,7 @@ async def remove_provider_credential(
 async def _activation_read(
     session: AsyncSession, source_id: UUID, row: object
 ) -> ActivationRead:
+    """Project durable activation state and unresolved credential errors."""
     state = getattr(row, "state")
     error_code = getattr(row, "error_code")
     unresolved = await provisioning.unresolved_credential_error(session, source_id)

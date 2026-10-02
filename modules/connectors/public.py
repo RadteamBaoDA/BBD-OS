@@ -17,6 +17,7 @@ DEFAULT_OVERLAP = timedelta(days=1)
 
 
 class ConnectorConfig(BaseModel):
+    """Validate bounded source, REST mapping, timezone, and schedule settings."""
     model_config = ConfigDict(extra="forbid")
 
     url: HttpUrl | None = None
@@ -36,6 +37,7 @@ class ConnectorConfig(BaseModel):
     @field_validator("timezone")
     @classmethod
     def valid_timezone(cls, value: str) -> str:
+        """Require a timezone identifier recognized by the installed IANA database."""
         from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
         try:
@@ -47,6 +49,7 @@ class ConnectorConfig(BaseModel):
 
 @dataclass(frozen=True)
 class ConnectorConfigurationSnapshot:
+    """Expose persisted connector settings and activation state without secret values."""
     source_id: UUID
     source_type: str
     source_generation: int
@@ -114,10 +117,12 @@ async def get_connector_configuration(
 
 
 def default_schedule_interval_minutes(source_type: str) -> int:
+    """Return the default polling cadence for RSS versus other source types."""
     return 15 if source_type == "rss" else 30
 
 
 class ConnectorRecord(BaseModel):
+    """Validate one normalized record returned by a connector collector."""
     model_config = ConfigDict(extra="forbid")
 
     provider_id: str = Field(min_length=1, max_length=512)
@@ -128,6 +133,7 @@ class ConnectorRecord(BaseModel):
 
 
 class ConnectorReceipt(BaseModel):
+    """Validate an acknowledged nonempty batch and its generation/revision fence."""
     model_config = ConfigDict(extra="forbid")
 
     cursor_before: str | None = Field(default=None, max_length=4096)
@@ -138,6 +144,7 @@ class ConnectorReceipt(BaseModel):
 
 
 class ConnectorPreview(BaseModel):
+    """Validate a preview batch, which may contain no records."""
     model_config = ConfigDict(extra="forbid")
 
     cursor_before: str | None = Field(default=None, max_length=4096)
@@ -148,6 +155,7 @@ class ConnectorPreview(BaseModel):
 
 
 class CollectionFence(BaseModel):
+    """Bind collection work to one source generation and connector revision."""
     model_config = ConfigDict(extra="forbid", frozen=True)
 
     source_generation: int = Field(ge=1)
@@ -155,6 +163,7 @@ class CollectionFence(BaseModel):
 
 
 class ConnectorConfigurationRequest(BaseModel):
+    """Validate a revision-fenced connector configuration replacement."""
     model_config = ConfigDict(extra="forbid")
 
     expected_revision: int = Field(ge=0)
@@ -170,6 +179,7 @@ async def collection_allowed(
     *,
     lock: bool = False,
 ) -> bool:
+    """Check source and connector revisions, optionally locking the provisioning row."""
     from modules.connectors import provisioning
 
     source = ConnectorSource(
@@ -191,6 +201,7 @@ async def require_collection_fence(
     *,
     lock: bool = False,
 ) -> bool:
+    """Enforce the supplied collection fence through connector provisioning state."""
     from modules.connectors import provisioning
 
     return await provisioning.require_collection_fence(
@@ -237,6 +248,7 @@ async def save_connector_configuration(
     *,
     allow_paused: bool = False,
 ) -> tuple[ConnectorSource, ConnectorProvisioning] | None:
+    """Save source and desired connector settings, rolling back revision conflicts."""
     from modules.connectors import provisioning
     from modules.sources import public as source_public
 
@@ -262,6 +274,7 @@ async def save_connector_configuration(
 async def allow_external_collector_credential_issue(
     session: AsyncSession, source_id: UUID
 ) -> bool:
+    """Allow external token issuance only for active sources not under provisioning."""
     from modules.connectors import provisioning
 
     source, row, _ = await provisioning.lock_connector(session, source_id)
@@ -272,6 +285,11 @@ async def allow_external_collector_credential_issue(
 
 
 class RSSRequest(BaseModel):
+    """Validate HTTP(S) feed URL shape and an optional bounded cursor.
+
+    ``HttpUrl`` does not check DNS address visibility; collection-time
+    ``validate_public_url`` performs the public-address check before transport.
+    """
     model_config = ConfigDict(extra="forbid")
 
     url: HttpUrl
@@ -279,6 +297,7 @@ class RSSRequest(BaseModel):
 
 
 class CrawlRequest(BaseModel):
+    """Validate source/revision-fenced crawl settings and bounded traversal limits."""
     model_config = ConfigDict(extra="forbid")
 
     source_id: UUID
@@ -292,14 +311,16 @@ class CrawlRequest(BaseModel):
 
 
 class CrawlResult(BaseModel):
+    """Return the durable ingestion run ID created by a crawl submission."""
     run_id: UUID
 
 
 class NoChangeRequest(CollectionFence):
-    pass
+    """Represent a collection acknowledgement that advances no cursor or records."""
 
 
 async def validate_public_url(value: str) -> str:
+    """Require credential-free HTTP(S) URLs whose resolved addresses are all public."""
     parsed = urlsplit(value)
     if parsed.scheme not in {"http", "https"} or not parsed.hostname or parsed.username or parsed.password:
         raise ValueError("Only credential-free HTTP(S) URLs are allowed")
@@ -315,6 +336,7 @@ async def validate_public_url(value: str) -> str:
 
 
 def overlap_floor(cursor: str | None) -> datetime | None:
+    """Return a one-day UTC overlap start for a valid aware cursor, otherwise None."""
     if not cursor:
         return None
     try:

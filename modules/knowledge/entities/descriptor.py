@@ -3,6 +3,8 @@ from dataclasses import dataclass
 
 @dataclass(frozen=True)
 class EntityDescriptor:
+    """Declare entity storage's document dependency and public capabilities."""
+
     id: str = "knowledge.entities"
     name: str = "Entities"
     version: str = "1.0.0"

@@ -10,6 +10,7 @@ from core.database import Base
 
 
 class Relationship(Base):
+    """Persist a directed entity relationship with origin and optional validity."""
     __tablename__ = "relationships"
     __table_args__ = (
         CheckConstraint("source_entity_id <> target_entity_id", name="ck_relationships_distinct_entities"),
@@ -34,6 +35,7 @@ class Relationship(Base):
 
 
 class RelationshipEvidence(Base):
+    """Persist versioned chunk support and optional entity-membership endpoints."""
     __tablename__ = "relationship_evidence"
     __table_args__ = (
         Index(

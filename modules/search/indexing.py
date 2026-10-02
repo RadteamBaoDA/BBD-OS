@@ -26,6 +26,7 @@ MAX_VECTOR_DIMENSIONS = 2000  # pgvector HNSW vector index limit.
 
 @dataclass(frozen=True)
 class IndexProjection:
+    """Snapshot public generation counters used to decide whether to publish."""
     generation_id: UUID
     status: str
     indexed_items: int
@@ -35,6 +36,7 @@ class IndexProjection:
 async def _index_projection(
     session: AsyncSession, generation_id: UUID
 ) -> IndexProjection | None:
+    """Read a generation's lifecycle and succeeded/failed item counts."""
     row = await session.execute(
         select(IndexGeneration.id, IndexGeneration.status)
         .where(IndexGeneration.id == generation_id)
@@ -61,6 +63,11 @@ async def _commit_index_change(
     *,
     generation_id: UUID,
 ) -> None:
+    """Commit index state and publish an event only when its projection changed.
+
+    The transaction commits even when no event draft is needed; callers must not
+    assume an unchanged projection leaves their session uncommitted.
+    """
     await session.flush()
     after = await _index_projection(session, generation_id)
     drafts = []
@@ -75,6 +82,7 @@ async def _commit_index_change(
 
 
 def embedding_values(response: object, expected_dimensions: int | None = None) -> tuple[list[float], str | None]:
+    """Validate one finite, nonzero, bounded embedding and return its model identity."""
     if not isinstance(response, dict) or not isinstance(response.get("data"), list) or len(response["data"]) != 1:
         raise ValueError("Invalid embedding response")
     returned_model = response.get("model")
@@ -94,6 +102,7 @@ def embedding_values(response: object, expected_dimensions: int | None = None) -
 
 
 def gateway(config, redis: Redis, before_send=None) -> ModelGateway:
+    """Construct the model gateway with configured timeout, identity, and endpoint limits."""
     return ModelGateway(redis, config.omniroute_base_url, config.omniroute_api_key,
         config.endpoint_destination_id or "omniroute", config.request_timeout_seconds,
         gateway_identity=config.gateway_identity, before_send=before_send,
@@ -101,6 +110,7 @@ def gateway(config, redis: Redis, before_send=None) -> ModelGateway:
 
 
 async def configured_embedding(session: AsyncSession, settings: Settings, redis: Redis):
+    """Return current gateway config, embedding alias, and privacy-constrained policy."""
     config = await ai_settings.get_ai_execution_config(session, settings, redis)
     destination = config.endpoint_destination_id
     privacy = config.privacy
@@ -114,6 +124,7 @@ async def configured_embedding(session: AsyncSession, settings: Settings, redis:
 
 
 def eligible_chunks():
+    """Select active-source chunks from ready current versions, excluding local-only data."""
     return (
         select(DocumentChunk.id, DocumentChunk.content, Source.id)
         .join(DocumentVersion, DocumentVersion.id == DocumentChunk.document_version_id)
@@ -128,6 +139,7 @@ def eligible_chunks():
 
 
 async def create_generation(session: AsyncSession, mapping: ModelMapping, gateway_identity: str) -> IndexGeneration:
+    """Serialize generation creation and reuse only an in-flight generation for this gateway."""
     await session.execute(text("SELECT pg_advisory_xact_lock(4603201)"))
     existing = await session.scalar(select(IndexGeneration).where(
         IndexGeneration.status.in_(("queued", "running")),
@@ -146,6 +158,7 @@ async def create_generation(session: AsyncSession, mapping: ModelMapping, gatewa
 
 
 async def index_pending_chunks(ctx: dict[str, object]) -> int:
+    """Index a bounded number of eligible chunks under source locks and current AI policy."""
     factory = cast(async_sessionmaker[AsyncSession], ctx["session_factory"])
     redis = cast(Redis, ctx["redis"])
     settings = cast(Settings, ctx["settings"])
@@ -263,6 +276,7 @@ async def index_pending_chunks(ctx: dict[str, object]) -> int:
                     raise ValueError("Embedding model or gateway identity changed")
 
                 async def recheck_send() -> None:
+                    """Re-read AI settings before the request and enforce the current send policy."""
                     latest, latest_mapping, latest_policy = await configured_embedding(session, settings, redis)
                     if (latest.gateway_identity != config.gateway_identity or latest_mapping != mapping
                             or not may_send(latest_policy, "embedding", latest_mapping,
@@ -315,6 +329,7 @@ async def index_pending_chunks(ctx: dict[str, object]) -> int:
 
 
 async def activate_generation(session: AsyncSession, generation: IndexGeneration) -> None:
+    """Create the bounded vector index and atomically retire the prior active generation."""
     if generation.dimensions is None or not 1 <= generation.dimensions <= MAX_VECTOR_DIMENSIONS:
         raise ValueError("Invalid generation dimensions")
     # Identifier and dimensions originate from a UUID and a bounded integer, never request text.

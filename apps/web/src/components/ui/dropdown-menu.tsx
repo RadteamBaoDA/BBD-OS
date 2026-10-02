@@ -5,12 +5,14 @@ import { cn } from "cn"
 import { CheckIcon, ChevronRightIcon, CircleIcon } from "lucide-react"
 import { DropdownMenu as DropdownMenuPrimitive } from "radix-ui"
 
+/** Renders the dropdown menu UI wrapper and forwards its typed props to the underlying control. */
 function DropdownMenu({
   ...props
 }: React.ComponentProps<typeof DropdownMenuPrimitive.Root>) {
   return <DropdownMenuPrimitive.Root data-slot="dropdown-menu" {...props} />
 }
 
+/** Renders the dropdown menu portal UI wrapper and forwards its typed props to the underlying control. */
 function DropdownMenuPortal({
   ...props
 }: React.ComponentProps<typeof DropdownMenuPrimitive.Portal>) {
@@ -19,6 +21,7 @@ function DropdownMenuPortal({
   )
 }
 
+/** Renders the dropdown menu trigger UI wrapper and forwards its typed props to the underlying control. */
 function DropdownMenuTrigger({
   ...props
 }: React.ComponentProps<typeof DropdownMenuPrimitive.Trigger>) {
@@ -30,6 +33,7 @@ function DropdownMenuTrigger({
   )
 }
 
+/** Renders the dropdown menu content UI wrapper and forwards its typed props to the underlying control. */
 function DropdownMenuContent({
   className,
   sideOffset = 4,
@@ -50,6 +54,7 @@ function DropdownMenuContent({
   )
 }
 
+/** Renders the dropdown menu group UI wrapper and forwards its typed props to the underlying control. */
 function DropdownMenuGroup({
   ...props
 }: React.ComponentProps<typeof DropdownMenuPrimitive.Group>) {
@@ -58,6 +63,7 @@ function DropdownMenuGroup({
   )
 }
 
+/** Renders the dropdown menu item UI wrapper and forwards its typed props to the underlying control. */
 function DropdownMenuItem({
   className,
   inset,
@@ -81,6 +87,7 @@ function DropdownMenuItem({
   )
 }
 
+/** Renders the dropdown menu checkbox item UI wrapper and forwards its typed props to the underlying control. */
 function DropdownMenuCheckboxItem({
   className,
   children,
@@ -107,6 +114,7 @@ function DropdownMenuCheckboxItem({
   )
 }
 
+/** Renders the dropdown menu radio group UI wrapper and forwards its typed props to the underlying control. */
 function DropdownMenuRadioGroup({
   ...props
 }: React.ComponentProps<typeof DropdownMenuPrimitive.RadioGroup>) {
@@ -118,6 +126,7 @@ function DropdownMenuRadioGroup({
   )
 }
 
+/** Renders the dropdown menu radio item UI wrapper and forwards its typed props to the underlying control. */
 function DropdownMenuRadioItem({
   className,
   children,
@@ -142,6 +151,7 @@ function DropdownMenuRadioItem({
   )
 }
 
+/** Renders the dropdown menu label UI wrapper and forwards its typed props to the underlying control. */
 function DropdownMenuLabel({
   className,
   inset,
@@ -162,6 +172,7 @@ function DropdownMenuLabel({
   )
 }
 
+/** Renders the dropdown menu separator UI wrapper and forwards its typed props to the underlying control. */
 function DropdownMenuSeparator({
   className,
   ...props
@@ -175,6 +186,7 @@ function DropdownMenuSeparator({
   )
 }
 
+/** Renders the dropdown menu shortcut UI wrapper and forwards its typed props to the underlying control. */
 function DropdownMenuShortcut({
   className,
   ...props
@@ -191,12 +203,14 @@ function DropdownMenuShortcut({
   )
 }
 
+/** Renders the dropdown menu sub UI wrapper and forwards its typed props to the underlying control. */
 function DropdownMenuSub({
   ...props
 }: React.ComponentProps<typeof DropdownMenuPrimitive.Sub>) {
   return <DropdownMenuPrimitive.Sub data-slot="dropdown-menu-sub" {...props} />
 }
 
+/** Renders the dropdown menu sub trigger UI wrapper and forwards its typed props to the underlying control. */
 function DropdownMenuSubTrigger({
   className,
   inset,
@@ -221,6 +235,7 @@ function DropdownMenuSubTrigger({
   )
 }
 
+/** Renders the dropdown menu sub content UI wrapper and forwards its typed props to the underlying control. */
 function DropdownMenuSubContent({
   className,
   ...props

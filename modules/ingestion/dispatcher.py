@@ -20,6 +20,7 @@ WORKER_BY_EVENT = {
 
 
 async def dispatch_pending_work(ctx: dict[str, object]) -> int:
+    """Enqueue due supported outbox events under row locks and return the count."""
     factory = cast(async_sessionmaker[AsyncSession], ctx["session_factory"])
     redis = cast(ArqRedis, ctx["redis"])
     now = datetime.now(UTC)
@@ -63,6 +64,7 @@ async def dispatch_pending_work(ctx: dict[str, object]) -> int:
 
 
 async def mark_event_delivered(session: AsyncSession, event_id: UUID) -> None:
+    """Mark an existing outbox event delivered while holding its row lock."""
     event = await session.get(EventOutbox, event_id, with_for_update=True)
     if event is not None:
         event.status = "delivered"

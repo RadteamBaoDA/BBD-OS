@@ -16,6 +16,7 @@ import { Label } from '@/components/ui/label';
 const loginSchema = z.object({ password: z.string().min(1).max(128) });
 type LoginForm = z.infer<typeof loginSchema>;
 
+/** Renders sign-in controls and reports authentication state to the user. */
 export default function LoginPage() {
   const router = useRouter();
   const t = useTranslations('login');

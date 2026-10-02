@@ -30,6 +30,7 @@ NOTES = (
 
 @dataclass(frozen=True)
 class SeedReport:
+    """Count fictional seed identities created versus already present."""
     created: int
     existing: int
 
@@ -73,6 +74,7 @@ async def seed_demo(session: AsyncSession) -> SeedReport:
 
 
 async def _run_seed() -> None:
+    """Run explicit demo seeding in a database session and dispose the engine."""
     engine = create_async_engine(Settings().database_url, pool_pre_ping=True)
     try:
         factory = async_sessionmaker(engine, expire_on_commit=False)

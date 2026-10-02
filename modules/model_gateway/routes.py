@@ -23,6 +23,7 @@ Session = Annotated[AsyncSession, Depends(get_session)]
 
 
 def _capability_proved(capability: str, response: object) -> bool:
+    """Require capability-specific response evidence before recording support."""
     if not isinstance(response, dict):
         return False
     if capability == "embeddings":
@@ -56,6 +57,7 @@ async def probe_draft(
     alias: Annotated[str, Path(pattern=r"^(reasoning-large|reasoning-small|fast|embedding|reranker|vision|local-private)$")],
     body: DraftProbeRequest,
 ) -> dict[str, object]:
+    """Probe an unsaved remote draft with synthetic input and transient authorization."""
     settings: Settings = request.app.state.settings
     redis: Redis = request.app.state.redis
     endpoint = ai_settings.validate_endpoint(str(body.base_url), settings)
@@ -83,6 +85,7 @@ async def probe_draft(
     identity = hashlib.sha256(json.dumps((endpoint, hashlib.sha256(credential.encode()).hexdigest())).encode()).hexdigest()
 
     async def recheck_send() -> None:
+        """Revalidate the draft endpoint immediately before the provider request."""
         ai_settings.validate_endpoint(endpoint, settings)
 
     client = ModelGateway(redis, endpoint, credential, destination or "omniroute",
@@ -138,6 +141,7 @@ async def probe_model(
     alias: Annotated[str, Path(pattern=r"^(reasoning-large|reasoning-small|fast|embedding|reranker|vision|local-private)$")],
     body: ProbeRequest,
 ) -> dict[str, object]:
+    """Probe a configured alias under current privacy policy and persist its capability result."""
     settings: Settings = request.app.state.settings
     redis: Redis = request.app.state.redis
     config = await ai_settings.get_ai_execution_config(session, settings, redis)
@@ -158,6 +162,7 @@ async def probe_model(
     if body.capability not in {"embeddings", "reranking"} and not policy.reasoning_allowed:
         raise HTTPException(status_code=403, detail="Probe denied by privacy policy")
     async def recheck_send() -> None:
+        """Reload alias, gateway, and privacy settings before every provider send."""
         latest = await ai_settings.get_ai_execution_config(session, settings, redis)
         latest_mapping = latest.aliases.get(alias)
         latest_policy = RequestPolicy(

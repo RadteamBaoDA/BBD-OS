@@ -21,10 +21,16 @@ app = FastAPI(title="BBD-OS bounded browser collector")
 
 
 async def _dns_safe(url: str) -> None:
+    """Reject URLs whose current DNS resolution includes non-public addresses.
+
+    This resolves and validates at check time; it does not pin the result to the
+    later socket connection, so it is not a complete DNS-rebinding defense.
+    """
     await validate_public_url(url)
 
 
 async def preview_rss(payload: RSSRequest) -> dict[str, object]:
+    """Return an RSS preview under the single-job lock and a 60-second bound."""
     if _job_lock.locked():
         raise HTTPException(status_code=429, detail="A browser job is already running")
     async with _job_lock:
@@ -33,6 +39,11 @@ async def preview_rss(payload: RSSRequest) -> dict[str, object]:
 
 
 async def crawl(payload: CrawlRequest) -> list[dict[str, Any]]:
+    """Collect bounded HTTP or browser pages with URL and byte-budget checks.
+
+    A process-local lock serializes jobs; timeout, page count, depth, and
+    aggregate response bytes bound collection work.
+    """
     if _job_lock.locked():
         raise HTTPException(status_code=429, detail="A browser job is already running")
     async with _job_lock:
@@ -42,6 +53,7 @@ async def crawl(payload: CrawlRequest) -> list[dict[str, Any]]:
         deadline = timedelta(seconds=payload.timeout_seconds)
 
         async def append(url: str, content: str, size: int) -> None:
+            """Account for content and append its normalized observation."""
             state["bytes"] += size
             if state["bytes"] > MAX_BYTES:
                 raise HTTPException(status_code=413, detail="Browser download limit exceeded")
@@ -70,6 +82,7 @@ async def crawl(payload: CrawlRequest) -> list[dict[str, Any]]:
                         current_url = request_url
                         response: httpx.Response | None = None
                         for _ in range(6):
+                            # Revalidate every redirect target immediately before its request.
                             await _dns_safe(current_url)
                             visited.add(current_url)
                             response = await client.send(client.build_request("GET", current_url, headers={"Accept": "text/html,application/xhtml+xml"}), stream=True)
@@ -123,9 +136,15 @@ async def crawl(payload: CrawlRequest) -> list[dict[str, Any]]:
                 response_budget_lock = asyncio.Lock()
 
                 async def guard(context: Any) -> None:
+                    """Install request and response guards before browser navigation."""
                     await _dns_safe(context.request.url)
 
                     async def check_request(route: Any) -> None:
+                        """Abort requests whose current DNS result is non-public.
+
+                        The check does not pin resolved addresses to the browser's
+                        eventual socket connection.
+                        """
                         try:
                             if state.get("exceeded"):
                                 await route.abort()
@@ -141,6 +160,7 @@ async def crawl(payload: CrawlRequest) -> list[dict[str, Any]]:
                     await cdp.send("Fetch.enable", {"patterns": [{"urlPattern": "*", "requestStage": "Response"}]})
 
                     async def intercept_response(paused: dict[str, Any]) -> None:
+                        """Enforce the shared response byte budget for browser traffic."""
                         request_id = str(paused["requestId"])
                         async with response_budget_lock:
                             if state.get("exceeded"):
@@ -207,6 +227,7 @@ async def crawl(payload: CrawlRequest) -> list[dict[str, Any]]:
 
                 @crawler.router.default_handler
                 async def handle_browser(context: PlaywrightCrawlingContext) -> None:
+                    """Extract bounded visible page text and enqueue same-host links."""
                     if state.get("exceeded"):
                         raise HTTPException(status_code=413, detail="Browser download limit exceeded")
                     page = context.page
@@ -234,6 +255,7 @@ async def crawl(payload: CrawlRequest) -> list[dict[str, Any]]:
 async def collect(
     payload: CrawlRequest, authorization: str | None = Header(default=None)
 ) -> list[dict[str, Any]]:
+    """Serve authenticated browser collection requests with bounded crawl work."""
     settings = Settings()
     scheme, _, token = (authorization or "").partition(" ")
     expected = settings.browser_shared_token.get_secret_value()
@@ -251,6 +273,7 @@ async def collect(
 async def collect_rss(
     payload: RSSRequest, authorization: str | None = Header(default=None)
 ) -> dict[str, object]:
+    """Serve authenticated RSS preview requests through the bounded collector."""
     settings = Settings()
     scheme, _, token = (authorization or "").partition(" ")
     expected = settings.browser_shared_token.get_secret_value()

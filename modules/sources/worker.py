@@ -14,6 +14,15 @@ from modules.sources.models import Source, SourcePurgeOperation
 
 
 async def process_source_purge(ctx: dict[str, object], event_id: str) -> None:
+    """Purge source database records and then delete their raw files.
+
+    The source generation fences stale events. Database deletion and realtime
+    tombstones commit before filesystem unlink; an unlink failure marks the
+    operation ``file_cleanup_failed``, returns its event to pending with a
+    30-second retry time, and re-raises the filesystem error.
+    Database records remain deleted while raw files that failed cleanup may
+    still be present.
+    """
     factory = cast(async_sessionmaker[AsyncSession], ctx["session_factory"])
     settings = cast(Settings, ctx["settings"])
     identifier = UUID(event_id)
@@ -53,6 +62,7 @@ async def process_source_purge(ctx: dict[str, object], event_id: str) -> None:
             make_knowledge_change(source.id, deleted=True),
         ])
 
+    # Persist tombstones first so a retry can finish file cleanup after a crash.
     try:
         for raw_uri in raw_uris:
             storage_path(settings.data_dir, raw_uri).unlink(missing_ok=True)

@@ -22,6 +22,7 @@ type ReviewItem = EntityReviewPage['items'][number];
 const schema = z.object({ targetId: z.string(), reason: z.string().trim().min(1).max(300), confirmed: z.boolean() });
 type Values = z.infer<typeof schema>;
 
+/** Extracts conflict details suitable for display from a request error. */
 function conflictDetails(error: unknown): string[] {
   if (!(error instanceof ApiError) || error.status !== 409 || !error.details || typeof error.details !== 'object') return [];
   const details = error.details as Record<string, unknown>;
@@ -39,6 +40,7 @@ function conflictDetails(error: unknown): string[] {
   });
 }
 
+/** Renders an entity or relationship review candidate and submits its supported resolution actions. */
 export function EntityReviewCard({ item }: { item: ReviewItem }) {
   const t = useTranslations('entities');
   const display = useDisplayPreferences();
@@ -59,6 +61,7 @@ export function EntityReviewCard({ item }: { item: ReviewItem }) {
   const options = [...new Map(targets.data?.pages.flatMap((page) => page.items).map((entity) => [entity.id, entity]) ?? []).values()];
   const selected = options.find((entity) => entity.id === targetId);
   useEffect(() => { form.setValue('confirmed', false); }, [form, query, targetId, reason, selected?.id, selected?.name, selected?.revision]);
+  /** Invalidates the owning query after a review action so displayed evidence is reloaded. */
   const invalidate = () => { void client.invalidateQueries({ queryKey: [...entityKeys.all, 'review'] }); void client.invalidateQueries({ queryKey: entityKeys.all }); };
   const assigned = useMutation({
     mutationFn: (values: Values) => {
@@ -87,6 +90,7 @@ export function EntityReviewCard({ item }: { item: ReviewItem }) {
   const error = item.kind === 'entity' ? assigned.error : resolved.error;
   const errorText = error instanceof ApiError ? `${error.message}${error.code ? ` (${error.code})` : ''}` : error?.message;
   const statuses: Record<string, string> = { pending: t('pending'), running: t('running'), succeeded: t('succeeded'), blocked: t('blocked'), failed: t('failed') };
+  /** Renders the review candidate endpoint label from the supplied endpoint state. */
   const endpoint = (value: ReviewItem['source_endpoint']) => value && <span>{value.state === 'assigned' && value.entity_id ? <Link href={`/knowledge/entities/${value.entity_id}`}>{value.entity_name ?? t('unnamedEntity')} · {value.entity_type ? t(`type_${value.entity_type}` as 'type_person') : t('unknownValue')}</Link> : value.state === 'ambiguous' ? t('endpointAmbiguous') : t('endpointUnassigned')}{value.membership_id && <small> · {t('membership')} {value.membership_id}</small>}</span>;
 
   return <li className="card">

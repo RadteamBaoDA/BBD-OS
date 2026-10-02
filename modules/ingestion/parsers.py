@@ -19,16 +19,19 @@ PDF_PAGE_LIMIT = 500
 
 @dataclass(frozen=True)
 class ParsedDocument:
+    """Carry extracted text, format metadata, and parser warnings."""
     text: str
     metadata: dict[str, object]
     warnings: list[str]
 
 
 def _read_utf8(path: Path) -> str:
+    """Read UTF-8 text while accepting and removing a leading BOM."""
     return path.read_text(encoding="utf-8-sig")
 
 
 def _parse_csv(path: Path) -> str:
+    """Render CSV rows as labeled text while preserving header-only files."""
     rows = list(csv.reader(io.StringIO(_read_utf8(path), newline="")))
     if not rows:
         return ""
@@ -40,6 +43,7 @@ def _parse_csv(path: Path) -> str:
 
 
 def _parse_pdf(path: Path, page_limit: int) -> ParsedDocument:
+    """Extract bounded PDF text or report that OCR is required for empty text."""
     reader = PdfReader(path, strict=True)
     if reader.is_encrypted:
         raise ValueError("Encrypted PDFs are not supported")
@@ -52,6 +56,7 @@ def _parse_pdf(path: Path, page_limit: int) -> ParsedDocument:
 
 
 def _parse_docx(path: Path, expanded_limit: int) -> str:
+    """Read DOCX paragraphs and tables after archive size and structure checks."""
     with zipfile.ZipFile(path) as archive:
         if sum(item.file_size for item in archive.infolist()) > expanded_limit:
             raise ValueError("DOCX expanded size exceeds the configured limit")
@@ -70,6 +75,7 @@ def parse_file(
     docx_expanded_limit: int = DOCX_EXPANDED_LIMIT,
     pdf_page_limit: int = PDF_PAGE_LIMIT,
 ) -> ParsedDocument:
+    """Parse a supported file format and return its normalized text and metadata."""
     if mime == "application/pdf":
         return _parse_pdf(path, pdf_page_limit)
     if mime == "application/vnd.openxmlformats-officedocument.wordprocessingml.document":
@@ -91,6 +97,7 @@ def _parse_process(
     docx_expanded_limit: int,
     pdf_page_limit: int,
 ) -> None:
+    """Run parsing in a child process and serialize either result or error details."""
     try:
         output.put(("ok", parse_file(path, mime, docx_expanded_limit, pdf_page_limit)))
     except Exception as exc:
@@ -104,6 +111,7 @@ async def parse_file_bounded(
     docx_expanded_limit: int,
     pdf_page_limit: int,
 ) -> ParsedDocument:
+    """Parse in an isolated process, enforce timeout, and terminate/join on exit."""
     context = multiprocessing.get_context("spawn")
     output = context.Queue(maxsize=1)
     process = context.Process(

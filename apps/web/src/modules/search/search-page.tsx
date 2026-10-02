@@ -19,6 +19,7 @@ import { SearchResults } from './search-results';
 
 const DOCUMENT_QUERY_LIMIT = 1000;
 const ENTITY_QUERY_LIMIT = 300;
+/** Checks whether the query satisfies the minimum search length. */
 const queryLength = (value: string) => [...value].length;
 const schema = z.object({
   query: z.string().refine((value) => queryLength(value) <= DOCUMENT_QUERY_LIMIT, 'queryTooLong'),
@@ -31,6 +32,7 @@ const schema = z.object({
 }).refine((value) => !value.dateFrom || !value.dateTo || value.dateFrom <= value.dateTo, { path: ['dateTo'], message: 'invalidDateRange' });
 type SearchForm = z.infer<typeof schema>;
 
+/** Coordinates search query, filters, mode, and pagination for the search route. */
 export function SearchPage() {
   const t = useTranslations('entities');
   const router = useRouter();
@@ -80,6 +82,7 @@ export function SearchPage() {
   const warnings = [...new Set(results.data?.pages.flatMap((page) => page.warnings) ?? [])];
   const effectiveMode = results.data?.pages.at(-1)?.effective_mode;
 
+  /** Applies the current search form values to the search route state. */
   function submit(value: SearchForm) {
     const next = new URLSearchParams();
     if (value.query.trim()) next.set('q', value.query.trim());

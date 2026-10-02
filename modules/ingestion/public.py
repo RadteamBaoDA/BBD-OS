@@ -30,11 +30,17 @@ from modules.sources import public as sources
 from modules.sources.schemas import ConnectorSource
 
 def _digest(value: object) -> str:
+    """Hash canonical JSON so equivalent payload mappings share an identity."""
     encoded = json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
     return hashlib.sha256(encoded.encode("utf-8")).hexdigest()
 
 
 async def create_collector_credential(session: AsyncSession, source_id: UUID) -> str:
+    """Rotate the source's ingestion credential and return its one-time token.
+
+    Locks the source before revoking active credentials; only the token hash is
+    persisted, and the caller controls transaction completion.
+    """
     source = await sources.lock_source(session, source_id)
     if source is None or source.status == "archived":
         raise LookupError("Source not found")
@@ -57,6 +63,7 @@ async def create_collector_credential(session: AsyncSession, source_id: UUID) ->
 
 
 async def revoke_collector_credential(session: AsyncSession, token: str) -> None:
+    """Revoke a matching collector token after acquiring its source lock."""
     token_hash = hashlib.sha256(token.encode()).hexdigest()
     source_id = await session.scalar(
         select(CollectorCredential.source_id).where(CollectorCredential.token_hash == token_hash)
@@ -74,6 +81,7 @@ async def revoke_collector_credential(session: AsyncSession, token: str) -> None
 
 
 async def revoke_source_credentials(session: AsyncSession, source_id: UUID) -> None:
+    """Revoke every active collector token for an existing locked source."""
     if await sources.lock_source(session, source_id) is None:
         return
     await session.execute(
@@ -84,6 +92,7 @@ async def revoke_source_credentials(session: AsyncSession, source_id: UUID) -> N
 
 
 async def publish_event(session: AsyncSession, event: DomainEvent) -> None:
+    """Add a durable pending event to the caller's transaction outbox."""
     session.add(EventOutbox(
         id=event.id,
         type=event.type,
@@ -102,6 +111,10 @@ async def schedule_normalization(
     session: AsyncSession, run: IngestionRun, batch: IngestionBatch, source_generation: int,
     received_at: datetime,
 ) -> IngestionStage | None:
+    """Create or reuse normalization work and idempotent observation progress.
+
+    Empty batches produce no stage; a new stage emits one durable request event.
+    """
     observations = list((await session.scalars(
         select(SourceObservation).where(SourceObservation.batch_id == batch.id).order_by(SourceObservation.id)
     )).all())
@@ -152,6 +165,7 @@ async def tombstone_document_materializations(session: AsyncSession, document_id
 
 
 async def get_event_delivery(session: AsyncSession, event_id: UUID) -> EventDelivery | None:
+    """Read an event delivery status with a defensive copy of its payload."""
     event = await session.get(EventOutbox, event_id)
     if event is None:
         return None
@@ -165,6 +179,7 @@ async def set_event_delivery(
     *,
     next_attempt_at: datetime | None = None,
 ) -> bool:
+    """Update an outbox event status and optional retry time; report if found."""
     values: dict[str, object] = {"status": status}
     if next_attempt_at is not None:
         values["next_attempt_at"] = next_attempt_at
@@ -178,11 +193,17 @@ async def set_event_delivery(
 
 
 async def get_source_cursor(session: AsyncSession, source_id: UUID) -> str | None:
+    """Return the persisted collection cursor, or None before first ingestion."""
     state = await session.get(SourceIngestionState, source_id)
     return state.cursor if state is not None else None
 
 
 async def cancel_and_purge_source_ingestion(session: AsyncSession, source_id: UUID) -> None:
+    """Fail queued events and delete ingestion data while clearing leases.
+
+    The caller must hold the source lock first to serialize this purge with
+    collection and credential changes.
+    """
     run_ids = select(cast(IngestionRun.id, String)).where(IngestionRun.source_id == source_id)
     await session.execute(
         update(EventOutbox)
@@ -200,6 +221,7 @@ async def cancel_and_purge_source_ingestion(session: AsyncSession, source_id: UU
 
 
 async def collector_can_ingest(session: AsyncSession, source_id: UUID, token: str) -> bool:
+    """Check token scope, revocation state, and active connector status."""
     token_hash = hashlib.sha256(token.encode()).hexdigest()
     credential_valid = bool(await session.scalar(
         select(CollectorCredential.token_hash).where(
@@ -218,6 +240,15 @@ async def receive_batch(
     payload: ReceiveBatch,
     collector_token: str,
 ) -> tuple[IngestionBatch, IngestionRun]:
+    """Authenticate and idempotently accept a fenced collection batch.
+
+    Enforces active source/generation, collector token, and connector fence
+    before duplicate lookup. Exact duplicate keys return the existing batch/run
+    before new-work cursor/lease checks and without committing new work; differing
+    payload hashes raise HTTP 409. A new batch deduplicates identical
+    provider/hash/observation-time records, advances the cursor and lease, writes
+    stage/outbox state, and commits with realtime changes before returning.
+    """
     source = await sources.lock_source(session, payload.source_id)
     if source is None:
         raise HTTPException(status_code=404, detail="Source not found")
@@ -354,6 +385,7 @@ async def receive_batch(
 async def receive_connector_batch(
     session: AsyncSession, payload: ReceiveBatch, collector_token: str
 ) -> Receipt:
+    """Accept a connector batch and return its public run receipt."""
     batch, run = await receive_batch(session, payload, collector_token)
     return Receipt(batch_id=batch.id, run_id=run.id, status=run.status)
 
@@ -366,6 +398,13 @@ async def queue_connector_crawl(
     cursor_before: str | None,
     configuration: dict[str, object],
 ) -> CrawlReceipt:
+    """Idempotently queue a crawl keyed by source, cursor, config, and minute.
+
+    A matching batch/run receipt returns without the new-work commit. New work
+    persists its stage, request event, cursor lease and realtime updates in this
+    function's commit; stale source, connector revision, cursor, or active-lease
+    checks raise HTTP 404/409.
+    """
     source = await sources.lock_source(session, source_id)
     if source is None:
         raise HTTPException(status_code=404, detail="Source not found")
@@ -463,6 +502,14 @@ async def receive_file(
     size: int,
     digest: str,
 ) -> tuple[IngestionRun, bool]:
+    """Accept an uploaded file and return its run plus whether it was created.
+
+    The owner-write route performs caller authorization and owns cleanup of staged
+    raw bytes. This function locks and checks the active source, commits either
+    the existing idempotent run (False) or a new document, batch, stage, and
+    durable event (True), and rejects reuse whose document identity was deleted
+    with HTTP 409.
+    """
     await sources.lock_source_for_document(session, source_id)
     source = await sources.lock_source(session, source_id)
     if source is None or source.status != "active":
@@ -520,6 +567,7 @@ async def receive_file(
 
 
 async def _read_stages(session: AsyncSession, stages: list[IngestionStage]) -> list[StageRead]:
+    """Project persisted stage state into ordered API read models."""
     if not stages:
         return []
     counts = await session.execute(
@@ -553,6 +601,7 @@ async def _read_stages(session: AsyncSession, stages: list[IngestionStage]) -> l
 
 
 async def get_run(session: AsyncSession, run_id: UUID) -> tuple[IngestionRun, list[StageRead]] | None:
+    """Return a run and its stage projection, or None when the run is absent."""
     run = await session.get(IngestionRun, run_id)
     if run is None:
         return None
@@ -615,6 +664,7 @@ async def list_source_runs(
     }
 
     def detach(run: IngestionRun) -> RunRead:
+        """Project an ORM run and its stages into a detached response."""
         return RunRead(
             run_id=run.id,
             source_id=run.source_id,
@@ -635,6 +685,15 @@ async def list_source_runs(
 async def retry_run(
     session: AsyncSession, run_id: UUID, requested_stage_key: str | None = None
 ) -> IngestionRun | None:
+    """Requeue an eligible failed stage after validating source generation.
+
+    Locks in source, run, stage order and requires a durable prior event. Returns
+    None when the run is absent; no-op paths return the existing run for active,
+    successful, or otherwise non-retryable work. Accepted retries reset attempts/errors, copy the prior
+    event payload into a fresh outbox event, refresh collection leases when
+    needed, and commit. Failed normalization progress requiring correction and
+    stale source generations are rejected with HTTP 409.
+    """
     run_hint = await session.get(IngestionRun, run_id)
     if run_hint is None:
         return None

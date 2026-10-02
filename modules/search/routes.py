@@ -19,16 +19,19 @@ OwnerWrite = Annotated[AuthSession, Depends(require_owner_write)]
 
 @router.post("", response_model=SearchResponse)
 async def search(payload: SearchRequest, request: Request, session: Session, _owner: OwnerRead) -> SearchResponse:
+    """Run owner-authenticated search using the request-scoped Redis and settings."""
     return await public.search(session, request.app.state.redis, request.app.state.settings, payload)
 
 
 @router.get("/index", response_model=SearchIndexStatus)
 async def index_status(session: Session, _owner: OwnerRead) -> SearchIndexStatus:
+    """Return owner-only status for the active or latest index generation."""
     return await public.index_status(session)
 
 
 @router.post("/reindex", response_model=ReindexResponse, status_code=202)
 async def reindex(request: Request, session: Session, _owner: OwnerWrite) -> ReindexResponse:
+    """Queue reindexing only when a permitted remote embedding mapping is configured."""
     redis: Redis = request.app.state.redis
     settings: Settings = request.app.state.settings
     config, mapping, policy = await indexing.configured_embedding(session, settings, redis)

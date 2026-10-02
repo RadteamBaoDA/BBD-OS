@@ -19,6 +19,7 @@ from core.database import Base
 
 
 class Document(Base):
+    """Persist current document metadata and its selected immutable revision."""
     __tablename__ = "documents"
     __table_args__ = (
         UniqueConstraint("source_id", "external_id", name="uq_documents_source_external"),
@@ -57,6 +58,7 @@ class Document(Base):
 
 
 class DocumentVersion(Base):
+    """Persist one immutable document content revision and its content hash."""
     __tablename__ = "document_versions"
     __table_args__ = (
         UniqueConstraint("document_id", "version_number", name="uq_document_versions_number"),
@@ -79,6 +81,7 @@ class DocumentVersion(Base):
 
 
 class NormalizedDocumentIdentity(Base):
+    """Reserve a source/external-ID mapping, including deleted-identity tombstones."""
     __tablename__ = "normalized_document_identities"
     __table_args__ = (UniqueConstraint("source_id", "external_id", name="uq_normalized_document_identities_source_external"),)
 
@@ -90,6 +93,7 @@ class NormalizedDocumentIdentity(Base):
 
 
 class NormalizedVersionProvenance(Base):
+    """Snapshot accepted provider and observation provenance for a normalized version."""
     __tablename__ = "normalized_version_provenance"
     __table_args__ = (
         UniqueConstraint("document_id", "accepted_record_hash", "normalization_version", name="uq_normalized_version_provenance_identity"),
@@ -117,6 +121,7 @@ class NormalizedVersionProvenance(Base):
 
 
 class DocumentChunk(Base):
+    """Persist a bounded searchable segment tied to one immutable document version."""
     __tablename__ = "document_chunks"
     __table_args__ = (
         UniqueConstraint("document_version_id", "chunk_index", name="uq_document_chunks_version_index"),

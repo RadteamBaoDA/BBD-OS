@@ -8,10 +8,12 @@ SUPPORTED_TYPES = {"rss", "web", "api"}
 
 
 def configuration(source: ConnectorSource) -> ConnectorConfig:
+    """Parse the detached source configuration into the shared connector contract."""
     return ConnectorConfig.model_validate(source.configuration or {})
 
 
 def validate(source: ConnectorSource) -> dict[str, Any]:
+    """Validate active packaged connector settings and return a collector snapshot."""
     if source.status != "active":
         raise ValueError("Source is not active")
     if source.type not in SUPPORTED_TYPES:
@@ -38,6 +40,7 @@ def validate(source: ConnectorSource) -> dict[str, Any]:
 
 
 def health(source: ConnectorSource) -> dict[str, str]:
+    """Report source lifecycle or whether its packaged connector configuration is ready."""
     if source.status != "active":
         return {"status": source.status, "connector": source.type}
     try:
@@ -48,12 +51,14 @@ def health(source: ConnectorSource) -> dict[str, str]:
 
 
 def sync(source: ConnectorSource, cursor: str | None) -> dict[str, Any]:
+    """Build the validated n8n dispatch payload and current cursor state."""
     from modules.connectors.n8n import workflow_state
 
     return {**validate(source), **workflow_state(cursor)}
 
 
 def normalize(record: dict[str, Any]) -> dict[str, Any]:
+    """Normalize provider fields and timestamps into the bounded ingestion record shape."""
     from datetime import UTC, datetime
 
     raw_timestamp = str(record.get("observed_at") or "")

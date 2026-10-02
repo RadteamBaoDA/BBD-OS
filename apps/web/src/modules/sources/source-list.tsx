@@ -27,16 +27,19 @@ import { ConnectorEditor } from './connector-editor';
 import { SourceForm } from './source-form';
 import { SyncHistory } from './sync-history';
 
+/** Formats an optional ISO timestamp with the supplied application locale and time zone, returning the supplied fallback when absent. */
 function formatDate(value: string | null, locale: AppLocaleId, timezone: string, fallback: string): string {
   return value ? new Intl.DateTimeFormat(normalizeFormattingLocale(locale), {
     dateStyle: 'medium', timeStyle: 'short', timeZone: timezone,
   }).format(new Date(value)) : fallback;
 }
 
+/** Maps a source or run status to the matching translation message key. */
 function statusKey(status: string): 'statusActive' | 'statusPaused' | 'statusArchived' {
   return status === 'paused' ? 'statusPaused' : status === 'archived' ? 'statusArchived' : 'statusActive';
 }
 
+/** Formats a connector schedule interval as localized display text. */
 function scheduleLabel(minutes: number, t: ReturnType<typeof useTranslations<'sources'>>) {
   if (minutes === 15 || minutes === 30) return t('everyMinutes', { minutes });
   if (minutes === 60) return t('everyHour');
@@ -45,6 +48,7 @@ function scheduleLabel(minutes: number, t: ReturnType<typeof useTranslations<'so
   return t('scheduleUnknown');
 }
 
+/** Polls and renders progress for the supplied asynchronous source purge operation. */
 function PurgeProgress({ operationId }: { operationId: string }) {
   const t = useTranslations('sources');
   const operation = useQuery({
@@ -57,6 +61,7 @@ function PurgeProgress({ operationId }: { operationId: string }) {
   return <p role="status">{operation.data.status}{operation.data.error_code ? ` · ${operation.data.error_code}` : ''}</p>;
 }
 
+/** Renders a source’s schedule, status, and actions, including archive or purge confirmation. */
 function SourceEntry({
   source,
   schedule,
@@ -94,6 +99,7 @@ function SourceEntry({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(false);
 
+  /** Changes the source between active and paused states and refreshes the displayed source data. */
   async function toggleStatus() {
     setBusy(true);
     setError(false);
@@ -119,6 +125,7 @@ function SourceEntry({
     }
   }
 
+  /** Archives the source and optionally starts its data purge, preserving the user-selected deletion behavior. */
   async function disconnect(deleteData: boolean) {
     if (!window.confirm(t(deleteData ? 'confirmDelete' : 'confirmKeep'))) return;
     setBusy(true);
@@ -164,6 +171,7 @@ function SourceEntry({
   </li>;
 }
 
+/** Loads sources and connector configuration, and coordinates selection changes with the active unsaved-draft guard. */
 export function SourceList() {
   const t = useTranslations('sources');
   const queryClient = useQueryClient();
@@ -172,6 +180,7 @@ export function SourceList() {
   const [editing, setEditing] = useState<Source | null | undefined>(undefined);
   const [editSession, setEditSession] = useState(0);
   const transitionGuard = useRef<(() => boolean) | null>(null);
+  /** Coordinates editor changes and confirms leaving a dirty connector draft before changing selection. */
   const transition = useCallback((next: Source | null | undefined, manual = false) => {
     if (next !== undefined && !ensureSourcesDocument()) return;
     if (transitionGuard.current && !transitionGuard.current()) return;
@@ -195,6 +204,7 @@ export function SourceList() {
     ]),
   })) });
   const configurationBySourceId = new Map(connectors.map((source, index) => [source.id, configurations[index]]));
+  /** Invalidates the source list query after a source mutation. */
   const refresh = () => queryClient.invalidateQueries({ queryKey: sourceKeys.all });
 
   return <div className="sources-list">

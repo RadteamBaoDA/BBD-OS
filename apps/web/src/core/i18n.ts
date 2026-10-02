@@ -7,10 +7,12 @@ const formattingLocales: Record<AppLocaleId, string> = {
   'vi-vi': 'vi-VN',
 };
 
+/** Maps the application locale identifier to the canonical locale used by Intl formatters. */
 export function normalizeFormattingLocale(locale: AppLocaleId): string {
   return formattingLocales[locale];
 }
 
+/** Formats a timestamp with an explicit application locale and time zone. */
 export function formatDateTime(value: string | Date, locale: AppLocaleId, timezone: string): string {
   return new Intl.DateTimeFormat(normalizeFormattingLocale(locale), {
     dateStyle: 'medium',

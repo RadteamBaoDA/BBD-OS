@@ -8,6 +8,7 @@ import { useWorkspaceSession } from '@/core/app-shell/workspace-shell';
 
 type Privacy = { allow_remote_reasoning: boolean; allow_remote_embeddings: boolean };
 
+/** Renders privacy settings in the consolidated settings workspace. */
 export function PrivacySettings() {
   const { csrfToken } = useWorkspaceSession();
   const queryClient = useQueryClient();

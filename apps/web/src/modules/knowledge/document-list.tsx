@@ -10,6 +10,7 @@ import { Upload } from '@/modules/ingestion/upload';
 import { useRealtime } from '@/core/realtime-provider';
 import { useTranslations } from 'next-intl';
 
+/** Lists documents and consumes realtime refresh state for the knowledge document view. */
 export function DocumentList() {
   const t = useTranslations('shell');
   const realtime = useRealtime();
@@ -18,6 +19,7 @@ export function DocumentList() {
   const [refreshingUpdates, setRefreshingUpdates] = useState(false);
   const documents = useInfiniteQuery({ queryKey: documentKeys.all, initialPageParam: undefined as string | undefined, queryFn: ({ pageParam }) => listDocuments(pageParam), getNextPageParam: (last) => last.next_cursor ?? undefined });
   const items = documents.data?.pages.flatMap((page) => page.items) ?? [];
+  /** Refreshes documents from realtime updates and clears the local busy indicator after the attempt settles. */
   const consumeUpdates = async () => {
     setRefreshingUpdates(true);
     try { await realtime.consumeDocumentUpdates(); } finally { setRefreshingUpdates(false); }

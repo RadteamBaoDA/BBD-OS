@@ -13,6 +13,7 @@ import { Label } from '@/components/ui/label';
 const setupSchema = z.object({ setupToken: z.string().min(1), password: z.string().min(12).max(128), confirmPassword: z.string() }).refine((value) => value.password === value.confirmPassword, { path: ['confirmPassword'], message: 'Passwords do not match' });
 type SetupForm = z.infer<typeof setupSchema>;
 
+/** Renders first-run setup and submits the initial workspace configuration. */
 export default function SetupPage() {
   const router = useRouter();
   const form = useForm<SetupForm>({ resolver: zodResolver(setupSchema) });

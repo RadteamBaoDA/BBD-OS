@@ -3,6 +3,8 @@ from dataclasses import dataclass
 
 @dataclass(frozen=True)
 class RelationshipDescriptor:
+    """Declare relationship storage's dependencies, capabilities, and event."""
+
     id: str = "knowledge.relationships"
     name: str = "Relationships"
     version: str = "1.0.0"

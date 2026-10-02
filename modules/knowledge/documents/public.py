@@ -30,12 +30,14 @@ EXTRACTION_INPUT_BYTES = 64_000
 
 @dataclass(frozen=True)
 class ExtractionChunk:
+    """Carry a chunk ID and its content as detached extraction input."""
     id: UUID
     content: str
 
 
 @dataclass(frozen=True)
 class ExtractionInput:
+    """Snapshot the active current document version and source extraction policy."""
     document_id: UUID
     document_version_id: UUID
     source_id: UUID
@@ -47,6 +49,7 @@ class ExtractionInput:
 
 @dataclass(frozen=True)
 class ExtractionEvidenceRef:
+    """Identify a chunk accepted as evidence under a source generation fence."""
     document_id: UUID
     document_version_id: UUID
     source_id: UUID
@@ -56,6 +59,7 @@ class ExtractionEvidenceRef:
 
 @dataclass(frozen=True)
 class ReadyVersionRef:
+    """Reference a ready current version with source generation and privacy state."""
     document_id: UUID
     document_version_id: UUID
     source_id: UUID
@@ -67,6 +71,7 @@ class ReadyVersionRef:
 
 @dataclass(frozen=True)
 class ReviewEvidenceRef:
+    """Carry retained evidence provenance and excerpts for owner correction review."""
     document_id: UUID
     document_version_id: UUID
     source_id: UUID
@@ -83,6 +88,7 @@ class ReviewEvidenceRef:
 
 @dataclass(frozen=True)
 class ReviewVersionFence:
+    """Snapshot document/source identity and current source generation for review."""
     document_id: UUID
     source_id: UUID
     current_source_generation: int
@@ -91,6 +97,7 @@ class ReviewVersionFence:
 
 
 def content_hash(content: str) -> str:
+    """Return the SHA-256 digest of UTF-8 encoded document content."""
     return hashlib.sha256(content.encode("utf-8")).hexdigest()
 
 
@@ -98,6 +105,7 @@ async def list_evidence_ref_keys(
     session: AsyncSession, *, document_id: UUID | None = None, source_id: UUID | None = None,
     limit: int = 10_000,
 ) -> list[tuple[UUID, UUID]]:
+    """List version/chunk evidence keys for exactly one bounded document or source."""
     if (document_id is None) == (source_id is None) or not 1 <= limit <= 10_000:
         raise ValueError("Specify one document or source and a bounded limit")
     statement = (
@@ -113,6 +121,7 @@ async def list_evidence_ref_keys(
 
 
 async def add_content_chunks(session: AsyncSession, version: DocumentVersion) -> int:
+    """Chunk a version's content, add its searchable rows, and return their count."""
     await session.flush()
     drafts = chunk_text(version.content)
     for index, draft in enumerate(drafts):
@@ -158,6 +167,7 @@ async def backfill_current_chunks(session: AsyncSession, limit: int = 2) -> int:
 
 
 async def raw_uris(session: AsyncSession, source_id: UUID | None = None) -> set[str]:
+    """Return nonempty raw-storage URIs globally or for one source."""
     statement = select(Document.raw_uri).where(Document.raw_uri.is_not(None))
     if source_id is not None:
         statement = statement.where(Document.source_id == source_id)
@@ -165,6 +175,7 @@ async def raw_uris(session: AsyncSession, source_id: UUID | None = None) -> set[
 
 
 async def create_document(session: AsyncSession, payload: DocumentCreate) -> Document:
+    """Create a source-locked document and initial version, then publish its change."""
     await sources.lock_source_for_document(session, payload.source_id)
     digest = content_hash(payload.content)
     document = Document(
@@ -199,10 +210,12 @@ async def create_document(session: AsyncSession, payload: DocumentCreate) -> Doc
 
 
 async def get_document(session: AsyncSession, document_id: UUID) -> Document | None:
+    """Fetch a document by primary key without applying additional visibility filters."""
     return await session.get(Document, document_id)
 
 
 async def has_document_identity(session: AsyncSession, source_id: UUID, external_id: str) -> bool:
+    """Check whether a source already owns the given external document ID."""
     return bool(
         await session.scalar(
             select(Document.id).where(Document.source_id == source_id, Document.external_id == external_id)
@@ -351,6 +364,7 @@ async def add_uploaded_document(
     external_id: str,
     document_id: UUID,
 ) -> UUID:
+    """Create the queued empty version record for a previously stored raw upload."""
     document = Document(
         id=document_id,
         source_id=source_id,
@@ -374,6 +388,7 @@ async def add_uploaded_document(
 async def lock_document_for_extraction(
     session: AsyncSession, document_id: UUID, source_id: UUID
 ) -> bool:
+    """Lock and confirm a document belongs to the supplied source."""
     return await session.scalar(
         select(Document.id)
         .where(Document.id == document_id, Document.source_id == source_id)
@@ -384,6 +399,7 @@ async def lock_document_for_extraction(
 async def set_extraction_status(
     session: AsyncSession, document_id: UUID, source_id: UUID, status: str
 ) -> bool:
+    """Set extraction state only for a document owned by the supplied source."""
     result = await session.execute(
         update(Document)
         .where(Document.id == document_id, Document.source_id == source_id)
@@ -404,6 +420,7 @@ async def save_extraction(
     warnings: list[str],
     parser: str,
 ) -> UUID | None:
+    """Save parser output under a locked active source, adding chunks only once."""
     source = await sources.lock_source(session, source_id)
     if source is None or source.status != "active":
         return None
@@ -468,6 +485,7 @@ async def save_extraction(
 async def list_documents(
     session: AsyncSession, limit: int, cursor: str | None, source_id: UUID | None
 ) -> tuple[list[Document], str | None]:
+    """Return a created-time-descending document page with an optional cursor."""
     statement = select(Document)
     if source_id is not None:
         statement = statement.where(Document.source_id == source_id)
@@ -487,6 +505,7 @@ async def list_documents(
 async def update_document(
     session: AsyncSession, document: Document, payload: DocumentPatch
 ) -> Document:
+    """Update supplied metadata fields, publish only actual changes, and refresh the row."""
     changed = False
     if "title" in payload.model_fields_set:
         value = payload.title or ""
@@ -503,6 +522,7 @@ async def update_document(
 
 
 async def delete_document(session: AsyncSession, document_id: UUID) -> bool:
+    """Lock and delete a document, tombstoning normalized identity and removing supported graph data."""
     identity = await session.execute(select(Document.source_id).where(Document.id == document_id))
     source_id = identity.scalar_one_or_none()
     if source_id is None:
@@ -563,6 +583,7 @@ async def delete_source_documents(session: AsyncSession, source_id: UUID) -> Non
 async def _remove_graph_support(
     session: AsyncSession, *, document_id: UUID | None = None, source_id: UUID | None = None
 ) -> None:
+    """Remove evidence-backed entity and relationship support for exactly one scope."""
     if (document_id is None) == (source_id is None):
         raise ValueError("Specify one document or source for graph cleanup")
     from modules.knowledge.entities import public as entities
@@ -576,6 +597,7 @@ async def _remove_graph_support(
         session, refs=refs, document_id=document_id, source_id=source_id, membership_ids=membership_ids
     )
     all_entity_ids = sorted(set(entity_ids) | set(relationship_entity_ids), key=str)
+    # Lock entity rows before relationship rows consistently with correction transactions.
     await entities.lock_entity_ids(session, all_entity_ids)
     await relationships.lock_relationship_ids(session, relationship_ids)
     if document_id is not None:
@@ -593,6 +615,14 @@ async def _remove_graph_support(
 async def append_content(
     session: AsyncSession, document_id: UUID, expected_version: int, content: str
 ) -> Document | None:
+    """Append a version when the active source and expected revision permit it.
+
+    Returns None for a missing document/source or inactive source. Identical
+    content returns the current document before checking ``expected_version``,
+    making a same-content retry a no-op even when its revision hint is stale;
+    changed content with a stale revision raises ValueError. New versions commit
+    through the realtime replay helper.
+    """
     source_id = await session.scalar(select(Document.source_id).where(Document.id == document_id))
     if source_id is None:
         return None
@@ -614,6 +644,7 @@ async def append_content(
         raise RuntimeError("Current document version is missing")
     if current.content == content:
         return document
+    # Check the revision only after the identical-content no-op to keep retries idempotent.
     if document.current_version != expected_version:
         raise ValueError("Document revision is stale")
     max_number = await session.scalar(
@@ -644,6 +675,7 @@ async def append_content(
 async def read_extraction_input(
     session: AsyncSession, version_id: UUID, allowed_chunk_ids: list[UUID] | None = None
 ) -> ExtractionInput | None:
+    """Return bounded chunks only for the active source's ready current version."""
     statement = (
         select(
             Document.id, Document.source_id, Source.generation, Source.local_only,
@@ -727,6 +759,7 @@ async def read_extraction_evidence_refs(
 async def list_ready_version_refs(
     session: AsyncSession, limit: int = 50, cursor: str | None = None
 ) -> tuple[list[ReadyVersionRef], str | None]:
+    """Page through active-source current versions that have ready chunks."""
     if not 1 <= limit <= 100:
         raise ValueError("Ready-version page size must be between 1 and 100")
     statement = (
@@ -759,6 +792,7 @@ async def list_ready_version_refs(
 
 
 async def get_ready_version_ref(session: AsyncSession, version_id: UUID) -> ReadyVersionRef | None:
+    """Resolve one version only while it remains the ready current version."""
     row = (await session.execute(
         select(
             Document.id, Document.created_at, Source.id, Source.generation,
@@ -786,6 +820,7 @@ async def get_ready_version_ref(session: AsyncSession, version_id: UUID) -> Read
 
 
 async def _publish_document_ready(session: AsyncSession, document: Document, version: DocumentVersion) -> None:
+    """Queue the version-ready event with the source generation captured at publish time."""
     from core.events import DomainEvent
     from modules.ingestion import public as ingestion
 
@@ -804,10 +839,12 @@ async def _publish_document_ready(session: AsyncSession, document: Document, ver
 
 
 def encode_version_cursor(version_number: int) -> str:
+    """Encode a version number as canonical unpadded URL-safe base64."""
     return base64.urlsafe_b64encode(str(version_number).encode()).decode().rstrip("=")
 
 
 def decode_version_cursor(cursor: str) -> int:
+    """Decode a canonical version cursor or raise HTTP 422 for invalid input."""
     try:
         if "=" in cursor:
             raise ValueError("Cursor must be unpadded")
@@ -827,6 +864,7 @@ def decode_version_cursor(cursor: str) -> int:
 async def list_versions(
     session: AsyncSession, document_id: UUID, limit: int, cursor: str | None
 ) -> tuple[list[DocumentVersion] | None, str | None]:
+    """List immutable revisions in ascending order; None indicates missing document."""
     after_version = decode_version_cursor(cursor) if cursor is not None else None
     if await session.get(Document, document_id) is None:
         return None, None
@@ -846,6 +884,7 @@ async def list_versions(
 async def get_version(
     session: AsyncSession, document_id: UUID, number: int
 ) -> DocumentVersion | None:
+    """Fetch one immutable revision by document ID and version number."""
     return await session.scalar(
         select(DocumentVersion).where(
             DocumentVersion.document_id == document_id,
@@ -857,6 +896,7 @@ async def get_version(
 async def read_evidence_refs(
     session: AsyncSession, refs: list[tuple[UUID, UUID]], *, for_write: bool = False
 ) -> list[EvidenceReferenceRead]:
+    """Resolve unique bounded version/chunk references, locking owners for writes."""
     if len(refs) > 100 or len(set(refs)) != len(refs):
         raise ValueError("Evidence references must be unique and contain at most 100 items")
     if not refs:
@@ -892,6 +932,7 @@ async def review_version_locator(session: AsyncSession, version_id: UUID) -> tup
 async def review_version_fences(
     session: AsyncSession, version_ids: list[UUID],
 ) -> dict[UUID, ReviewVersionFence]:
+    """Return source-generation snapshots for a bounded de-duplicated version set."""
     ids = list(dict.fromkeys(version_ids))
     if len(ids) > 100:
         raise ValueError("Review version fence set exceeds its page limit")
@@ -966,6 +1007,7 @@ async def lock_document_ids(session: AsyncSession, document_ids: list[UUID]) -> 
 async def _read_evidence_ref_rows(
     session: AsyncSession, refs: list[tuple[UUID, UUID]]
 ) -> list[EvidenceReferenceRead]:
+    """Build ordered evidence DTOs with version provenance and exact reference validation."""
     rows = (await session.execute(
         select(Document, DocumentVersion, DocumentChunk, Source.id)
         .join(DocumentVersion, DocumentVersion.document_id == Document.id)

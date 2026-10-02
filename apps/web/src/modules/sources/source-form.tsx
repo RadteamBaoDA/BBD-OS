@@ -14,6 +14,7 @@ import { createManualSource, sourceKeys } from './api';
 const schema = z.object({ name: z.string().trim().min(1).max(200) });
 type Values = z.infer<typeof schema>;
 
+/** Creates a manual source and invokes onSaved after the mutation succeeds. */
 export function SourceForm({ onSaved }: { onSaved: () => void }) {
   const t = useTranslations('sources');
   const { csrfToken } = useWorkspaceSession();

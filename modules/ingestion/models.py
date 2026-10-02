@@ -13,6 +13,7 @@ COLLECTION_LEASE = timedelta(minutes=15)
 
 
 class IngestionBatch(Base):
+    """Persist an idempotency key and payload identity for a source batch."""
     __tablename__ = "ingestion_batches"
     __table_args__ = (UniqueConstraint("source_id", "batch_key", name="uq_ingestion_batches_source_key"),)
 
@@ -25,6 +26,7 @@ class IngestionBatch(Base):
 
 
 class IngestionRun(Base):
+    """Persist processing status and error state for an accepted batch."""
     __tablename__ = "ingestion_runs"
     __table_args__ = (
         CheckConstraint("status IN ('queued', 'running', 'succeeded', 'needs_ocr', 'failed')", name="ck_ingestion_runs_status"),
@@ -41,6 +43,7 @@ class IngestionRun(Base):
 
 
 class IngestionStage(Base):
+    """Persist stage retry scheduling, lease, outcome, and result count."""
     __tablename__ = "ingestion_stages"
     __table_args__ = (
         UniqueConstraint("run_id", "stage_key", name="uq_ingestion_stages_run_key"),
@@ -61,6 +64,7 @@ class IngestionStage(Base):
 
 
 class SourceObservation(Base):
+    """Retain an immutable provider observation with collection timestamps."""
     __tablename__ = "source_observations"
     __table_args__ = (
         UniqueConstraint(
@@ -82,6 +86,7 @@ class SourceObservation(Base):
 
 
 class ObservationNormalization(Base):
+    """Track versioned normalization outcome and linked document artifacts."""
     __tablename__ = "observation_normalizations"
     __table_args__ = (
         UniqueConstraint("observation_id", "normalization_version", name="uq_observation_normalizations_identity"),
@@ -105,6 +110,7 @@ class ObservationNormalization(Base):
 
 
 class SourceIngestionState(Base):
+    """Store a source cursor and the active run lease that owns it."""
     __tablename__ = "source_ingestion_state"
 
     source_id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), ForeignKey("sources.id", ondelete="CASCADE"), primary_key=True)
@@ -115,6 +121,7 @@ class SourceIngestionState(Base):
 
 
 class CollectorCredential(Base):
+    """Persist only a hashed collector token and its source-scoped authority."""
     __tablename__ = "collector_credentials"
 
     token_hash: Mapped[str] = mapped_column(String(64), primary_key=True)
@@ -125,6 +132,7 @@ class CollectorCredential(Base):
 
 
 class EventOutbox(Base):
+    """Persist domain events until queued delivery succeeds or is terminally failed."""
     __tablename__ = "event_outbox"
     __table_args__ = (
         CheckConstraint("status IN ('pending', 'queued', 'delivered', 'failed')", name="ck_event_outbox_status"),

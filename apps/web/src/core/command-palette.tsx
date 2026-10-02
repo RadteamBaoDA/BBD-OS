@@ -6,10 +6,12 @@ import { Button } from '@/components/ui/button';
 import { commandDestinations } from '@/core/module-registry';
 import { useGuardedNavigation } from '@/core/guarded-navigation';
 
+/** Checks whether a key event originated in an editable control. */
 function isEditing(target: EventTarget | null) {
   return target instanceof HTMLElement && Boolean(target.closest('input, textarea, select, [contenteditable], [role="textbox"]'));
 }
 
+/** Registers keyboard navigation and renders the command palette for workspace destinations. */
 export function CommandPalette() {
   const { navigate } = useGuardedNavigation();
   const t = useTranslations('shell');
@@ -20,6 +22,7 @@ export function CommandPalette() {
   const actions = commandDestinations.filter((action) => t(action.messageKey).toLocaleLowerCase().includes(filter.toLocaleLowerCase()));
 
   useEffect(() => {
+    /** Handles the palette shortcut only when the key event is not consumed by an editable control. */
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.isComposing) return;
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'k') {
