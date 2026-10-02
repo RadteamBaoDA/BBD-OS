@@ -745,3 +745,13 @@ TaskT4 production acceptance/commit still pending fullprescribedDockerbuild; who
 - Reviewer independently verified all 24 T4 hashes and all 30 actual backend manifest rows. Earlier handoff's count of 31 was incorrect; the report contains 30 hashes.
 - Fresh gpt-6-luna `p04_type_filter_repair` owns only entity-list.tsx/messages.ts in reused auxiliary worktree `bbd-p04-graph-search`. Prior auxiliary state saved to ignored scratch; current primary files copied/staged as its explicit two-file reference baseline. No primary production writer is active. EntityList impact UNKNOWN/partial; real route/client caller trace confirms consumed type parameter.
 - Integrate only the repair delta after baseline/hash check, then serialize build and independent scoped review. Migration proposal remains scratch-only pending owner history; Docker restoration remains pending. No tests/runtime/merge/archive acceptance.
+
+### P04 entity-type filter integrated; scoped review active — 2026-10-02
+
+- Previous goal turn: progress (final source review finding, isolated repair dispatch, checkpoint commit). Luna completed the repair in its own auxiliary worktree; terminal status verified before integration.
+- Repair touches only entity-list.tsx/messages.ts: localized All/types Select, existing type array and type-aware query key/client. Patch SHA256 7DAC05C44105B0CD909B56B9E71FFC438719AEE92F7C2C7030ABB84BACC82AF6; report SHA256 26DDC09AD2CA3790C62D7B39B77229AD342BF590CE6AA8D8087C1306F570C452.
+- Controller verified primary two-file baseline hashes, patch scope and apply check, then applied. Independently generated primary delta matches the patch SHA exactly; diff check passed. New full 24-file diff SHA256 E6AEEE1DD5D9FDAE04FE5D8CCA001EE318BBB53C30656EE19745FCB73D90ADFF; frozen raw manifest saved.
+- Prescribed ./scripts/dev.ps1 build attempted once for this new source: native Next compilation, integrated TypeScript and 17 static pages passed. Docker build failed with exit1 because dockerDesktopLinuxEngine is missing. Reporting wrapper exit0 does not mean build passed. Process environment restored; all 24 hashes unchanged.
+- Independent Sol p04_final_filter_review is live, checking the new type-filter P2 and its callers. Known migration P1/application history and Docker gates remain open; no migration edit, tests/runtime, phase commit/merge/archive claim.
+
+Actual phase forced index refreshed after filter integration: 2817 nodes, 7542 edges, 231 flows. Staged scope detection remains CRITICAL, 136 symbols / 29 affected flows / 24 files; warning delivered. Source freeze and existing independent whole-phase/caller review gates retained. This does not repair incomplete pre-edit graph coverage or establish runtime safety.
