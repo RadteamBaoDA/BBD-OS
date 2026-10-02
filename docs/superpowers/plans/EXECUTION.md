@@ -755,3 +755,10 @@ TaskT4 production acceptance/commit still pending fullprescribedDockerbuild; who
 - Independent Sol p04_final_filter_review is live, checking the new type-filter P2 and its callers. Known migration P1/application history and Docker gates remain open; no migration edit, tests/runtime, phase commit/merge/archive claim.
 
 Actual phase forced index refreshed after filter integration: 2817 nodes, 7542 edges, 231 flows. Staged scope detection remains CRITICAL, 136 symbols / 29 affected flows / 24 files; warning delivered. Source freeze and existing independent whole-phase/caller review gates retained. This does not repair incomplete pre-edit graph coverage or establish runtime safety.
+
+### P04 entity-type filter review PASS; external prerequisites pending — 2026-10-02
+
+- Independent scoped Sol review source/spec PASS and quality PASS; whole-phase P2 type filter closed in source. Report P04-final-filter-review.md SHA256 B005BB65D8A90823385AD830F4F0C91B4B11DEC68540501F345E26540A329218. All 24 frozen raw hashes match before/after.
+- Current source preserves accepted T4 F1–F9 closures. Whole-phase P1 duplicate migration index ownership remains open. No claim of whole-phase PASS or full build.
+- Remaining required external facts: Docker engine restoration for prescribed four-image build, and owner migration application history to select a compatible repair. Both existing async questions remain unanswered; elapsed time is not an answer. No duplicate question or unchanged-tree Docker retry.
+- All currently assigned production repair/review agents are terminal; within the accepted P04 entry gate, remaining authorized independent source work is exhausted. P05 must follow accepted P04 integration. This turn made progress (filter integration/build/source review), and now reaches an external wait. Keep the full goal active; blocked audit threshold is not yet satisfied. Preserve primary/auxiliary/historical worktrees and all uncommitted source. No tests/runtime/phase commit/merge/archive performed.
