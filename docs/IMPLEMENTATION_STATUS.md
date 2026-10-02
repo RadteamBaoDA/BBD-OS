@@ -1,6 +1,6 @@
 # BBD-OS implementation status
 
-Updated: 2026-10-01 (R01/R02 integrated; R03-core/R05 integrated; R09 integrated; R04/R06 integrated and archived; RN1 integrated and archived; P04 active; behavioral acceptance deferred).
+Updated: 2026-10-02 (R01/R02 integrated; R03-core/R05 integrated; R09 integrated; R04/R06 integrated and archived; RN1 integrated and archived; P04 merged; P05 starting; behavioral acceptance deferred).
 
 Markers: `[ ]` not started; `[~]` in progress; `[x]` complete; `[!]` blocked.
 
@@ -14,8 +14,8 @@ Markers: `[ ]` not started; `[~]` in progress; `[x]` complete; `[!]` blocked.
 - [x] Phase 1: core data platform code/build and whole-branch review complete; merged to `main` (`d425057`). Behavioral acceptance remains deferred.
 - [x] Phase 2: ingestion and packaged collection workflows (code/build and independent review complete; merged to `main` as `2f7c409`; behavioral acceptance deferred).
 - [x] Phase 3: search and embeddings production code/build/whole-branch review complete; behavioral acceptance deferred to the post-code test stage.
-- [x] Phase 4: P04-T1–T4 production code/build/scoped review, migration source repair (`1c5a453`), whole-phase source review, and pinned develop integration build complete. Merge commit remains pending; database migration application history and runtime/provider acceptance remain unknown/deferred. Historical dirty draft preserved.
-- [ ] Phase 5: temporal knowledge and Graphiti.
+- [x] Phase 4: P04-T1–T4 production code/build/scoped review, migration source repair (`1c5a453`), whole-phase source review, and pinned develop integration build complete. Merged locally into develop as fa1ed6a; five managed worktrees archived; database migration application history and runtime/provider acceptance remain unknown/deferred. Historical dirty draft preserved.
+- [~] Phase 5: P05-T2 canonical Events/Timeline production code/build/review complete in isolated task commit `028a17e`; F01–F12 closed after two repair rounds, exact-source four-image build passed. P05-T1 Graphiti/FalkorDB adapter/recovery implementation remains in progress; T3/T4 and whole-phase integration pending. Optional runtime profile remains disabled pending deferred validation.
 - [ ] Phase 6: Ask/RAG and citations.
 - [ ] Phase 7: agents, tools, and approvals.
 - [ ] Phase 8: Today, tasks/goals, and daily brief.
@@ -38,4 +38,4 @@ Phase 0 verified on 2026-09-25: Ruff, mypy, pytest (15 passed, 1 integration tes
 - [x] R06 durable replay/SSE/provider: feature `325d20b`, integration `da4fb8c`, develop merge `35fc0c5`; full combined build and source/spec/quality review passed; worktree archived. Behavioral acceptance deferred.
 - [x] P02-RN1 receipt-to-library normalization: feature `b4f735b`, integration `9c33236`; full prescribed repair/combined builds and independent source/spec/quality reviews passed. Merged into develop `e759bb8` and worktree archived; later P04 composition and behavioral acceptance remain required.
 - [ ] Remaining reconciliation production code/build/review and later acceptance.
-- Phase 4 pinned integration is source-reviewed and built: production documentation in 7a6c443/e6796a0; migration source repair 1c5a453; T4 (`ea8a1fc`) after F1–F9/type-filter repairs; final frozen four-image build and whole-phase review passed. Merge commit remains pending. Database application history and runtime acceptance remain deferred. R04/R06/RN1 integrated; historical dirty draft preserved. Tests begin after all original and supplemental production code is complete.
+- Phase 4 pinned integration is source-reviewed and built: production documentation in 7a6c443/e6796a0; migration source repair 1c5a453; T4 (`ea8a1fc`) after F1–F9/type-filter repairs; final frozen four-image build and whole-phase review passed. Merged into develop as fa1ed6a; managed phase worktrees archived. Database application history and runtime acceptance remain deferred. R04/R06/RN1 integrated; historical dirty draft preserved. Tests begin after all original and supplemental production code is complete.

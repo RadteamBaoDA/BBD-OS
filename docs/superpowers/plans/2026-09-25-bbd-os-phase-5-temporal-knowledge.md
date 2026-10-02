@@ -12,7 +12,7 @@
 
 **Entry gate:** Phase 4 entities/evidence; Phase 3 permitted chat/structured/embedding capabilities.
 
-**Implementation status:** Not started. This file is an implementation plan, not evidence of working code.
+**Implementation status:** In progress. P05-T2 production code/build/scoped review complete in isolated commit `028a17e`; T1 remains in progress, T3/T4 and whole-phase develop integration pending. Runtime acceptance remains deferred; see EXECUTION.md for exact receipts.
 
 Implementation stage: production code and affected production builds only. Do not create, modify, or run tests, fixtures, lint, or standalone typecheck. Begin the deferred test stage only after production code for Phases 1-12 is complete.
 
@@ -78,7 +78,7 @@ Concrete contract/configuration shape (illustrative values, not production defau
 **Interfaces — consumes/produces:** CRUD /events; GET /timeline?date_from=&date_to=&timezone=&source_id=&entity_id=&cursor=; timeline uses occurred time, preserving observed_at and optional valid_from/valid_to. day_window(date,timezone) -> (UTC start,UTC end) with half-open intervals.
 
 
-- [ ] **P05-T2.1 — Implement production behavior.** Persist Event/EventParticipant and evidence references; do not mix operational ingestion logs with personal events. Extract structured events from documents through validated model policy; accept manual events with explicit manual origin. Handle unknown dates without inventing a timestamp, and distinguish date-only from timed events. Sort timeline by stable (occurred_at,id), UTC storage plus IANA timezone at query/display, including DST zones. Manual corrections use expected revision and survive reprocessing.
+- [x] **P05-T2.1 — Implement production behavior.** Persist Event/EventParticipant and evidence references; do not mix operational ingestion logs with personal events. Extract structured events from documents through validated model policy; accept manual events with explicit manual origin. Handle unknown dates without inventing a timestamp, and distinguish date-only from timed events. Sort timeline by stable (occurred_at,id), UTC storage plus IANA timezone at query/display, including DST zones. Manual corrections use expected revision and survive reprocessing.
 
 Concrete contract/configuration shape (illustrative values, not production defaults):
 
@@ -86,9 +86,9 @@ Concrete contract/configuration shape (illustrative values, not production defau
 {"type":"manual_event","started_at":null,"observed_at":"2026-09-25T03:00:00Z","date_precision":"unknown","origin":"manual","evidence":[]}
 ```
 
-- [ ] **P05-T2.2 - Build the affected production deliverable.** Run `./scripts/dev.ps1 build` (or `make build`); fix build failures before proceeding.
+- [x] **P05-T2.2 - Build the affected production deliverable.** Run `./scripts/dev.ps1 build` (or `make build`); fix build failures before proceeding.
 
-- [ ] **P05-T2.3 - Record build evidence, commit, and continue.** Record changed files, exact build command/result, review findings and unresolved gates in `EXECUTION.md`; commit the completed task, then continue to the next ready task.
+- [x] **P05-T2.3 - Record build evidence, commit, and continue.** Record changed files, exact build command/result, review findings and unresolved gates in `EXECUTION.md`; commit the completed task, then continue to the next ready task.
 
 
 ### Deferred test-stage acceptance (non-executable)

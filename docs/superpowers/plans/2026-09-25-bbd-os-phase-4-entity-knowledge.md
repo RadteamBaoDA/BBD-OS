@@ -12,7 +12,7 @@
 
 **Entry gate:** Phase 3 validated structured-output alias, search and public library.
 
-**Implementation status:** P04-T1–T4 production code, prescribed builds and scoped independent reviews are complete in the pinned Phase 4 integration. Whole-phase source review and pinned develop integration build passed; merge commit remains pending. Runtime/provider/migration-history acceptance is deferred. See the task receipts and `docs/superpowers/plans/EXECUTION.md`.
+**Implementation status:** P04-T1–T4 production code, prescribed builds and scoped independent reviews are complete in the pinned Phase 4 integration. Whole-phase source review and pinned develop integration build passed; merged locally into develop as fa1ed6a and managed phase worktrees archived. Runtime/provider/migration-history acceptance is deferred. See the task receipts and `docs/superpowers/plans/EXECUTION.md`.
 
 Code stage: implement production code and run affected production builds only. Do not create, modify or run tests, lint, or standalone typecheck until production code for all Phase 1-12 is complete. Behavioral acceptance is listed separately in the deferred test-stage section.
 
